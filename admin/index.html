@@ -34,6 +34,9 @@
     .navbtn{display:block;width:100%;text-align:left;padding:.6rem .8rem;border-radius:9px;border:0;background:none;color:#cfc9f6;font-weight:600;margin-bottom:.15rem}
     .navbtn:hover{background:rgba(255,255,255,.08);color:#fff}
     .navbtn.on{background:var(--gold);color:#fff}
+    .versao{margin:.7rem 0 0;text-align:center;font-size:.7rem;letter-spacing:.08em;color:rgba(207,201,246,.55);font-variant-numeric:tabular-nums}
+    /* na tela de login o fundo é claro — o tom da barra lateral sumiria */
+    #login .versao{color:var(--dim)}
     main{padding:2rem 2.4rem;max-width:1000px}
     .panel{display:none}.panel.on{display:block}
     .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1.2rem;margin-bottom:1rem;box-shadow:0 2px 8px rgba(68,56,184,.05)}
@@ -49,6 +52,20 @@
     #login{position:fixed;inset:0;background:var(--violet);display:grid;place-items:center;z-index:50}
     #login .card{width:min(360px,90vw);text-align:center;padding:2rem}
     .imgrow{display:flex;gap:.6rem;align-items:center}
+    /* --- Acessos --- */
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem}
+    .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1rem 1.1rem;box-shadow:0 2px 8px rgba(68,56,184,.05)}
+    .stat-card b{display:block;font-size:1.9rem;line-height:1.1;color:var(--violet)}
+    .stat-card span{font-size:.76rem;color:var(--dim);font-weight:600}
+    .stat-two{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    @media(max-width:820px){.stat-two{grid-template-columns:1fr}}
+    .spark{display:flex;align-items:flex-end;gap:2px;height:110px;margin-top:.8rem}
+    .spark-bar{flex:1;background:linear-gradient(180deg,var(--violet),#8f83e8);border-radius:3px 3px 0 0;min-height:3px}
+    .spark-bar:hover{background:var(--gold)}
+    .st-table{width:100%;border-collapse:collapse;font-size:.85rem}
+    .st-table td{padding:.4rem 0;border-bottom:1px solid var(--line)}
+    .st-table td:last-child{text-align:right;font-weight:700;color:var(--violet);width:70px}
+    .st-table tr:last-child td{border-bottom:0}
     @media(max-width:820px){.app{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:.3rem}main{padding:1.2rem}}
   </style>
 </head>
@@ -61,7 +78,7 @@
     <p class="hint mb">Entre para editar o site.</p>
     <input type="password" id="pw" placeholder="Senha" autocomplete="current-password">
     <button class="btn btn-mint mt" style="width:100%;justify-content:center" onclick="login()">Entrar</button>
-    <p class="hint mt">senha inicial: bemestar-admin</p>
+    <p class="versao mt" title="Versão do gerenciador em execução no servidor">v{{APP_VERSION}}</p>
   </div>
 </div>
 
@@ -69,8 +86,10 @@
   <aside>
     <span class="logo"><img src="/assets/img/favicon.svg" alt="" style="border-radius:10px"> bem-estar</span>
     <button class="navbtn on" data-p="dash">▲ Publicar</button>
+    <button class="navbtn" data-p="acessos">📊 Acessos</button>
     <button class="navbtn" data-p="services">Especialidades</button>
     <button class="navbtn" data-p="team">Profissionais</button>
+    <button class="navbtn" data-p="posts">Blog</button>
     <button class="navbtn" data-p="portfolio">Nosso Espaço</button>
     <button class="navbtn" data-p="texts">Textos do site</button>
     <button class="navbtn" data-p="testimonials">Depoimentos</button>
@@ -79,6 +98,7 @@
     <div style="margin-top:auto">
       <a class="navbtn" href="/" target="_blank" style="text-decoration:none;display:block">↗ Ver o site</a>
       <button class="navbtn" onclick="logout()">Sair</button>
+      <p class="versao" id="app-versao" title="Versão do gerenciador em execução no servidor">v—</p>
     </div>
   </aside>
 
@@ -92,9 +112,39 @@
       </div>
     </section>
 
+    <section class="panel" id="p-acessos">
+      <div class="topbar"><h1>Acessos</h1><button class="btn btn-ghost" onclick="loadStats()">↻ Atualizar</button></div>
+      <div class="stat-grid" id="st-cards"></div>
+      <div class="card mt">
+        <h3 style="margin:0 0 .2rem">Últimos 30 dias</h3>
+        <p class="hint" id="st-janela"></p>
+        <div class="spark" id="st-spark"></div>
+      </div>
+      <div class="stat-two mt">
+        <div class="card">
+          <h3 style="margin:0 0 .6rem">Páginas mais acessadas</h3>
+          <table class="st-table" id="st-paginas"></table>
+        </div>
+        <div class="card">
+          <h3 style="margin:0 0 .6rem">De onde vieram</h3>
+          <table class="st-table" id="st-origens"></table>
+          <p class="hint mt" id="st-origens-vazio" hidden>Ainda sem origens externas registradas. Quando alguém chegar pelo Google ou pelo Instagram, aparece aqui.</p>
+        </div>
+      </div>
+      <p class="hint mt">O contador roda no próprio servidor, não usa cookie e não guarda o IP — só um código embaralhado dele. Robôs de busca e monitoramento são descartados. Nada disso aparece no site: só aqui.</p>
+    </section>
+
     <section class="panel" id="p-team">
       <div class="topbar"><h1>Profissionais</h1><button class="btn btn-ghost" onclick="addRow('team')">+ Novo profissional</button></div>
+      <p class="hint mb">Cada pessoa aparece <b>uma única vez</b> na página <a href="/profissionais/" target="_blank">Guia de Profissionais</a>, mesmo atendendo várias especialidades — os grupos por especialidade abaixo da galeria mostram só o nome, sem repetir a foto.</p>
+      <datalist id="lista-esp"></datalist>
       <div id="team-list"></div>
+    </section>
+
+    <section class="panel" id="p-posts">
+      <div class="topbar"><h1>Blog</h1><button class="btn btn-ghost" onclick="addRow('posts')">+ Nova matéria</button></div>
+      <p class="hint mb">A URL amigável (slug) sai do título. Parágrafos: linha em branco separa. Publique para gerar as páginas.</p>
+      <div id="posts-list"></div>
     </section>
 
     <section class="panel" id="p-portfolio">
@@ -141,7 +191,9 @@
           <div><label>WhatsApp (como aparece no site)</label><input id="s_whatsapp_display" placeholder="(87) 90000-0000"></div>
         </div>
         <label>E-mail</label><input id="s_contact_email" type="email">
+        <label>Telefone fixo</label><input id="s_phone_fixed" placeholder="(81) 4105-1109">
         <label>Instagram (sem @)</label><input id="s_instagram">
+        <label>Endereço (aparece no card de contato)</label><textarea id="s_address"></textarea>
         <label>CNPJ</label><input id="s_cnpj" placeholder="00.000.000/0001-00">
       </div>
     </section>
@@ -183,7 +235,12 @@ async function login() {
 }
 async function logout() { await api("/api/logout", "POST"); location.reload(); }
 $("#pw")?.addEventListener("keydown", (e) => e.key === "Enter" && login());
-async function showApp() { $("#app").hidden = false; await loadAll(); }
+async function showApp() {
+  $("#app").hidden = false;
+  // vem do servidor (não do HTML) para não mostrar número velho vindo do cache
+  try { const me = await api("/api/me"); $("#app-versao").textContent = "v" + (me.version || "?"); } catch {}
+  await loadAll();
+}
 
 document.querySelectorAll(".navbtn[data-p]").forEach((b) =>
   b.addEventListener("click", () => {
@@ -191,30 +248,67 @@ document.querySelectorAll(".navbtn[data-p]").forEach((b) =>
     document.querySelectorAll(".panel").forEach((x) => x.classList.remove("on"));
     b.classList.add("on");
     $("#p-" + b.dataset.p).classList.add("on");
+    if (b.dataset.p === "acessos") loadStats();
   })
 );
 
+/* ---------------------------- Acessos ---------------------------------- */
+const nf = new Intl.NumberFormat("pt-BR");
+async function loadStats() {
+  let s;
+  try { s = await api("/api/stats"); } catch (e) { return toast(e.message, true); }
+
+  $("#st-cards").innerHTML = [
+    ["Hoje", s.hoje], ["Últimos 7 dias", s.semana], ["Últimos 30 dias", s.mes],
+    ["Total de visitas", s.total], ["Visitantes únicos", s.visitantes], ["Únicos no mês", s.visitantesMes],
+  ].map(([r, v]) => `<div class="stat-card"><b>${nf.format(v)}</b><span>${r}</span></div>`).join("");
+
+  $("#st-janela").textContent =
+    `Uma visita = um visitante contado uma vez a cada ${s.janelaMin} minutos. Se a mesma pessoa voltar depois disso, conta de novo.`;
+
+  // gráfico de barras dos 30 dias, preenchendo os dias sem acesso com zero
+  const mapa = new Map(s.porDia.map((d) => [d.day, d.total]));
+  const dias = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    dias.push([d, mapa.get(d) || 0]);
+  }
+  const topo = Math.max(1, ...dias.map((d) => d[1]));
+  $("#st-spark").innerHTML = dias.map(([d, v]) => {
+    const [, m, dd] = d.split("-");
+    return `<span class="spark-bar" style="height:${Math.max(3, (v / topo) * 100)}%" title="${dd}/${m}: ${v} visita(s)"></span>`;
+  }).join("");
+
+  const linhas = (arr, campo, vazio) => arr.length
+    ? arr.map((r) => `<tr><td>${escA(r[campo] || "/")}</td><td>${nf.format(r.total)}</td></tr>`).join("")
+    : `<tr><td colspan="2" style="color:var(--muted)">${vazio}</td></tr>`;
+  $("#st-paginas").innerHTML = linhas(s.topPaginas, "path", "Nenhum acesso registrado ainda.");
+  $("#st-origens").innerHTML = linhas(s.origens, "referrer", "—");
+  $("#st-origens-vazio").hidden = s.origens.length > 0;
+}
+
 async function loadAll() {
   DATA = await api("/api/content");
-  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","contact_email","instagram","cnpj"])
+  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","phone_fixed","contact_email","instagram","address","cnpj"])
     $("#s_" + k).value = DATA.settings[k];
   $("#s_stats").value = JSON.parse(DATA.settings.stats || "[]").map((s) => `${s.num} | ${s.label}`).join("\n");
   $("#s_about_bullets").value = JSON.parse(DATA.settings.about_bullets || "[]").join("\n");
-  renderTable("portfolio"); renderTable("services"); renderTable("testimonials"); renderTable("team");
+  $("#lista-esp").innerHTML = espDisponiveis().map((t) => `<option value="${escA(t)}">`).join("");
+  renderTable("portfolio"); renderTable("services"); renderTable("testimonials"); renderTable("team"); renderTable("posts");
 }
 
 async function publishSite() {
   $("#pub-log").textContent = "Publicando…";
   try {
     const r = await api("/api/publish", "POST");
-    $("#pub-log").textContent = `✓ Publicado — ${r.services} especialidades, ${r.team} profissionais, ${r.works} fotos.`;
+    $("#pub-log").textContent = `✓ Publicado — ${r.services} especialidades, ${r.posts} matérias, ${r.team} profissionais, ${r.works} fotos.`;
     toast("Site publicado! 🚀");
   } catch (e) { $("#pub-log").textContent = ""; toast(e.message, true); }
 }
 
 async function saveTexts() {
   const body = {};
-  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","contact_email","instagram","cnpj"])
+  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","phone_fixed","contact_email","instagram","address","cnpj"])
     body[k] = $("#s_" + k).value;
   body.stats = JSON.stringify($("#s_stats").value.split("\n").filter(Boolean).map((l) => {
     const [num, ...r] = l.split("|"); return { num: num.trim(), label: r.join("|").trim() };
@@ -226,14 +320,24 @@ async function saveTexts() {
 
 const TDEFS = {
   portfolio: [["title","Título","input"],["subtitle","Legenda","input"],["image","Imagem (URL)","image"]],
-  services: [["title","Título","input"],["text","Descrição","textarea"]],
+  services: [["title","Título","input"],["slug","URL amigável (vazio = automática)","input"],["text","Resumo (card e Google)","textarea"],["content","Conteúdo da página (parágrafos separados por linha em branco)","bigtext"]],
+  posts: [["title","Título","input"],["slug","URL amigável (vazio = automática)","input"],["date","Data (AAAA-MM-DD)","input"],["excerpt","Resumo","textarea"],["image","Imagem de capa (URL)","image"],["content","Conteúdo (parágrafos separados por linha em branco)","bigtext"]],
   testimonials: [["text","Depoimento","textarea"],["name","Nome","input"],["role","Serviço / cidade","input"],["initials","Iniciais","input"]],
-  team: [["name","Nome","input"],["role","Especialidade / cargo","input"],["bio","Mini-bio","textarea"],["photo","Foto (URL)","image"]],
+  team: [["name","Nome","input"],["role","Cargo / titulação (ex.: Nutrição Clínica e Esportiva)","input"],
+    ["photo","Foto — quadrada fica melhor; sem foto, entram as iniciais","image"],
+    ["bio","Mini-bio (aparece no card)","textarea"],
+    ["whatsapp","WhatsApp próprio, só números com 55 (vazio = usa o da recepção)","input"],
+    ["especialidades","Especialidades que atende, separadas por vírgula","esp"],
+    ["na_home","Aparece também na home?","home"]],
 };
+/* nomes exatos das especialidades — usados para montar os grupos do guia e
+   linkar cada um para a página da especialidade */
+const espDisponiveis = () => (DATA?.services || []).map((s) => s.title);
 function renderTable(t) {
   $("#" + t + "-list").innerHTML = DATA[t].map((r) => `
     <div class="card">
       ${TDEFS[t].map(([f, lab, kind]) => {
+        if (kind === "bigtext") return `<label>${lab}</label><textarea style="min-height:200px" data-t="${t}" data-id="${r.id}" data-f="${f}">${escA(r[f])}</textarea>`;
         if (kind === "textarea") return `<label>${lab}</label><textarea data-t="${t}" data-id="${r.id}" data-f="${f}">${escA(r[f])}</textarea>`;
         if (kind === "image") return `<label>${lab}</label>
           <div class="imgrow">
@@ -241,9 +345,19 @@ function renderTable(t) {
             <button class="btn btn-ghost btn-sm" onclick="pickImg(this)">Enviar foto</button>
             ${r[f] ? `<img class="thumb" src="${escA(r[f])}" alt="">` : ""}
           </div>`;
+        if (kind === "home") return `<label>${lab}</label>
+          <select data-t="${t}" data-id="${r.id}" data-f="${f}">
+            <option value="0"${Number(r[f]) ? "" : " selected"}>Não — só no guia de profissionais</option>
+            <option value="1"${Number(r[f]) ? " selected" : ""}>Sim — destacar na página inicial</option>
+          </select>`;
+        if (kind === "esp") return `<label>${lab}</label>
+          <input data-t="${t}" data-id="${r.id}" data-f="${f}" value="${escA(r[f])}" list="lista-esp">
+          <p class="hint">Escreva igual ao nome da especialidade para o grupo linkar para a página dela. Disponíveis: ${escA(espDisponiveis().join(" · "))}</p>`;
         return `<label>${lab}</label><input data-t="${t}" data-id="${r.id}" data-f="${f}" value="${escA(r[f])}">`;
       }).join("")}
       <div class="right mt">
+        ${t === "services" && r.slug ? `<a class="btn btn-ghost btn-sm" href="/especialidades/${escA(r.slug)}/" target="_blank" style="text-decoration:none">Ver página</a>` : ""}
+        ${t === "posts" && r.slug ? `<a class="btn btn-ghost btn-sm" href="/blog/${escA(r.slug)}/" target="_blank" style="text-decoration:none">Ver página</a>` : ""}
         <button class="btn btn-danger btn-sm" onclick="delRow('${t}',${r.id})">Excluir</button>
         <button class="btn btn-navy btn-sm" onclick="saveRow('${t}',${r.id})">Salvar</button>
       </div>
@@ -259,7 +373,8 @@ async function addRow(t) {
   const blank = { portfolio: { title: "Nova foto", subtitle: "", image: "" },
     services: { title: "Nova especialidade", text: "" },
     testimonials: { text: "", name: "", role: "", initials: "" },
-    team: { name: "Novo profissional", role: "", bio: "", photo: "" } }[t];
+    team: { name: "Novo profissional", role: "", bio: "", photo: "", whatsapp: "", especialidades: "", na_home: 0 },
+    posts: { title: "Nova matéria", excerpt: "", content: "", image: "", date: new Date().toISOString().slice(0, 10) } }[t];
   await api("/api/" + t, "POST", blank);
   DATA = await api("/api/content");
   renderTable(t);

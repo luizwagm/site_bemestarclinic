@@ -4,10 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <title>BemEstarClinic — Psicanálise, Ozonioterapia e Terapias Integrativas em Caruaru-PE e Online</title>
-  <meta name="description" content="Clínica de bem-estar em Caruaru-PE: psicanálise, ozonioterapia e terapias integrativas com acolhimento, ética e sigilo. Atendimento presencial e online para o mundo todo. Agende sua consulta.">
-  <link rel="canonical" href="https://bemestarclinic.com.br/">
-  <meta name="robots" content="index, follow">
+  <title>Terapia em Caruaru-PE — Psicanálise e Terapias Integrativas</title>
+  <meta name="description" content="Psicanálise, psicologia, ozonioterapia e terapias integrativas em Caruaru-PE. Atendemos todo o Agreste, presencial e online. Agende sua consulta.">
+  <link rel="canonical" href="https://bemestarclinic.com/">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="geo.region" content="BR-PE">
+  <meta name="geo.placename" content="Caruaru, Pernambuco">
   <meta name="theme-color" content="#5B4FD8">
 
   <!-- Open Graph / Twitter -->
@@ -16,12 +18,12 @@
   <meta property="og:site_name" content="BemEstarClinic">
   <meta property="og:title" content="BemEstarClinic — Psicanálise, Ozonioterapia e Terapias Integrativas">
   <meta property="og:description" content="Cuidar da mente e do corpo é um ato de bem-estar. Presencial em Caruaru-PE e online para o mundo todo.">
-  <meta property="og:url" content="https://bemestarclinic.com.br/">
-  <meta property="og:image" content="https://bemestarclinic.com.br/assets/img/og-image.png">
+  <meta property="og:url" content="https://bemestarclinic.com/">
+  <meta property="og:image" content="https://bemestarclinic.com/assets/img/og-image.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="BemEstarClinic — Psicanálise, Ozonioterapia e Terapias Integrativas">
   <meta name="twitter:description" content="Cuidar da mente e do corpo é um ato de bem-estar. Presencial em Caruaru-PE e online para o mundo todo.">
-  <meta name="twitter:image" content="https://bemestarclinic.com.br/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://bemestarclinic.com/assets/img/og-image.png">
 
   <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -29,21 +31,24 @@
   <!-- Fontes -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Figtree:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- LCP: a foto do hero é o maior elemento visível — buscar cedo encurta o Largest Contentful Paint -->
+  <link rel="preconnect" href="https://images.unsplash.com" crossorigin>
+  <link rel="preload" as="image" fetchpriority="high" href="https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=900&q=75">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500;1,600&family=Figtree:wght@300;400;500;600;700&family=Questrial&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="/assets/css/styles.css">
 
-  <!-- ================= INTEGRAÇÕES (placeholders — descomente e preencha os IDs) =================
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>  GA4
-  <script>(GTM)  https://tagmanager.google.com — GTM-XXXXXXX</script>
+  <!-- ===================================== INTEGRAÇÕES =====================================
+  NÃO cole scripts de medição aqui. Preencha os IDs em /assets/js/config.js
+  (GA4_ID, GTM_ID, META_PIXEL_ID, CLARITY_ID, HOTJAR_ID) e o próprio site carrega
+  cada um SOMENTE depois que o visitante aceitar os cookies. Colar direto neste
+  <head> dispararia o rastreamento antes do consentimento — o que a LGPD proíbe.
+
+  A verificação do Search Console pode ficar aqui (não grava cookie):
   <meta name="google-site-verification" content="TOKEN-SEARCH-CONSOLE">
-  <script>(Meta Pixel) fbq('init','PIXEL_ID')</script>
-  <script>(LinkedIn Insight) _linkedin_partner_id</script>
-  <script>(Microsoft Clarity) clarity(...,"CLARITY_ID")</script>
-  <script>(Hotjar) hjid:0000000</script>
-  CRM / RD Station / HubSpot / Mailchimp / Brevo: cole aqui o script do formulário ou tracking.
-  Google Agenda: crie a página de agendamento e cole o link em assets/js/config.js (AGENDA_URL).
-  ================================================================================================ -->
+
+  Google Agenda: cole o link em assets/js/config.js (AGENDA_URL).
+  ======================================================================================== -->
 
   <!--#JSONLD-->
   <script type="application/ld+json">
@@ -52,71 +57,364 @@
     "@graph": [
       {
         "@type": "Organization",
-        "@id": "https://bemestarclinic.com.br/#org",
+        "@id": "https://bemestarclinic.com/#org",
         "name": "BemEstarClinic",
-        "url": "https://bemestarclinic.com.br/",
-        "logo": "https://bemestarclinic.com.br/assets/img/mark.svg",
-        "email": "contato@bemestarclinic.com.br",
+        "alternateName": "CIPS — Clínica Integrada de Psicanálise e da Saúde",
+        "url": "https://bemestarclinic.com/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://bemestarclinic.com/assets/img/mark-violet.svg"
+        },
+        "email": "faleconosco@bemestarclinic.com",
+        "telephone": "+5581973037762",
         "sameAs": [
-          "https://www.instagram.com/bemestarclinic_/"
+          "https://www.instagram.com/bemestarclinic_/",
+          "https://www.doctoralia.com.br/clinicas/bemestarclinic"
         ]
       },
       {
         "@type": "MedicalClinic",
-        "@id": "https://bemestarclinic.com.br/#clinica",
+        "@id": "https://bemestarclinic.com/#clinica",
         "name": "BemEstarClinic",
-        "image": "https://bemestarclinic.com.br/assets/img/og-image.png",
-        "url": "https://bemestarclinic.com.br/",
-        "description": "Clínica de psicanálise, ozonioterapia e terapias integrativas em Caruaru-PE, com atendimento online para o mundo todo.",
-        "telephone": "+5500000000000",
+        "image": "https://bemestarclinic.com/assets/img/og-image.png",
+        "url": "https://bemestarclinic.com/",
+        "hasMap": "https://maps.google.com/?q=BemEstarClinic%2C%20Rua%20Arthur%20Ant%C3%B4nio%20da%20Silva%2C%20481%2C%20Sala%20707%2C%20Universit%C3%A1rio%2C%20Caruaru%20-%20PE",
+        "description": "Clínica de psicanálise, psicologia, ozonioterapia e terapias integrativas em Caruaru-PE, com atendimento online para todo o Brasil.",
+        "telephone": "+5581973037762",
+        "email": "faleconosco@bemestarclinic.com",
+        "priceRange": "$$",
+        "currenciesAccepted": "BRL",
+        "availableLanguage": "pt-BR",
+        "openingHoursSpecification": [
+          {
+            "@type": "OpeningHoursSpecification",
+            "dayOfWeek": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday"
+            ],
+            "opens": "08:00",
+            "closes": "18:00"
+          }
+        ],
         "address": {
           "@type": "PostalAddress",
+          "streetAddress": "Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Empresarial Nordeste Corporate",
           "addressLocality": "Caruaru",
           "addressRegion": "PE",
+          "postalCode": "55016-445",
           "addressCountry": "BR"
         },
         "areaServed": [
-          "Caruaru e região",
-          "Atendimento online — mundo todo"
+          {
+            "@type": "City",
+            "name": "Caruaru",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Bezerros",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Riacho das Almas",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Toritama",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Santa Cruz do Capibaribe",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Gravatá",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "São Caitano",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Agrestina",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Garanhuns",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Belo Jardim",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Brejo da Madre de Deus",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Surubim",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "City",
+            "name": "Pesqueira",
+            "containedInPlace": {
+              "@type": "State",
+              "name": "Pernambuco"
+            }
+          },
+          {
+            "@type": "State",
+            "name": "Pernambuco"
+          },
+          {
+            "@type": "Country",
+            "name": "Brasil"
+          }
         ],
-        "priceRange": "$$",
         "availableService": [
           {
             "@type": "MedicalTherapy",
-            "name": "Psicanálise"
+            "name": "Psicanálise (Individual e Casal)",
+            "url": "https://bemestarclinic.com/especialidades/psicanalise-individual-e-casal/"
           },
           {
             "@type": "MedicalTherapy",
-            "name": "Ozonioterapia"
+            "name": "Protocolo Integrativo (Ozonioterapia e Detox Iônico)",
+            "url": "https://bemestarclinic.com/especialidades/protocolo-integrativo-ozonioterapia-e-detox-ionico/"
           },
           {
             "@type": "MedicalTherapy",
-            "name": "Terapia Online"
+            "name": "Acupuntura",
+            "url": "https://bemestarclinic.com/especialidades/acupuntura/"
           },
           {
             "@type": "MedicalTherapy",
-            "name": "Terapia de Casal e Família"
+            "name": "Fitoterapia",
+            "url": "https://bemestarclinic.com/especialidades/fitoterapia/"
           },
           {
             "@type": "MedicalTherapy",
-            "name": "Acompanhamento Terapêutico"
+            "name": "Terapia Floral",
+            "url": "https://bemestarclinic.com/especialidades/terapia-floral/"
           },
           {
             "@type": "MedicalTherapy",
-            "name": "Práticas Integrativas"
+            "name": "Aromaterapia",
+            "url": "https://bemestarclinic.com/especialidades/aromaterapia/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Avaliação Psicológica e Psicossocial",
+            "url": "https://bemestarclinic.com/especialidades/avaliacao-psicologica-e-psicossocial/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Ventosaterapia",
+            "url": "https://bemestarclinic.com/especialidades/ventosaterapia/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Psicologia",
+            "url": "https://bemestarclinic.com/especialidades/psicologia/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Exame de Biorressonância",
+            "url": "https://bemestarclinic.com/especialidades/exame-de-biorressonancia/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Homeopatia",
+            "url": "https://bemestarclinic.com/especialidades/homeopatia/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Kinesioterapia (Fitas Elásticas)",
+            "url": "https://bemestarclinic.com/especialidades/kinesioterapia-fitas-elasticas/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Saúde e Segurança do Trabalhador",
+            "url": "https://bemestarclinic.com/especialidades/saude-e-seguranca-do-trabalhador/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Riscos Psicossociais (NR-1)",
+            "url": "https://bemestarclinic.com/especialidades/riscos-psicossociais-nr-1/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Nutrição",
+            "url": "https://bemestarclinic.com/especialidades/nutricao/"
+          },
+          {
+            "@type": "MedicalTherapy",
+            "name": "Diversas Especialidades",
+            "url": "https://bemestarclinic.com/especialidades/diversas-especialidades/"
+          }
+        ],
+        "employee": [
+          {
+            "@type": "Person",
+            "name": "Dr. Prof. Ronalldo JM",
+            "jobTitle": "Presidente · Psicanalista clínico",
+            "description": "Especialista, Mestre e Doutor em Psicanálise Clínica (FENATE/PE 0004 · SBP 16000025). Psicanalista (individual e casal), ozonioterapeuta, acupunturista, terapeuta floral, ventosaterapeuta, cinesioterapeuta, fitoterapeuta, homeopata e biorressonância.",
+            "image": "https://bemestarclinic.com/assets/img/profissionais/dr-ronaldo-jm.jpeg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dr. Prof. Samuel Teixdan",
+            "jobTitle": "Diretor · Psicanalista clínico",
+            "description": "Especialista e Doutor em Psicanálise Clínica (FENATE/PE 0005 · SBP 16000024). Psicanalista clínico (individual), Detox Iônico e aromaterapeuta.",
+            "image": "https://bemestarclinic.com/assets/img/profissionais/dr-samuel-teixdan.jpeg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Núbia Tatiane Fernandes",
+            "jobTitle": "Psicóloga",
+            "description": "Atendimento psicológico clínico com abordagem acolhedora e personalizada: psicoterapia individual e avaliação psicológica.",
+            "image": "https://bemestarclinic.com/assets/img/uploads/mrv1yp1w-whatsapp-image-2026-07-21-at-16-26-47.jpg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dr. Jailson Cavalcanti",
+            "jobTitle": "Nutrição Clínica, Esportiva e Funcional",
+            "description": "Nutrição clínica, esportiva e funcional, com planos alimentares individualizados.",
+            "image": "",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Letícia Vital",
+            "jobTitle": "Nutrição Clínica e Esportiva",
+            "description": "Nutrição clínica e esportiva, com acompanhamento de performance e composição corporal.",
+            "image": "https://bemestarclinic.com/assets/img/uploads/mrv11er3-whatsapp-image-2026-07-21-at-15-12-01.jpg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Tainá Brito",
+            "jobTitle": "Nutrição Clínica",
+            "description": "Nutrição clínica com foco em reeducação alimentar e saúde a longo prazo.",
+            "image": "https://bemestarclinic.com/assets/img/uploads/mrv2s18s-whatsapp-image-2026-07-21-at-16-40-38.jpg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Lorena Espósito",
+            "jobTitle": "Nutrição Clínica",
+            "description": "Nutrição clínica com acompanhamento individualizado.",
+            "image": "https://bemestarclinic.com/assets/img/uploads/mrv12i2u-whatsapp-image-2026-07-21-at-15-40-40.jpg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Brunna Ferreira",
+            "jobTitle": "Nutrição Clínica",
+            "description": "Nutrição clínica com acompanhamento individualizado.",
+            "image": "",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
+          },
+          {
+            "@type": "Person",
+            "name": "Dra. Jheniffer Melo",
+            "jobTitle": "Nutrição Clínica, Funcional e Integrativa",
+            "description": "Nutrição clínica, funcional e integrativa, dialogando com as demais terapias da clínica.",
+            "image": "https://bemestarclinic.com/assets/img/uploads/mrv1231o-whatsapp-image-2026-07-21-at-15-42-53.jpg",
+            "worksFor": {
+              "@id": "https://bemestarclinic.com/#org"
+            }
           }
         ],
         "parentOrganization": {
-          "@id": "https://bemestarclinic.com.br/#org"
+          "@id": "https://bemestarclinic.com/#org"
         }
       },
       {
         "@type": "WebSite",
-        "url": "https://bemestarclinic.com.br/",
+        "@id": "https://bemestarclinic.com/#site",
+        "url": "https://bemestarclinic.com/",
         "name": "BemEstarClinic",
         "inLanguage": "pt-BR",
         "publisher": {
-          "@id": "https://bemestarclinic.com.br/#org"
+          "@id": "https://bemestarclinic.com/#org"
+        },
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": {
+            "@type": "EntryPoint",
+            "urlTemplate": "https://bemestarclinic.com/busca/?q={search_term_string}"
+          },
+          "query-input": "required name=search_term_string"
         }
       }
     ]
@@ -129,18 +427,17 @@
   <header class="site-header">
     <div class="container header__inner">
       <a class="brand" href="#inicio" aria-label="BemEstarClinic — início">
-        <img class="brand__mark" src="/assets/img/mark.svg" alt="" width="40" height="40">
-        <span class="brand__name">BemEstar<span>Clinic</span></span>
+        <svg class="brand__logo" viewBox="169 832 1636 293" role="img" aria-label="BemEstarClinic"><g fill="currentColor"><text font-family="Questrial, sans-serif" font-size="195.83" transform="translate(460.23 1051.93)"><tspan x="0" y="0">BemEs</tspan><tspan x="622.14" y="0">t</tspan><tspan x="684.02" y="0">arClinic</tspan></text><path d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></g></svg>
       </a>
       <nav id="primary-nav" class="nav" aria-label="Navegação principal">
         <a href="#especialidades">Especialidades</a>
         <a href="#clinica">A Clínica</a>
         <a href="#profissionais">Profissionais</a>
         <a href="#online">Online</a>
-        <a href="#espaco">Espaço</a>
-        <a href="#depoimentos">Depoimentos</a>
+        <a href="#empresas">Para Empresas</a>
+        <a href="/blog/">Feed</a>
         <a href="#contato">Contato</a>
-        <a class="btn btn--primary nav__cta" href="https://wa.me/5500000000000" target="_blank" rel="noopener">Agendar consulta</a>
+        <a class="btn btn--primary nav__cta" href="/agendar/">Agendar consulta</a>
       </nav>
       <button class="nav-toggle" aria-expanded="false" aria-controls="primary-nav" aria-label="Abrir menu">
         <span></span><span></span><span></span>
@@ -157,31 +454,31 @@
       <div class="container hero__grid">
         <div class="hero__content" data-reveal>
           <p class="badge"><!--#HERO_BADGE-->
-🪷 Clínica de bem-estar em Caruaru-PE · online para o mundo todo
+🪷 Saúde mental e práticas integrativas · Caruaru-PE e online
 <!--/HERO_BADGE--></p>
           <h1 class="hero__title"><!--#HERO_TITLE-->
-Cuidar da mente e do corpo é um ato de <em>bem-estar</em>.
+Seu bem-estar em <em>boas mãos</em>.
 <!--/HERO_TITLE--></h1>
           <p class="hero__lead"><!--#HERO_LEAD-->
-Psicanálise, ozonioterapia e terapias integrativas em um espaço acolhedor no coração de Caruaru — e atendimento online para você, onde estiver.
+Cuidamos da sua saúde mental, física e do seu bem-estar de forma completa e acessível: equipe de especialistas e uma ampla variedade de tratamentos integrativos para você e sua família — presencial em Caruaru e online.
 <!--/HERO_LEAD--></p>
           <div class="hero__ctas">
-            <a class="btn btn--primary btn--lg" href="https://wa.me/5500000000000" target="_blank" rel="noopener">Agendar pelo WhatsApp</a>
+            <a class="btn btn--primary btn--lg" href="/agendar/">Agendar pelo WhatsApp</a>
             <a class="btn btn--ghost btn--lg" href="#especialidades">Conhecer especialidades</a>
           </div>
           <dl class="stats">
             <!--#STATS-->
-            <div class="stat"><dd class="stat__num">10+</dd><dt class="stat__label">anos cuidando de pessoas</dt></div>
-            <div class="stat"><dd class="stat__num">3mil+</dd><dt class="stat__label">atendimentos realizados</dt></div>
-            <div class="stat"><dd class="stat__num">100%</dd><dt class="stat__label">acolhimento e sigilo</dt></div>
-            <div class="stat"><dd class="stat__num">On-line</dd><dt class="stat__label">para o mundo todo</dt></div>
+            <div class="stat"><dd class="stat__num">16+</dd><dt class="stat__label">especialidades integrativas</dt></div>
+            <div class="stat"><dd class="stat__num">9</dd><dt class="stat__label">profissionais no guia</dt></div>
+            <div class="stat"><dd class="stat__num">24h</dd><dt class="stat__label">laudos de avaliação online</dt></div>
+            <div class="stat"><dd class="stat__num">100%</dd><dt class="stat__label">atendimento humanizado</dt></div>
 <!--/STATS-->
           </dl>
         </div>
         <div class="hero__visual" data-reveal data-reveal-delay="1">
           <div class="hero__halo" aria-hidden="true"></div>
           <figure class="hero__photo">
-            <img src="https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=900&q=75" alt="Mulher em postura de meditação, em ambiente sereno" width="620" height="780" fetchpriority="high">
+            <img src="https://images.unsplash.com/photo-1545205597-3d9d02c29597?auto=format&fit=crop&w=900&q=75" alt="Mulher em postura de meditação — cuidado com a saúde mental na BemEstarClinic, Caruaru-PE" width="620" height="780" fetchpriority="high" decoding="async">
           </figure>
           <div class="float-card float-card--a">
             <span class="float-card__icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></span>
@@ -198,8 +495,10 @@ Psicanálise, ozonioterapia e terapias integrativas em um espaço acolhedor no c
     <!-- ============================ TICKER ============================== -->
     <div class="ticker" aria-hidden="true">
       <div class="ticker__track">
-        <span>Psicanálise</span><i>🪷</i><span>Ozonioterapia</span><i>🪷</i><span>Terapia Online</span><i>🪷</i><span>Casal e Família</span><i>🪷</i><span>Acompanhamento Terapêutico</span><i>🪷</i><span>Práticas Integrativas</span><i>🪷</i>
-        <span>Psicanálise</span><i>🪷</i><span>Ozonioterapia</span><i>🪷</i><span>Terapia Online</span><i>🪷</i><span>Casal e Família</span><i>🪷</i><span>Acompanhamento Terapêutico</span><i>🪷</i><span>Práticas Integrativas</span><i>🪷</i>
+        <div class="ticker__group"><span>Psicanálise</span><i>🪷</i><span>Ozonioterapia e Detox Iônico</span><i>🪷</i><span>Acupuntura</span><i>🪷</i><span>Homeopatia</span><i>🪷</i><span>Terapia Floral</span><i>🪷</i><span>Aromaterapia</span><i>🪷</i><span>Nutrição</span><i>🪷</i><span>Psicologia</span><i>🪷</i></div>
+        <div class="ticker__group"><span>Psicanálise</span><i>🪷</i><span>Ozonioterapia e Detox Iônico</span><i>🪷</i><span>Acupuntura</span><i>🪷</i><span>Homeopatia</span><i>🪷</i><span>Terapia Floral</span><i>🪷</i><span>Aromaterapia</span><i>🪷</i><span>Nutrição</span><i>🪷</i><span>Psicologia</span><i>🪷</i></div>
+        <div class="ticker__group"><span>Psicanálise</span><i>🪷</i><span>Ozonioterapia e Detox Iônico</span><i>🪷</i><span>Acupuntura</span><i>🪷</i><span>Homeopatia</span><i>🪷</i><span>Terapia Floral</span><i>🪷</i><span>Aromaterapia</span><i>🪷</i><span>Nutrição</span><i>🪷</i><span>Psicologia</span><i>🪷</i></div>
+        <div class="ticker__group"><span>Psicanálise</span><i>🪷</i><span>Ozonioterapia e Detox Iônico</span><i>🪷</i><span>Acupuntura</span><i>🪷</i><span>Homeopatia</span><i>🪷</i><span>Terapia Floral</span><i>🪷</i><span>Aromaterapia</span><i>🪷</i><span>Nutrição</span><i>🪷</i><span>Psicologia</span><i>🪷</i></div>
       </div>
     </div>
 
@@ -208,43 +507,68 @@ Psicanálise, ozonioterapia e terapias integrativas em um espaço acolhedor no c
       <div class="container">
         <header class="section__head" data-reveal>
           <p class="eyebrow">Especialidades</p>
-          <h2 class="section__title">Cuidado <em>integral</em> para cada fase da sua vida</h2>
-          <p class="section__sub">Terapias que se complementam para promover saúde emocional e física — sempre com escuta, ética e um plano de cuidado feito para você.</p>
+          <h2 class="section__title">Cuidado <em>integral</em> em Caruaru para cada fase da sua vida</h2>
+          <p class="section__sub">Terapias que se complementam para promover saúde emocional e física — sempre com escuta, ética e um plano de cuidado feito para você. Presencial em Caruaru-PE e online para todo o Agreste.</p>
         </header>
         <div class="grid grid--3">
           <!--#SERVICES-->
           <article class="card" data-reveal>
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 1 7 7c0 1.9-.7 3.2-1.7 4.5-.8 1-1.3 2.1-1.3 3.5v3h-6v-2H8a2 2 0 0 1-2-2v-3H4.5L6.2 10A7 7 0 0 1 12 3Z"/><path d="M11 9.5a1.8 1.8 0 1 1 1.8 1.8V13"/></svg></div>
-            <h3 class="service__title">Psicanálise</h3>
-            <p class="service__text">Escuta qualificada para elaborar dores, angústias e travas emocionais. Sessões individuais, presenciais ou online.</p>
+            <h3 class="service__title">Psicanálise (Individual e Casal)</h3>
+            <p class="service__text">Escuta qualificada baseada em Freud para compreender conflitos internos, emoções reprimidas e padrões inconscientes. Online e presencial.</p>
+            <a class="service__more" href="/especialidades/psicanalise-individual-e-casal/">Saiba mais →</a>
           </article>
           <article class="card" data-reveal data-reveal-delay="1">
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/><path d="M9 14a3 3 0 0 0 3 3"/></svg></div>
-            <h3 class="service__title">Ozonioterapia</h3>
-            <p class="service__text">Aplicações de ozônio medicinal como terapia complementar: mais disposição, imunidade e qualidade de vida.</p>
+            <h3 class="service__title">Protocolo Integrativo (Ozonioterapia e Detox Iônico)</h3>
+            <p class="service__text">Ozônio medicinal + Detox Iônico: desintoxicação, imunidade, redução de inflamações e mais disposição física e mental.</p>
+            <a class="service__more" href="/especialidades/protocolo-integrativo-ozonioterapia-e-detox-ionico/">Saiba mais →</a>
           </article>
           <article class="card" data-reveal data-reveal-delay="2">
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10.5 5-3v9l-5-3"/></svg></div>
-            <h3 class="service__title">Terapia Online</h3>
-            <p class="service__text">Atendimento por videochamada com o mesmo acolhimento e sigilo — para você, em qualquer lugar do mundo.</p>
+            <h3 class="service__title">Acupuntura</h3>
+            <p class="service__text">Terapia milenar da Medicina Tradicional Chinesa, reconhecida pela OMS: equilíbrio energético, alívio de dores e bem-estar.</p>
+            <a class="service__more" href="/especialidades/acupuntura/">Saiba mais →</a>
           </article>
           <article class="card" data-reveal>
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.8 14.6A5.4 5.4 0 0 1 21 20"/></svg></div>
-            <h3 class="service__title">Terapia de Casal e Família</h3>
-            <p class="service__text">Um espaço seguro para reconstruir diálogo, vínculos e acordos com mediação profissional.</p>
+            <h3 class="service__title">Fitoterapia</h3>
+            <p class="service__text">O poder das plantas medicinais: chás, extratos, tinturas e cápsulas para tratar e equilibrar, com menos efeitos colaterais.</p>
+            <a class="service__more" href="/especialidades/fitoterapia/">Saiba mais →</a>
           </article>
           <article class="card" data-reveal data-reveal-delay="1">
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 12.6 12 20l-7.5-7.4a5 5 0 1 1 7.5-6.3 5 5 0 1 1 7.5 6.3Z"/><path d="M6 12h3l1.5-2 2 3.5L14 12h4"/></svg></div>
-            <h3 class="service__title">Acompanhamento Terapêutico</h3>
-            <p class="service__text">Suporte contínuo em fases de transição, luto, ansiedade e processos de mudança.</p>
+            <h3 class="service__title">Terapia Floral</h3>
+            <p class="service__text">Essências florais para equilíbrio emocional em todas as idades — de bebês a adultos, inclusive em fases de transição.</p>
+            <a class="service__more" href="/especialidades/terapia-floral/">Saiba mais →</a>
           </article>
           <article class="card" data-reveal data-reveal-delay="2">
             <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20c-5.5 0-8-3.5-8-8 5.5 0 8 3.5 8 8Z"/><path d="M12 20c5.5 0 8-3.5 8-8-5.5 0-8 3.5-8 8Z"/><path d="M12 12c1.6-2.2 1.6-4.8 0-7-1.6 2.2-1.6 4.8 0 7Z"/></svg></div>
-            <h3 class="service__title">Práticas Integrativas</h3>
-            <p class="service__text">Técnicas complementares de relaxamento e equilíbrio emocional, integradas ao seu plano de cuidado.</p>
+            <h3 class="service__title">Aromaterapia</h3>
+            <p class="service__text">Óleos essenciais que atuam pelo olfato e pela pele: menos estresse, sono melhor, alívio de dores e mais equilíbrio.</p>
+            <a class="service__more" href="/especialidades/aromaterapia/">Saiba mais →</a>
+          </article>
+          <article class="card" data-reveal>
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 1 7 7c0 1.9-.7 3.2-1.7 4.5-.8 1-1.3 2.1-1.3 3.5v3h-6v-2H8a2 2 0 0 1-2-2v-3H4.5L6.2 10A7 7 0 0 1 12 3Z"/><path d="M11 9.5a1.8 1.8 0 1 1 1.8 1.8V13"/></svg></div>
+            <h3 class="service__title">Avaliação Psicológica e Psicossocial</h3>
+            <p class="service__text">Avaliação online regulamentada (CFP nº 11/2018) com resultado em até 24h — solução ágil para colaboradores e empresas.</p>
+            <a class="service__more" href="/especialidades/avaliacao-psicologica-e-psicossocial/">Saiba mais →</a>
+          </article>
+          <article class="card" data-reveal data-reveal-delay="1">
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/><path d="M9 14a3 3 0 0 0 3 3"/></svg></div>
+            <h3 class="service__title">Ventosaterapia</h3>
+            <p class="service__text">Técnica milenar com copos de vácuo: alívio de dores, melhora da circulação e relaxamento muscular profundo.</p>
+            <a class="service__more" href="/especialidades/ventosaterapia/">Saiba mais →</a>
+          </article>
+          <article class="card" data-reveal data-reveal-delay="2">
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10.5 5-3v9l-5-3"/></svg></div>
+            <h3 class="service__title">Psicologia</h3>
+            <p class="service__text">Psicoterapia individual, de casal, infantil e corporativa — saúde mental com abordagens integrativas e personalizadas.</p>
+            <a class="service__more" href="/especialidades/psicologia/">Saiba mais →</a>
           </article>
 <!--/SERVICES-->
         </div>
+        <p class="section__more" data-reveal><a class="btn btn--ghost" href="/especialidades/">Ver todas as 16 especialidades</a></p>
       </div>
     </section>
 
@@ -254,28 +578,46 @@ Psicanálise, ozonioterapia e terapias integrativas em um espaço acolhedor no c
         <div class="split__visual" data-reveal>
           <div class="split__halo" aria-hidden="true"></div>
           <figure class="split__photo">
-            <img src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=900&q=75" alt="Profissional em atendimento acolhedor na clínica" loading="lazy" width="620" height="740">
+            <img src="/assets/img/area-quem-somos.jpeg" alt="Recepção da BemEstarClinic, com a marca na parede de ripas de madeira e o corredor dos consultórios" loading="lazy" width="620" height="740">
           </figure>
-          <img class="split__mark" src="/assets/img/mark.svg" alt="" width="72" height="72" loading="lazy">
+          <img class="split__mark" src="/assets/img/mark-violet.svg" alt="" width="84" height="84" loading="lazy">
         </div>
         <div class="split__content" data-reveal data-reveal-delay="1">
           <p class="eyebrow">A Clínica</p>
           <h2 class="section__title"><!--#ABOUT_TITLE-->
-Um espaço pensado para acolher a sua história.
+Quem <em>somos</em>
 <!--/ABOUT_TITLE--></h2>
           <p class="section__sub"><!--#ABOUT_LEAD-->
-A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem saúde de forma integral. Cada atendimento é conduzido com ética, sigilo e um olhar único para você — do primeiro contato ao acompanhamento contínuo.
+Cuidamos da sua saúde mental, física e bem-estar de forma completa e acessível! Contamos com uma equipe de especialistas e uma ampla variedade de tratamentos integrativos para atender você e sua família — com exames de biorressonância para avaliação completa da sua saúde.
 <!--/ABOUT_LEAD--></p>
           <ul class="list-check">
             <!--#ABOUT_BULLETS-->
-            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Atendimento humanizado, ético e sigiloso</li>
-            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Profissionais qualificados e em constante formação</li>
-            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Espaço acolhedor, climatizado e de fácil acesso</li>
-            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Sessões presenciais em Caruaru ou online</li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Cuidado com as pessoas: atendimento humanizado e personalizado</li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Ética e transparência em todas as relações</li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Terapias convencionais e complementares integradas</li>
+            <li><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg> Referência em saúde multiprofissional integrada</li>
 <!--/ABOUT_BULLETS-->
           </ul>
-          <a class="btn btn--primary" href="https://wa.me/5500000000000" target="_blank" rel="noopener">Quero ser acolhido(a)</a>
+          <a class="btn btn--primary" href="/agendar/">Quero ser acolhido(a)</a>
         </div>
+      </div>
+
+      <div class="container mvv">
+        <article class="mvv__card" data-reveal>
+          <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M2 12h4M18 12h4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg></div>
+          <h3 class="mvv__title">Missão</h3>
+          <p class="mvv__text">Promover saúde e bem-estar por meio de atendimentos humanizados, integrando terapias convencionais e complementares para oferecer um cuidado completo e acessível aos nossos pacientes. Buscamos equilibrar corpo e mente, proporcionando qualidade de vida para todas as idades.</p>
+        </article>
+        <article class="mvv__card" data-reveal data-reveal-delay="1">
+          <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <h3 class="mvv__title">Visão</h3>
+          <p class="mvv__text">Ser referência em saúde multiprofissional integrada, reconhecida pela excelência no atendimento, inovação em terapias e compromisso com o bem-estar dos nossos pacientes. Queremos expandir nossos serviços e alcançar cada vez mais pessoas que buscam uma vida mais saudável e equilibrada.</p>
+        </article>
+        <article class="mvv__card" data-reveal data-reveal-delay="2">
+          <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.5-7 10-7 10Z"/></svg></div>
+          <h3 class="mvv__title">Valores</h3>
+          <p class="mvv__text"><b>Cuidado com as pessoas</b> — nossos pacientes são nossa prioridade: atendimento humanizado e personalizado, sempre focado no bem-estar e na qualidade de vida. <b>Ética e transparência</b> — atuamos com responsabilidade, respeito e compromisso, garantindo relações de confiança com pacientes, parceiros e equipe.</p>
+        </article>
       </div>
     </section>
 
@@ -290,25 +632,20 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
         <div class="grid grid--3">
           <!--#TEAM-->
           <article class="card pro" data-reveal>
-            <figure class="pro__photo"><img src="https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&amp;fit=crop&amp;w=600&amp;q=75" alt="Dra. Ana Beltrão — Psicanalista clínica" loading="lazy" width="300" height="340"></figure>
-            <h3 class="pro__name">Dra. Ana Beltrão</h3>
-            <p class="pro__role">Psicanalista clínica</p>
-            <p class="pro__bio">Mais de 10 anos de escuta clínica, com especialização em ansiedade, luto e relações familiares. Atende adultos e adolescentes, presencial e online.</p>
+            <figure class="pro__photo"><img src="/assets/img/profissionais/dr-ronaldo-jm.jpeg" alt="Dr. Prof. Ronalldo JM — Presidente · Psicanalista clínico" loading="lazy" width="300" height="340"></figure>
+            <h3 class="pro__name">Dr. Prof. Ronalldo JM</h3>
+            <p class="pro__role">Presidente · Psicanalista clínico</p>
+            <p class="pro__bio">Especialista, Mestre e Doutor em Psicanálise Clínica (FENATE/PE 0004 · SBP 16000025). Psicanalista (individual e casal), ozonioterapeuta, acupunturista, terapeuta floral, ventosaterapeuta, cinesioterapeuta, fitoterapeuta, homeopata e biorressonância.</p>
           </article>
           <article class="card pro" data-reveal data-reveal-delay="1">
-            <figure class="pro__photo"><img src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&amp;fit=crop&amp;w=600&amp;q=75" alt="Dr. Henrique Vasconcelos — Médico · Ozonioterapia" loading="lazy" width="300" height="340"></figure>
-            <h3 class="pro__name">Dr. Henrique Vasconcelos</h3>
-            <p class="pro__role">Médico · Ozonioterapia</p>
-            <p class="pro__bio">Médico com formação em práticas integrativas e ozonioterapia. Conduz os protocolos da clínica com segurança, técnica e acompanhamento próximo.</p>
-          </article>
-          <article class="card pro" data-reveal data-reveal-delay="2">
-            <figure class="pro__photo"><img src="https://images.unsplash.com/photo-1607746882042-944635dfe10e?auto=format&amp;fit=crop&amp;w=600&amp;q=75" alt="Camila Rocha — Terapeuta integrativa" loading="lazy" width="300" height="340"></figure>
-            <h3 class="pro__name">Camila Rocha</h3>
-            <p class="pro__role">Terapeuta integrativa</p>
-            <p class="pro__bio">Especialista em práticas integrativas e técnicas de relaxamento, apoia os planos de cuidado com sessões que unem corpo e mente.</p>
+            <figure class="pro__photo"><img src="/assets/img/profissionais/dr-samuel-teixdan.jpeg" alt="Dr. Prof. Samuel Teixdan — Diretor · Psicanalista clínico" loading="lazy" width="300" height="340"></figure>
+            <h3 class="pro__name">Dr. Prof. Samuel Teixdan</h3>
+            <p class="pro__role">Diretor · Psicanalista clínico</p>
+            <p class="pro__bio">Especialista e Doutor em Psicanálise Clínica (FENATE/PE 0005 · SBP 16000024). Psicanalista clínico (individual), Detox Iônico e aromaterapeuta.</p>
           </article>
 <!--/TEAM-->
         </div>
+        <p class="section__more" data-reveal><a class="btn btn--ghost" href="/profissionais/">Ver todos os profissionais</a></p>
       </div>
     </section>
 
@@ -318,19 +655,52 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
         <div class="online__content">
           <p class="eyebrow eyebrow--light">De Caruaru para o mundo</p>
           <h2 class="online__title">Atendimento online, <em>onde você estiver</em>.</h2>
-          <p class="online__lead">Sessões por videochamada com a mesma qualidade, acolhimento e sigilo do presencial. Ideal para brasileiros no exterior, rotinas corridas ou quem prefere o conforto de casa.</p>
+          <p class="online__lead">O atendimento online é feito pelo <b>WhatsApp</b>: é por lá que você agenda, tira dúvidas e é acolhido, com a mesma qualidade e sigilo do presencial. Ideal para brasileiros no exterior, rotinas corridas ou quem prefere o conforto de casa.</p>
           <ul class="online__list">
+            <li>Tudo pelo WhatsApp, sem burocracia</li>
+            <li>Atendimento acolhedor e sigiloso</li>
             <li>Horários que respeitam o seu fuso</li>
-            <li>Plataforma segura e sigilosa</li>
-            <li>Agendamento simples pelo WhatsApp ou Google Agenda</li>
           </ul>
+          <p class="online__cities">Atendemos quem mora em <a href="/terapia-em-caruaru/">Caruaru</a>, <a href="/terapia-em-bezerros/">Bezerros</a>, <a href="/terapia-em-toritama/">Toritama</a>, <a href="/terapia-em-santa-cruz-do-capibaribe/">Santa Cruz do Capibaribe</a>, <a href="/terapia-em-gravata/">Gravatá</a>, <a href="/terapia-em-garanhuns/">Garanhuns</a> e <a href="/onde-atendemos/">outras cidades do Agreste</a> — além de <a href="/terapia-em-pernambuco/">todo o Pernambuco</a>, no formato online.</p>
           <div class="hero__ctas">
-            <a class="btn btn--light" href="https://wa.me/5500000000000" target="_blank" rel="noopener">Agendar sessão online</a>
+            <a class="btn btn--light" href="https://wa.me/5581973037762?text=Ol%C3%A1!%20Quero%20atendimento%20online%20pela%20BemEstarClinic%20%F0%9F%AA%B7" target="_blank" rel="noopener">Falar no WhatsApp</a>
           </div>
         </div>
         <figure class="online__photo">
           <img src="https://images.unsplash.com/photo-1609220136736-443140cffec6?auto=format&fit=crop&w=900&q=75" alt="Sessão de terapia online por videochamada no notebook" loading="lazy" width="560" height="640">
         </figure>
+      </div>
+    </section>
+
+    <!-- ========================= PARA EMPRESAS ========================== -->
+    <section id="empresas" class="section">
+      <div class="container">
+        <header class="section__head" data-reveal>
+          <p class="eyebrow">Para Empresas</p>
+          <h2 class="section__title">Saúde do trabalhador e <em>NR-1</em> sem dor de cabeça</h2>
+          <p class="section__sub">Sua empresa em conformidade e seus colaboradores bem cuidados — com metodologia própria e resultado ágil.</p>
+        </header>
+        <div class="grid grid--3">
+          <article class="card" data-reveal>
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6M9 13h6M9 17h6"/></svg></div>
+            <h3 class="service__title">Exames ocupacionais</h3>
+            <p class="service__text">Admissional, demissional, periódico, retorno ao trabalho e mudança de função — mais acuidade visual, PALO e laudos de risco ocupacional.</p>
+            <a class="service__more" href="/especialidades/saude-e-seguranca-do-trabalhador/">Saiba mais →</a>
+          </article>
+          <article class="card" data-reveal data-reveal-delay="1">
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5c0 4.5 3 8.5 7.5 10 4.5-1.5 7.5-5.5 7.5-10V6Z"/><path d="m9 11.5 2 2 4-4"/></svg></div>
+            <h3 class="service__title">Riscos psicossociais (NR-1)</h3>
+            <p class="service__text">Identificação, avaliação e gestão dos riscos psicossociais com time interdisciplinar — GRO e PGR em conformidade com a norma.</p>
+            <a class="service__more" href="/especialidades/riscos-psicossociais-nr-1/">Saiba mais →</a>
+          </article>
+          <article class="card" data-reveal data-reveal-delay="2">
+            <div class="service__icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9.5 2h5"/></svg></div>
+            <h3 class="service__title">Avaliação psicossocial em 24h</h3>
+            <p class="service__text">Avaliações psicológicas e psicossociais online (Resolução CFP nº 11/2018) com laudo em até 24 horas — sem deslocamento, sem logística.</p>
+            <a class="service__more" href="/especialidades/avaliacao-psicologica-e-psicossocial/">Saiba mais →</a>
+          </article>
+        </div>
+        <p class="section__more" data-reveal><a class="btn btn--primary" href="https://wa.me/5581973037762?text=Ol%C3%A1!%20Quero%20uma%20proposta%20para%20minha%20empresa%20(sa%C3%BAde%20do%20trabalhador%2FNR-1)%20%F0%9F%AA%B7" target="_blank" rel="noopener">Pedir proposta para minha empresa</a></p>
       </div>
     </section>
 
@@ -366,17 +736,18 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
       <div class="container">
         <header class="section__head" data-reveal>
           <p class="eyebrow">Nosso Espaço</p>
-          <h2 class="section__title">Um ambiente que já <em>começa o cuidado</em></h2>
-          <p class="section__sub">Cada detalhe do espaço foi pensado para você se sentir seguro, confortável e bem-vindo.</p>
+          <h2 class="section__title">Nossa clínica em Caruaru: um ambiente que já <em>começa o cuidado</em></h2>
+          <p class="section__sub">Cada detalhe do espaço foi pensado para você se sentir seguro, confortável e bem-vindo — no Empresarial Nordeste Corporate, bairro Universitário.</p>
         </header>
         <div class="masonry">
           <!--#PORTFOLIO-->
-          <figure class="work" data-reveal><img src="https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Recepção — BemEstarClinic" loading="lazy"><figcaption class="work__label">Recepção<small>Chegue e sinta-se em casa</small></figcaption></figure>
-          <figure class="work" data-reveal data-reveal-delay="1"><img src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Sala de atendimento — BemEstarClinic" loading="lazy"><figcaption class="work__label">Sala de atendimento<small>Conforto e privacidade</small></figcaption></figure>
-          <figure class="work" data-reveal data-reveal-delay="2"><img src="https://images.unsplash.com/photo-1629909613654-28e377c37b09?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Sala de ozonioterapia — BemEstarClinic" loading="lazy"><figcaption class="work__label">Sala de ozonioterapia<small>Equipamentos certificados</small></figcaption></figure>
-          <figure class="work" data-reveal><img src="https://images.unsplash.com/photo-1544161515-4ab6ce6db874?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Ambiente zen — BemEstarClinic" loading="lazy"><figcaption class="work__label">Ambiente zen<small>Detalhes que acolhem</small></figcaption></figure>
-          <figure class="work" data-reveal data-reveal-delay="1"><img src="https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Bem-estar integral — BemEstarClinic" loading="lazy"><figcaption class="work__label">Bem-estar integral<small>Cuidado com corpo e mente</small></figcaption></figure>
-          <figure class="work" data-reveal data-reveal-delay="2"><img src="https://images.unsplash.com/photo-1609220136736-443140cffec6?auto=format&amp;fit=crop&amp;w=700&amp;q=70" alt="Atendimento online — BemEstarClinic" loading="lazy"><figcaption class="work__label">Atendimento online<small>Perto de você, em qualquer lugar</small></figcaption></figure>
+          <figure class="work" data-reveal><img src="/assets/img/espaco/fachada-predio.jpeg" alt="Empresarial Nordeste Corporate — Nossa sede no bairro Universitário, em Caruaru-PE, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Empresarial Nordeste Corporate<small>Nossa sede no bairro Universitário, em Caruaru-PE</small></figcaption></figure>
+          <figure class="work" data-reveal data-reveal-delay="1"><img src="/assets/img/espaco/recepcao.jpeg" alt="Recepção — Chegue e sinta-se acolhido desde a porta, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Recepção<small>Chegue e sinta-se acolhido desde a porta</small></figcaption></figure>
+          <figure class="work" data-reveal data-reveal-delay="2"><img src="/assets/img/espaco/consultorio-espelho.jpeg" alt="Consultório de psicanálise — Um espaço reservado para a sua escuta, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Consultório de psicanálise<small>Um espaço reservado para a sua escuta</small></figcaption></figure>
+          <figure class="work" data-reveal><img src="/assets/img/espaco/consultorio-cilindro-ozonio.jpeg" alt="Sala de ozonioterapia — Protocolo integrativo com equipamentos próprios, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Sala de ozonioterapia<small>Protocolo integrativo com equipamentos próprios</small></figcaption></figure>
+          <figure class="work" data-reveal data-reveal-delay="1"><img src="/assets/img/espaco/consultorio-diva.jpeg" alt="Sala de terapias integrativas — Acupuntura, ventosaterapia e kinesioterapia, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Sala de terapias integrativas<small>Acupuntura, ventosaterapia e kinesioterapia</small></figcaption></figure>
+          <figure class="work" data-reveal data-reveal-delay="2"><img src="/assets/img/espaco/consultorio-logo.jpeg" alt="Consultório para casal e família — Ambiente climatizado, reservado e confortável, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Consultório para casal e família<small>Ambiente climatizado, reservado e confortável</small></figcaption></figure>
+          <figure class="work" data-reveal><img src="/assets/img/espaco/banheiro.jpeg" alt="Lavabo — Detalhes que acolhem em cada canto, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">Lavabo<small>Detalhes que acolhem em cada canto</small></figcaption></figure>
 <!--/PORTFOLIO-->
         </div>
       </div>
@@ -388,26 +759,89 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
         <header class="section__head" data-reveal>
           <p class="eyebrow">Depoimentos</p>
           <h2 class="section__title">Histórias de quem já é <em>bem cuidado</em></h2>
+          <a class="google-rating" href="https://www.google.com/search?q=BemEstarClinic+Caruaru" target="_blank" rel="noopener" aria-label="Nota 5,0 com 111 avaliações no Google">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.7-.1-1.4-.2-2H12v3.9h5.9a5 5 0 0 1-2.2 3.3v2.7h3.6c2.1-2 3.2-4.9 3.2-7.9Z"/><path fill="#34A853" d="M12 23c2.9 0 5.4-1 7.2-2.6l-3.6-2.7c-1 .7-2.2 1-3.6 1-2.8 0-5.1-1.9-6-4.4H2.3v2.8A11 11 0 0 0 12 23Z"/><path fill="#FBBC05" d="M6 14.3a6.6 6.6 0 0 1 0-4.2V7.3H2.3a11 11 0 0 0 0 9.8L6 14.3Z"/><path fill="#EA4335" d="M12 5.4c1.6 0 3 .5 4.1 1.6l3.1-3.1A11 11 0 0 0 2.3 7.3L6 10.1c.9-2.6 3.2-4.7 6-4.7Z"/></svg>
+            <span class="google-rating__stars">★★★★★</span>
+            <span class="google-rating__num"><b>5,0</b> · 111 avaliações no Google</span>
+          </a>
         </header>
         <div class="grid grid--3">
           <!--#TESTIMONIALS-->
           <figure class="card quote" data-reveal>
             <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
-            <blockquote class="quote__text">“Encontrei um espaço onde posso falar sem medo de julgamento. A análise mudou a forma como eu me relaciono comigo mesma.”</blockquote>
-            <figcaption class="quote__author"><span class="avatar">MF</span><span><span class="quote__name">Mariana F.</span><br><span class="quote__role">Psicanálise · Caruaru</span></span></figcaption>
+            <blockquote class="quote__text">“Profissionais maravilhosos, clínica top 💚 Todos precisamos de terapia 💚💚”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">G</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Avaliação no Google ★ 5,0</span></span></figcaption>
           </figure>
           <figure class="card quote" data-reveal data-reveal-delay="1">
             <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
-            <blockquote class="quote__text">“Faço as sessões online de Portugal e o cuidado é o mesmo de estar aí. Pontualidade e acolhimento impecáveis.”</blockquote>
-            <figcaption class="quote__author"><span class="avatar">RA</span><span><span class="quote__name">Ricardo A.</span><br><span class="quote__role">Atendimento online · Lisboa</span></span></figcaption>
+            <blockquote class="quote__text">“Ótimo atendimento, maravilhosos profissionais, ambiente bastante acolhedor.”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">G</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Avaliação no Google ★ 5,0</span></span></figcaption>
           </figure>
           <figure class="card quote" data-reveal data-reveal-delay="2">
             <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
-            <blockquote class="quote__text">“A ozonioterapia me devolveu a disposição. Equipe atenciosa e espaço impecável do início ao fim.”</blockquote>
-            <figcaption class="quote__author"><span class="avatar">DL</span><span><span class="quote__name">Dona Lúcia</span><br><span class="quote__role">Ozonioterapia · Toritama</span></span></figcaption>
+            <blockquote class="quote__text">“Super recomendo. Excelente recepção e ótimos profissionais.”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">G</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Avaliação no Google ★ 5,0</span></span></figcaption>
+          </figure>
+          <figure class="card quote" data-reveal>
+            <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
+            <blockquote class="quote__text">“AMEI e indico. Estou cada vez melhor, não quero mais deixar de fazer análises — nunca pensei que era tão bom assim.”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">D</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Doctoralia ★ 5,0 · Dr. Ronalldo</span></span></figcaption>
+          </figure>
+          <figure class="card quote" data-reveal data-reveal-delay="1">
+            <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
+            <blockquote class="quote__text">“Clínica muito linda e ampla, e o atendimento do Doutor Ronaldo e da sua equipe… Não vejo nada para melhorar.”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">D</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Doctoralia ★ 5,0 · Dr. Ronalldo</span></span></figcaption>
+          </figure>
+          <figure class="card quote" data-reveal data-reveal-delay="2">
+            <div class="quote__stars" aria-label="5 de 5">★★★★★</div>
+            <blockquote class="quote__text">“Do Dr., da Clínica e dos funcionários: nada a melhorar, tudo está em conformidade.”</blockquote>
+            <figcaption class="quote__author"><span class="avatar">D</span><span><span class="quote__name">Paciente verificado</span><br><span class="quote__role">Doctoralia ★ 5,0 · Dr. Samuel</span></span></figcaption>
           </figure>
 <!--/TESTIMONIALS-->
         </div>
+      </div>
+    </section>
+
+    <!-- ============================== FEED ============================== -->
+    <section id="blog" class="section">
+      <div class="container">
+        <header class="section__head" data-reveal>
+          <p class="eyebrow">Feed</p>
+          <h2 class="section__title">Notícias e artigos de <em>bem-estar</em></h2>
+          <p class="section__sub">Saúde mental, terapias integrativas e saúde do trabalhador — conteúdo da nossa equipe para o seu dia a dia.</p>
+        </header>
+        <div class="grid grid--3 blog-grid">
+          <!--#BLOG-->
+          <article class="post-card" data-reveal>
+            <a class="post-card__media" href="/blog/quando-procurar-um-psicanalista-7-sinais-de-que-a-terapia-pode-ajudar/" tabindex="-1" aria-hidden="true"><img src="https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="Quando procurar um psicanalista? 7 sinais de que a terapia pode ajudar — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            <div class="post-card__body">
+              <time class="post-card__date" datetime="2026-07-15">15/07/2026</time>
+              <h3 class="post-card__title"><a href="/blog/quando-procurar-um-psicanalista-7-sinais-de-que-a-terapia-pode-ajudar/">Quando procurar um psicanalista? 7 sinais de que a terapia pode ajudar</a></h3>
+              <p class="post-card__excerpt">Ansiedade constante, padrões que se repetem, luto que não passa: veja os sinais de que uma escuta qualificada pode transformar seu momento.</p>
+              <a class="post-card__more" href="/blog/quando-procurar-um-psicanalista-7-sinais-de-que-a-terapia-pode-ajudar/">Ler matéria →</a>
+            </div>
+          </article>
+          <article class="post-card" data-reveal>
+            <a class="post-card__media" href="/blog/nr-1-e-riscos-psicossociais-o-que-muda-para-a-sua-empresa/" tabindex="-1" aria-hidden="true"><img src="https://images.unsplash.com/photo-1519824145371-296894a0daa9?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="NR-1 e riscos psicossociais: o que muda para a sua empresa — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            <div class="post-card__body">
+              <time class="post-card__date" datetime="2026-07-08">08/07/2026</time>
+              <h3 class="post-card__title"><a href="/blog/nr-1-e-riscos-psicossociais-o-que-muda-para-a-sua-empresa/">NR-1 e riscos psicossociais: o que muda para a sua empresa</a></h3>
+              <p class="post-card__excerpt">A norma agora exige a gestão dos riscos psicossociais no trabalho. Entenda as obrigações — e como se adequar sem dor de cabeça.</p>
+              <a class="post-card__more" href="/blog/nr-1-e-riscos-psicossociais-o-que-muda-para-a-sua-empresa/">Ler matéria →</a>
+            </div>
+          </article>
+          <article class="post-card" data-reveal>
+            <a class="post-card__media" href="/blog/ozonioterapia-e-detox-ionico-como-funciona-o-protocolo-integrativo/" tabindex="-1" aria-hidden="true"><img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="Ozonioterapia e Detox Iônico: como funciona o Protocolo Integrativo — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            <div class="post-card__body">
+              <time class="post-card__date" datetime="2026-06-30">30/06/2026</time>
+              <h3 class="post-card__title"><a href="/blog/ozonioterapia-e-detox-ionico-como-funciona-o-protocolo-integrativo/">Ozonioterapia e Detox Iônico: como funciona o Protocolo Integrativo</a></h3>
+              <p class="post-card__excerpt">Duas terapias que se potencializam: entenda o passo a passo do protocolo que une desintoxicação, imunidade e mais energia.</p>
+              <a class="post-card__more" href="/blog/ozonioterapia-e-detox-ionico-como-funciona-o-protocolo-integrativo/">Ler matéria →</a>
+            </div>
+          </article>
+<!--/BLOG-->
+        </div>
+        <p class="section__more" data-reveal><a class="btn btn--ghost" href="/blog/">Ver o feed completo</a></p>
       </div>
     </section>
 
@@ -434,12 +868,24 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
                 <label for="f-servico">Serviço de interesse*</label>
                 <select id="f-servico" name="servico" required>
                   <option value="" disabled selected>Selecione…</option>
-                  <option>Psicanálise</option>
-                  <option>Ozonioterapia</option>
-                  <option>Terapia Online</option>
-                  <option>Terapia de Casal e Família</option>
-                  <option>Acompanhamento Terapêutico</option>
-                  <option>Práticas Integrativas</option>
+                  <!--#FORM_SERVICES-->
+                <option>Psicanálise (Individual e Casal)</option>
+                <option>Protocolo Integrativo (Ozonioterapia e Detox Iônico)</option>
+                <option>Acupuntura</option>
+                <option>Fitoterapia</option>
+                <option>Terapia Floral</option>
+                <option>Aromaterapia</option>
+                <option>Avaliação Psicológica e Psicossocial</option>
+                <option>Ventosaterapia</option>
+                <option>Psicologia</option>
+                <option>Exame de Biorressonância</option>
+                <option>Homeopatia</option>
+                <option>Kinesioterapia (Fitas Elásticas)</option>
+                <option>Saúde e Segurança do Trabalhador</option>
+                <option>Riscos Psicossociais (NR-1)</option>
+                <option>Nutrição</option>
+                <option>Diversas Especialidades</option>
+<!--/FORM_SERVICES-->
                   <option>Ainda não sei — quero orientação</option>
                 </select>
               </div>
@@ -463,26 +909,53 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
           <div class="contact__aside" data-reveal data-reveal-delay="1">
             <div class="contact__tiles">
               <!--#CONTACT_INFO-->
-            <a class="contact-tile" href="https://wa.me/5500000000000" target="_blank" rel="noopener">
+            <a class="contact-tile" href="https://wa.me/5581973037762" target="_blank" rel="noopener">
               <span class="contact-tile__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 21l2-5.6A8.5 8.5 0 1 1 21 11.5Z"/></svg></span>
-              <span><span class="contact-tile__label">WhatsApp — resposta rápida</span><br><span class="contact-tile__value">(87) 00000-0000</span></span>
+              <span><span class="contact-tile__label">WhatsApp — resposta rápida</span><br><span class="contact-tile__value">(81) 9.7303-7762</span></span>
             </a>
-            <a class="contact-tile" href="mailto:contato@bemestarclinic.com.br">
+            <a class="contact-tile" href="mailto:faleconosco@bemestarclinic.com">
               <span class="contact-tile__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span>
-              <span><span class="contact-tile__label">E-mail</span><br><span class="contact-tile__value">contato@bemestarclinic.com.br</span></span>
+              <span><span class="contact-tile__label">E-mail</span><br><span class="contact-tile__value">faleconosco@bemestarclinic.com</span></span>
             </a>
             <a class="contact-tile" href="https://www.instagram.com/bemestarclinic_/" target="_blank" rel="noopener">
               <span class="contact-tile__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></span>
               <span><span class="contact-tile__label">Instagram</span><br><span class="contact-tile__value">@bemestarclinic_</span></span>
             </a>
+            <a class="contact-tile" href="tel:8141051109">
+              <span class="contact-tile__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.9.6 2.8.7a2 2 0 0 1 1.8 2.1Z"/></svg></span>
+              <span><span class="contact-tile__label">Telefone fixo</span><br><span class="contact-tile__value">(81) 4105-1109</span></span>
+            </a>
+            <a class="contact-tile" href="https://maps.google.com/?q=BemEstarClinic%2C%20Rua%20Arthur%20Ant%C3%B4nio%20da%20Silva%2C%20481%2C%20Sala%20707%2C%20Universit%C3%A1rio%2C%20Caruaru%20-%20PE" target="_blank" rel="noopener">
+              <span class="contact-tile__icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg></span>
+              <span><span class="contact-tile__label">Endereço</span><br><span class="contact-tile__value">Empresarial Nordeste Corporate — Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Universitário, Caruaru-PE · CEP 55016-445</span></span>
+            </a>
 <!--/CONTACT_INFO-->
-            </div>
-            <div class="card map-card">
-              <iframe title="Mapa — BemEstarClinic em Caruaru-PE" src="https://www.google.com/maps?q=Caruaru%2C%20PE&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
-              <p class="map-card__note">📍 Caruaru-PE — endereço completo no agendamento</p>
             </div>
           </div>
         </div>
+
+        <nav class="contact__cities" aria-labelledby="atendemos-em" data-reveal>
+          <h3 class="contact__cities-title" id="atendemos-em">Atendemos em</h3>
+          <div class="contact__cities-list">
+            <!--#FOOTER_CIDADES-->
+            <a href="/terapia-em-caruaru/">Caruaru</a>
+            <a href="/terapia-em-bezerros/">Bezerros</a>
+            <a href="/terapia-em-riacho-das-almas/">Riacho das Almas</a>
+            <a href="/terapia-em-toritama/">Toritama</a>
+            <a href="/terapia-em-santa-cruz-do-capibaribe/">Santa Cruz do Capibaribe</a>
+            <a href="/terapia-em-gravata/">Gravatá</a>
+            <a href="/terapia-em-sao-caitano/">São Caitano</a>
+            <a href="/terapia-em-agrestina/">Agrestina</a>
+            <a href="/terapia-em-garanhuns/">Garanhuns</a>
+            <a href="/terapia-em-belo-jardim/">Belo Jardim</a>
+            <a href="/terapia-em-brejo-da-madre-de-deus/">Brejo da Madre de Deus</a>
+            <a href="/terapia-em-surubim/">Surubim</a>
+            <a href="/terapia-em-pesqueira/">Pesqueira</a>
+            <a href="/terapia-em-pernambuco/">Todo o Pernambuco (online)</a>
+            <a href="/onde-atendemos/"><b>Ver toda a área →</b></a>
+<!--/FOOTER_CIDADES-->
+          </div>
+        </nav>
       </div>
     </section>
   </main>
@@ -493,33 +966,60 @@ A BemEstarClinic nasceu para unir escuta qualificada e terapias que promovem sa�
       <div class="footer__grid">
         <div class="footer__brand">
           <a class="brand brand--footer" href="#inicio">
-            <img class="brand__mark" src="/assets/img/mark-light.svg" alt="" width="42" height="42" loading="lazy">
-            <span class="brand__name">BemEstar<span>Clinic</span></span>
+            <svg class="brand__logo" viewBox="169 832 1636 293" role="img" aria-label="BemEstarClinic"><g fill="currentColor"><text font-family="Questrial, sans-serif" font-size="195.83" transform="translate(460.23 1051.93)"><tspan x="0" y="0">BemEs</tspan><tspan x="622.14" y="0">t</tspan><tspan x="684.02" y="0">arClinic</tspan></text><path d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></g></svg>
           </a>
           <p class="footer__tagline"><!--#FOOTER_TAGLINE-->
-Psicanálise, ozonioterapia e terapias integrativas. Presencial em Caruaru-PE e online para o mundo todo.
+Saúde mental e práticas integrativas de bem-estar. Seu bem-estar em boas mãos — presencial em Caruaru-PE e online.
 <!--/FOOTER_TAGLINE--></p>
         </div>
+        <nav class="footer__nav footer__nav--esp" aria-label="Especialidades">
+          <p class="footer__heading">Especialidades</p>
+          <div class="footer__esp">
+            <!--#FOOTER_ESP-->
+            <a href="/especialidades/psicanalise-individual-e-casal/">Psicanálise (Individual e Casal)</a>
+            <a href="/especialidades/protocolo-integrativo-ozonioterapia-e-detox-ionico/">Protocolo Integrativo (Ozonioterapia e Detox Iônico)</a>
+            <a href="/especialidades/acupuntura/">Acupuntura</a>
+            <a href="/especialidades/fitoterapia/">Fitoterapia</a>
+            <a href="/especialidades/terapia-floral/">Terapia Floral</a>
+            <a href="/especialidades/aromaterapia/">Aromaterapia</a>
+            <a href="/especialidades/avaliacao-psicologica-e-psicossocial/">Avaliação Psicológica e Psicossocial</a>
+            <a href="/especialidades/ventosaterapia/">Ventosaterapia</a>
+            <a href="/especialidades/psicologia/">Psicologia</a>
+            <a href="/especialidades/exame-de-biorressonancia/">Exame de Biorressonância</a>
+            <a href="/especialidades/homeopatia/">Homeopatia</a>
+            <a href="/especialidades/kinesioterapia-fitas-elasticas/">Kinesioterapia (Fitas Elásticas)</a>
+            <a href="/especialidades/saude-e-seguranca-do-trabalhador/">Saúde e Segurança do Trabalhador</a>
+            <a href="/especialidades/riscos-psicossociais-nr-1/">Riscos Psicossociais (NR-1)</a>
+            <a href="/especialidades/nutricao/">Nutrição</a>
+            <a href="/especialidades/diversas-especialidades/">Diversas Especialidades</a>
+<!--/FOOTER_ESP-->
+          </div>
+        </nav>
         <nav class="footer__nav" aria-label="Links do rodapé">
           <p class="footer__heading">Navegação</p>
-          <a href="#especialidades">Especialidades</a>
+          <a href="/especialidades/">Especialidades</a>
           <a href="#clinica">A Clínica</a>
-          <a href="#profissionais">Profissionais</a>
+          <a href="/profissionais/">Profissionais</a>
+          <a href="#empresas">Para Empresas</a>
+          <a href="/blog/">Feed</a>
           <a href="#online">Atendimento Online</a>
           <a href="#espaco">Nosso Espaço</a>
+          <a href="/onde-atendemos/">Onde Atendemos</a>
           <a href="#contato">Contato</a>
         </nav>
         <div class="footer__contact">
           <p class="footer__heading">Atendimento</p>
-          <a href="https://wa.me/5500000000000" target="_blank" rel="noopener">WhatsApp</a>
+          <a href="https://wa.me/5581973037762" target="_blank" rel="noopener">WhatsApp</a>
           <a href="https://www.instagram.com/bemestarclinic_/" target="_blank" rel="noopener">@bemestarclinic_</a>
-          <a href="mailto:contato@bemestarclinic.com.br">contato@bemestarclinic.com.br</a>
+          <!--#FOOTER_EMAIL-->
+          <a href="mailto:faleconosco@bemestarclinic.com">faleconosco@bemestarclinic.com</a>
+<!--/FOOTER_EMAIL-->
           <p class="footer__note">Seg. a sex. · 8h às 18h (BRT)<br>Online: horários estendidos</p>
         </div>
       </div>
       <div class="footer__bottom">
         <p>© <span id="year">2026</span> BemEstarClinic® · CNPJ <!--#CNPJ-->
-00.000.000/0001-00
+02.192.745/0001-25
 <!--/CNPJ--></p>
         <a class="dev-credit" href="https://luizaugust.me" target="_blank" rel="noopener" title="Sites, sistemas e apps sob medida">
           <svg viewBox="0 0 100 100" width="15" height="15" fill="currentColor" aria-hidden="true"><rect x="17" y="42" width="10" height="34" rx="4.5"/><rect x="17" y="74" width="66" height="8" rx="4"/><rect x="33" y="50" width="10" height="24" rx="4.5"/><rect x="47" y="21" width="10" height="53" rx="4.5"/><rect x="61" y="38" width="10" height="36" rx="4.5"/><rect x="75" y="55" width="8" height="19" rx="4"/><path d="M52 4 L54.7 10.4 L61 13 L54.7 15.6 L52 22 L49.3 15.6 L43 13 L49.3 10.4 Z"/></svg>

@@ -1,5 +1,18 @@
+# BemEstarClinic — https://bemestarclinic.com
+# Regras válidas para Google, Bing/Yahoo, DuckDuckGo e demais buscadores.
+
 User-agent: *
 Allow: /
+
+# Painel administrativo: nunca deve ser rastreado nem indexado.
 Disallow: /admin/
 
-Sitemap: https://bemestarclinic.com.br/sitemap.xml
+# Dados internos do site (índice de busca) — sem valor para o usuário na SERP.
+Disallow: /assets/data/
+
+# Observação: /busca/ e /agendar/ NÃO são bloqueados aqui de propósito.
+# Ambos já enviam "noindex" no HTML; bloquear o rastreamento impediria o
+# buscador de ler essa diretiva e as páginas poderiam acabar indexadas sem
+# descrição. Deixar rastrear é o caminho correto para mantê-las fora do índice.
+
+Sitemap: https://bemestarclinic.com/sitemap.xml

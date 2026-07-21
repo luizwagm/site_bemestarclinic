@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BemEstarClinic">
+  <rect width="64" height="64" rx="14" fill="#5B4FD8"/>
+  <g fill="#ffffff" transform="translate(3.2,4.2) scale(0.9)">
+    <path d="M32 46 C 22 44 14 37 12 26 C 20 28 27 33 30.5 41 C 31.3 43 31.8 44.6 32 46 Z"/>
+    <path d="M32 46 C 42 44 50 37 52 26 C 44 28 37 33 33.5 41 C 32.7 43 32.2 44.6 32 46 Z"/>
+    <path d="M31.4 44 C 25.6 41.4 21.6 35.4 21.6 27.4 C 27 31 30.4 36.6 31.4 44 Z"/>
+    <path d="M32.6 44 C 38.4 41.4 42.4 35.4 42.4 27.4 C 37 31 33.6 36.6 32.6 44 Z"/>
+    <circle cx="32" cy="15.5" r="5"/>
+    <path d="M24 20 C 26 28 29 32 32 34 C 35 32 38 28 40 20" fill="none" stroke="#ffffff" stroke-width="4.4" stroke-linecap="round"/>
+  </g>
+</svg>
