@@ -25,35 +25,67 @@ vermelho(){ printf "\033[1;31m%s\033[0m\n" "$1"; }
 
 # ------------------------------------------------------- 1. conferir o DNS
 echo "1/5  Conferindo DNS de $DOMINIO"
-IP_SERVIDOR=$(curl -s --max-time 10 https://ifconfig.me || curl -s --max-time 10 https://api.ipify.org)
-IP_DOMINIO=$(dig +short A "$DOMINIO" | tail -1)
-IP_WWW=$(dig +short A "www.$DOMINIO" | tail -1)
-CNAME_APEX=$(dig +short CNAME "$DOMINIO")
 
-echo "     servidor          : $IP_SERVIDOR"
-echo "     $DOMINIO          : ${IP_DOMINIO:-(sem registro A)}"
-echo "     www.$DOMINIO      : ${IP_WWW:-(sem registro A)}"
+# Todos os endereços desta máquina: IPv4 e IPv6, locais e o público visto de fora.
+# Servidor Hetzner tem os dois — comparar só com um deles dá falso negativo
+# (foi o que aconteceu: ifconfig.me devolveu o IPv6 e o registro A é IPv4).
+MEUS_IPS=$(
+  { ip -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1
+    curl -4 -s --max-time 8 https://ifconfig.me 2>/dev/null
+    curl -6 -s --max-time 8 https://ifconfig.me 2>/dev/null
+  } | sort -u | grep -v '^$'
+)
+[ -n "${IP_SERVIDOR:-}" ] && MEUS_IPS="$MEUS_IPS
+$IP_SERVIDOR"   # permite forçar com IP_SERVIDOR=... ./criar-site.sh
+
+resolve() { dig +short "$2" "$1" 2>/dev/null | grep -E '^[0-9a-fA-F.:]+$' | tail -1; }
+aponta_para_ca() {
+  local alvo="$1"
+  [ -z "$alvo" ] && return 1
+  echo "$MEUS_IPS" | grep -qxF "$alvo"
+}
+
+A_DOM=$(resolve "$DOMINIO" A);        AAAA_DOM=$(resolve "$DOMINIO" AAAA)
+A_WWW=$(resolve "www.$DOMINIO" A);    AAAA_WWW=$(resolve "www.$DOMINIO" AAAA)
+CNAME_APEX=$(dig +short CNAME "$DOMINIO" 2>/dev/null)
+
+echo "     IPs deste servidor : $(echo "$MEUS_IPS" | tr '\n' ' ')"
+echo "     $DOMINIO           : ${A_DOM:-—} ${AAAA_DOM:-}"
+echo "     www.$DOMINIO       : ${A_WWW:-—} ${AAAA_WWW:-}"
 
 if [ -n "$CNAME_APEX" ]; then
   vermelho "     ERRO: o domínio raiz está como CNAME ($CNAME_APEX)."
-  vermelho "     CNAME no domínio raiz é inválido pela RFC 1034 e quebra a validação."
-  vermelho "     Troque por um registro A apontando para $IP_SERVIDOR."
+  vermelho "     CNAME no apex é inválido (RFC 1034) e quebra a validação. Use registro A."
   exit 1
 fi
-if [ "$IP_DOMINIO" != "$IP_SERVIDOR" ]; then
-  vermelho "     ERRO: $DOMINIO não aponta para este servidor."
-  vermelho "     Crie um registro A: $DOMINIO -> $IP_SERVIDOR"
-  vermelho "     (a propagação leva de minutos a algumas horas)"
-  exit 1
+
+if aponta_para_ca "$A_DOM" || aponta_para_ca "$AAAA_DOM"; then
+  verde "     DNS ok — o domínio resolve para este servidor"
+else
+  amarelo "     O DNS não bateu com nenhum IP detectado aqui."
+  # A detecção pode falhar atrás de proxy/NAT. O teste que importa é se uma
+  # requisição pelo domínio chega NESTE nginx — é isso que o certbot precisa.
+  MARCA="/var/www/html/.dns-check-$$"
+  mkdir -p /var/www/html && echo "ok-$$" > "$MARCA"
+  RESP=$(curl -s --max-time 10 "http://$DOMINIO/.dns-check-$$" || true)
+  rm -f "$MARCA"
+  if [ "$RESP" = "ok-$$" ]; then
+    verde "     mas a requisição pelo domínio chegou NESTE servidor — seguindo"
+  else
+    vermelho "     e a requisição pelo domínio também não chegou aqui."
+    vermelho "     Crie um registro A: $DOMINIO -> $(echo "$MEUS_IPS" | grep -m1 '\.')"
+    vermelho "     Se tiver certeza do DNS, force com:"
+    vermelho "       sudo IP_SERVIDOR=<seu-ip> $0 $DOMINIO $PORTA"
+    exit 1
+  fi
 fi
-verde "     DNS ok"
 
 DOMINIOS="-d $DOMINIO"
-if [ "$IP_WWW" = "$IP_SERVIDOR" ]; then
+if aponta_para_ca "$A_WWW" || aponta_para_ca "$AAAA_WWW" || [ "$A_WWW" = "$A_DOM" ]; then
   DOMINIOS="$DOMINIOS -d www.$DOMINIO"
-  verde "     www também aponta para cá — vai no mesmo certificado"
+  verde "     www também resolve para cá — entra no mesmo certificado"
 else
-  amarelo "     www.$DOMINIO não aponta para cá — certificado só para o domínio raiz"
+  amarelo "     www.$DOMINIO não resolve para cá — certificado só para o domínio raiz"
 fi
 
 # ------------------------------------------------- 2. a aplicação responde?
