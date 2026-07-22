@@ -18,7 +18,7 @@ const PORT = 5185;
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.6.2";
+const APP_VERSION = "1.7.0";
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -234,7 +234,9 @@ function migrarTextos() {
   for (const arq of arquivos) {
     if (!fs.existsSync(arq)) continue;
     const html = fs.readFileSync(arq, "utf8");
-    for (const m of html.matchAll(/<!--#([A-Z_]+)-->/g)) {
+    // [A-Z0-9_] e não [A-Z_]: chaves como MVV_T1 e BTN_HERO_1 têm dígito e
+    // eram silenciosamente ignoradas pela migração
+    for (const m of html.matchAll(/<!--#([A-Z0-9_]+)-->/g)) {
       const chave = m[1].toLowerCase();
       if (!KEYS.includes(chave)) continue;      // marcador de bloco gerado, não é texto editável
       if (chave === "atendimento") continue;    // texto puro, tem valor próprio mais abaixo
@@ -250,11 +252,30 @@ function migrarTextos() {
       if (chave === "online_list" || chave === "about_bullets") {
         valor = [...valor.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((x) => x[1].trim()).join("\n");
       }
+      // blocos repetidos viram "Título | Descrição [| link]", uma linha por item
+      if (chave === "ticker") {
+        // o HTML tem 4 grupos repetidos; guarda só a lista, sem duplicar
+        valor = [...new Set([...valor.matchAll(/<span>([\s\S]*?)<\/span>/g)].map((x) => x[1].trim()))].join("\n");
+      }
+      if (chave === "passos_itens") {
+        valor = [...valor.matchAll(/step__title">([\s\S]*?)<\/h3>[\s\S]*?step__text">([\s\S]*?)<\/p>/g)]
+          .map((x) => `${x[1].trim()} | ${x[2].trim()}`).join("\n");
+      }
+      if (chave === "empresas_cards") {
+        valor = [...valor.matchAll(/<article[\s\S]*?service__title">([\s\S]*?)<\/h3>\s*<p class="service__text">([\s\S]*?)<\/p>([\s\S]*?)<\/article>/g)]
+          .map((x) => {
+            const link = /href="([^"]+)"/.exec(x[3]);
+            return `${x[1].trim()} | ${x[2].trim()}${link ? ` | ${link[1]}` : ""}`;
+          }).join("\n");
+      }
       setS(chave, valor);
       novos++;
     }
   }
   if (getS("img_og") === undefined) setS("img_og", "/assets/img/og-image.png");
+  if (getS("manutencao") === undefined) setS("manutencao", "0");
+  if (getS("manutencao_titulo") === undefined) setS("manutencao_titulo", "Estamos atualizando o site");
+  if (getS("manutencao_texto") === undefined) setS("manutencao_texto", "Volte em instantes.");
   if (getS("atendimento") === undefined) setS("atendimento",
     "Atendemos pacientes de toda a região!\n📍 Consultas presenciais: somente em Caruaru – PE.\n💻 Consultas online: para todo o Brasil e exterior.");
 
@@ -271,6 +292,77 @@ function migrarTextos() {
     }
   }
   if (novos) console.log(`  · ${novos} texto(s) do site migrados para o painel`);
+}
+
+/* ==========================================================================
+   Modo manutenção — duas camadas, porque uma sozinha não cobre tudo:
+
+   1) Aqui no app: com a chave ligada, todo visitante recebe a página de aviso
+      com HTTP 503. Quem está logado no painel continua vendo o site normal,
+      para conferir antes de reabrir.
+   2) No nginx: o mesmo arquivo é servido quando o app está FORA DO AR (502/
+      503/504). É o que cobre restart, deploy, git stash e qualquer queda —
+      momentos em que o app não existe para responder nada.
+
+   Por isso a página é gravada em disco como arquivo estático: o nginx precisa
+   conseguir lê-la sem depender do Node.
+   ========================================================================== */
+const emManutencao = () => getS("manutencao") === "1";
+
+function gerarPaginaManutencao(S) {
+  const titulo = S.manutencao_titulo || "Estamos atualizando o site";
+  const texto = S.manutencao_texto || "Volte em instantes.";
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>${esc(titulo)} — BemEstarClinic</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;1,600&family=Figtree:wght@300;400;600&family=Questrial&display=swap" rel="stylesheet">
+  <style>
+    /* CSS embutido de propósito: se o app estiver fora do ar, o styles.css
+       também não é servido — a página precisa se sustentar sozinha. */
+    *{box-sizing:border-box;margin:0}
+    body{min-height:100vh;display:grid;place-items:center;padding:2rem;
+      font:400 16px/1.7 Figtree,system-ui,sans-serif;color:#2a2260;
+      background:radial-gradient(900px 500px at 80% -10%,rgba(255,255,255,.16),transparent 60%),
+                 radial-gradient(600px 400px at -5% 110%,rgba(185,138,70,.3),transparent 60%),
+                 linear-gradient(135deg,#3b2f9e,#5b4fd8)}
+    .caixa{width:min(560px,100%);background:#fff;border-radius:26px;padding:clamp(2rem,5vw,3rem);
+      text-align:center;box-shadow:0 30px 70px rgba(30,22,80,.3)}
+    .lotus{width:76px;height:76px;margin:0 auto 1.4rem;display:block}
+    h1{font-family:'Cormorant Garamond',Georgia,serif;font-weight:600;
+      font-size:clamp(1.7rem,4.6vw,2.4rem);line-height:1.2;color:#2a2260;margin-bottom:.8rem}
+    h1 em{font-style:italic;color:#b98a46}
+    p{color:#5f5a7a;font-weight:300;font-size:1.05rem}
+    .marca{margin-top:2rem;padding-top:1.4rem;border-top:1px solid #e7e4f5;
+      font-family:Questrial,sans-serif;letter-spacing:.04em;color:#5136d6;font-weight:600}
+    .zap{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.4rem;padding:.8rem 1.5rem;
+      border-radius:999px;background:#5b4fd8;color:#fff;text-decoration:none;font-weight:600}
+    .zap:hover{background:#b98a46}
+    .pulso{animation:pulso 2.4s ease-in-out infinite}
+    @keyframes pulso{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.75;transform:scale(.95)}}
+    @media(prefers-reduced-motion:reduce){.pulso{animation:none}}
+  </style>
+</head>
+<body>
+  <main class="caixa">
+    <svg class="lotus pulso" viewBox="180 840 300 300" role="img" aria-label="BemEstarClinic">
+      <path fill="#5136d6" d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/>
+    </svg>
+    <h1>${esc(titulo)}</h1>
+    <p>${esc(texto)}</p>
+    ${S.whatsapp ? `<a class="zap" href="https://wa.me/${esc(S.whatsapp)}" target="_blank" rel="noopener">Falar no WhatsApp</a>` : ""}
+    <p class="marca">BemEstarClinic</p>
+  </main>
+</body>
+</html>`;
+  fs.writeFileSync(path.join(ROOT, "manutencao.html"), html);
+  return html;
 }
 
 /* HTML do bloco "Atendemos pacientes…" — 1ª linha vira destaque, o resto parágrafo */
@@ -598,6 +690,9 @@ function publish() {
     String(S.online_list || "").split("\n").map((l) => l.trim()).filter(Boolean)
       .map((l) => `<li>${esc(l)}</li>`).join("\n            "));
   html = setMarker(html, "ATENDIMENTO", "          " + blocoAtendimento(S));
+  html = setMarker(html, "TICKER", "        " + renderTicker(S));
+  html = setMarker(html, "PASSOS_ITENS", "          " + renderPassos(S));
+  html = setMarker(html, "EMPRESAS_CARDS", "          " + renderEmpresas(S));
   html = setMarker(html, "TEAM", "          " + teamHtml);
   html = setMarker(html, "PORTFOLIO", "          " + worksHtml);
   html = setMarker(html, "TESTIMONIALS", "          " + depsHtml);
@@ -853,6 +948,9 @@ function publish() {
     urls.map((u) => `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`).join("\n") +
     `\n</urlset>\n`);
 
+  // a página de manutenção acompanha o WhatsApp e a mensagem atuais
+  gerarPaginaManutencao(S);
+
   // config.js
   const cfgPath = path.join(ROOT, "assets/js/config.js");
   let cfg = fs.readFileSync(cfgPath, "utf8");
@@ -920,6 +1018,12 @@ const CAMPOS = [
     ["sec_emp_eyebrow", "Rótulo", "input"],
     ["sec_emp_title", "Título", "input"],
     ["sec_emp_sub", "Subtítulo", "textarea"],
+    ["empresas_cards", "Os 3 serviços — uma linha cada: Título | Descrição | link (opcional)", "bigtext"],
+  ]},
+  { grupo: "🪜 Seção Como Funciona", campos: [
+    ["sec_passos_eyebrow", "Rótulo", "input"],
+    ["sec_passos_title", "Título", "input"],
+    ["passos_itens", "Os passos — uma linha cada: Título | Descrição", "bigtext"],
   ]},
   { grupo: "🪷 Seção Nosso Espaço", campos: [
     ["sec_espaco_eyebrow", "Rótulo", "input"],
@@ -929,6 +1033,7 @@ const CAMPOS = [
   { grupo: "⭐ Seção Depoimentos", campos: [
     ["sec_dep_eyebrow", "Rótulo", "input"],
     ["sec_dep_title", "Título", "input"],
+    ["google_nota", "Selo de avaliação do Google", "input"],
   ]},
   { grupo: "📰 Seção Feed (home)", campos: [
     ["sec_feed_eyebrow", "Rótulo", "input"],
@@ -939,7 +1044,7 @@ const CAMPOS = [
     ["sec_contato_eyebrow", "Rótulo", "input"],
     ["sec_contato_title", "Título", "input"],
     ["sec_contato_sub", "Subtítulo", "textarea"],
-    ["sec_passos_title", "Título do bloco “Três passos”", "input"],
+    ["contato_privacidade", "Aviso abaixo do formulário", "textarea"],
     ["atendimento", "Bloco “Atendemos pacientes…” — uma linha por parágrafo", "bigtext"],
   ]},
   { grupo: "📄 Página Especialidades", campos: [
@@ -962,7 +1067,28 @@ const CAMPOS = [
     ["pg_priv_title", "Título da página", "input"],
     ["pg_priv_lead", "Texto de abertura", "textarea"],
   ]},
+  { grupo: "🔘 Botões do site", campos: [
+    ["btn_hero_1", "Topo — botão principal", "input"],
+    ["btn_hero_2", "Topo — botão secundário", "input"],
+    ["btn_ver_esp", "Especialidades — ver todas", "input"],
+    ["btn_acolhido", "A Clínica — botão", "input"],
+    ["btn_ver_prof", "Profissionais — ver todos", "input"],
+    ["btn_online_wa", "Online — botão do WhatsApp", "input"],
+    ["btn_empresas", "Para Empresas — botão", "input"],
+    ["btn_ver_feed", "Feed — ver tudo", "input"],
+    ["btn_form_enviar", "Formulário — botão de envio", "input"],
+  ]},
+  { grupo: "🏷️ Selos e faixa rolante", campos: [
+    ["float_a", "Selo 1 sobre a foto do topo", "input"],
+    ["float_b", "Selo 2 sobre a foto do topo", "input"],
+    ["ticker", "Faixa rolante — uma especialidade por linha", "bigtext"],
+    ["mvv_t1", "Título do 1º card (Missão)", "input"],
+    ["mvv_t2", "Título do 2º card (Visão)", "input"],
+    ["mvv_t3", "Título do 3º card (Valores)", "input"],
+  ]},
   { grupo: "🔗 Rodapé e contato", campos: [
+    ["footer_h_nav", "Título da coluna de navegação", "input"],
+    ["footer_h_atend", "Título da coluna de atendimento", "input"],
     ["footer_tagline", "Frase do rodapé", "textarea"],
     ["whatsapp", "WhatsApp (só números, com 55)", "input"],
     ["whatsapp_display", "WhatsApp como aparece na tela", "input"],
@@ -970,6 +1096,7 @@ const CAMPOS = [
     ["contact_email", "E-mail", "input"],
     ["instagram", "Instagram (sem @)", "input"],
     ["address", "Endereço completo", "textarea"],
+    ["footer_horario", "Horário de atendimento (também vai para o Google)", "textarea"],
     ["cnpj", "CNPJ", "input"],
     ["img_og", "Imagem de compartilhamento (WhatsApp/Facebook)", "image"],
   ]},
@@ -978,9 +1105,47 @@ const KEYS = CAMPOS.flatMap((g) => g.campos.map(([k]) => k));
 // precisa vir depois de KEYS: a migração consulta a lista para saber o que é editável
 migrarTextos();
 
+// garante que a página de manutenção exista em disco desde o primeiro boot —
+// o nginx a serve nas quedas, e nessa hora não há app para gerá-la
+try {
+  const S0 = {}; for (const r of db.prepare("SELECT key,value FROM settings").all()) S0[r.key] = r.value;
+  if (!fs.existsSync(path.join(ROOT, "manutencao.html"))) gerarPaginaManutencao(S0);
+} catch { /* nunca impedir o servidor de subir */ }
+
 /* Aplica em qualquer arquivo os textos simples guardados no painel.
    Chaves com formatação própria (listas, imagens) são tratadas à parte. */
-const ESPECIAIS = ["stats", "about_bullets", "online_list", "atendimento"];
+const ESPECIAIS = ["stats", "about_bullets", "online_list", "atendimento", "passos_itens", "empresas_cards", "ticker"];
+
+/* Faixa rolante: 4 grupos idênticos para o loop não ter emenda (ver styles.css) */
+function renderTicker(S) {
+  const itens = String(S.ticker || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!itens.length) return "";
+  const grupo = `<div class="ticker__group">${itens.map((i) => `<span>${esc(i)}</span><i>🪷</i>`).join("")}</div>`;
+  return Array(4).fill(grupo).join("\n        ");
+}
+
+/* Blocos repetidos: cada linha "Título | Descrição [| link]" vira um item */
+const linhasDe = (v) => String(v || "").split("\n").map((l) => l.trim()).filter(Boolean)
+  .map((l) => l.split("|").map((p) => p.trim()));
+
+function renderPassos(S) {
+  return linhasDe(S.passos_itens).map(([titulo, texto], i) =>
+    `<li class="step" data-reveal${i ? ` data-reveal-delay="${i}"` : ""}>
+            <span class="step__num">${String(i + 1).padStart(2, "0")}</span>
+            <h3 class="step__title">${esc(titulo || "")}</h3>
+            <p class="step__text">${esc(texto || "")}</p>
+          </li>`).join("\n          ");
+}
+
+function renderEmpresas(S) {
+  return linhasDe(S.empresas_cards).map(([titulo, texto, link], i) =>
+    `<article class="card" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
+            <div class="service__icon">${ICONS[i % ICONS.length]}</div>
+            <h3 class="service__title">${esc(titulo || "")}</h3>
+            <p class="service__text">${esc(texto || "")}</p>
+            ${link ? `<a class="service__more" href="${esc(link)}">Saiba mais →</a>` : ""}
+          </article>`).join("\n          ");
+}
 function aplicarTextos(html, S) {
   for (const chave of KEYS) {
     if (ESPECIAIS.includes(chave) || chave.endsWith("_alt")) continue;
@@ -1008,6 +1173,19 @@ http.createServer(async (req, res) => {
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
 
   try {
+    /* Modo manutenção: barra o visitante mas deixa passar o painel, a API e os
+       assets (a própria página de aviso usa o favicon). Quem tem sessão de
+       administrador continua vendo o site normal, para conferir antes de reabrir. */
+    if (emManutencao() && !p.startsWith("/admin") && !p.startsWith("/api/")
+        && !p.startsWith("/assets/") && !p.startsWith("/.well-known/") && !authed(req)) {
+      const arq = path.join(ROOT, "manutencao.html");
+      const corpo = fs.existsSync(arq) ? fs.readFileSync(arq) : "Estamos atualizando o site. Volte em instantes.";
+      // 503 + Retry-After: diz ao Google que é temporário. Com 200 ele indexaria
+      // a página de aviso; com 404 acharia que o site sumiu.
+      res.writeHead(503, { "Content-Type": MIME[".html"], "Retry-After": "3600", "Cache-Control": "no-store" });
+      return res.end(corpo);
+    }
+
     if (p.startsWith("/api/")) {
       if (p === "/api/login" && req.method === "POST") {
         const ip = clientIp(req);
@@ -1038,6 +1216,19 @@ http.createServer(async (req, res) => {
       if (!authed(req)) return json(res, 401, { error: "Não autenticado" });
       if (p === "/api/me") return json(res, 200, { ok: true, version: APP_VERSION });
       if (p === "/api/stats") return json(res, 200, statsAcessos());
+      if (p === "/api/manutencao") {
+        if (req.method === "POST") {
+          const { ligar, titulo, texto } = await readBody(req);
+          if (titulo !== undefined) setS("manutencao_titulo", titulo);
+          if (texto !== undefined) setS("manutencao_texto", texto);
+          setS("manutencao", ligar ? "1" : "0");
+          const S = {}; for (const r of db.prepare("SELECT key,value FROM settings").all()) S[r.key] = r.value;
+          gerarPaginaManutencao(S);   // regrava o arquivo que o nginx usa nas quedas
+          console.log(`  · modo manutenção ${ligar ? "LIGADO" : "desligado"}`);
+        }
+        return json(res, 200, { ok: true, ligado: emManutencao(),
+          titulo: getS("manutencao_titulo") || "", texto: getS("manutencao_texto") || "" });
+      }
       if (p === "/api/logout" && req.method === "POST") {
         const m = /sid=([a-f0-9]+)/.exec(req.headers.cookie || ""); if (m) sessions.delete(m[1]);
         return json(res, 200, { ok: true });

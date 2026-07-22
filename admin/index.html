@@ -52,6 +52,12 @@
     #login{position:fixed;inset:0;background:var(--violet);display:grid;place-items:center;z-index:50}
     #login .card{width:min(360px,90vw);text-align:center;padding:2rem}
     .imgrow{display:flex;gap:.6rem;align-items:center}
+    /* --- Manutenção --- */
+    #card-manutencao.manut-on{border-color:#f6c6d4;background:#fffafb;box-shadow:0 0 0 3px rgba(224,66,107,.09)}
+    .manut-estado{margin:.2rem 0 .6rem}
+    .pastilha{display:inline-block;padding:.35rem .9rem;border-radius:999px;font-size:.8rem;font-weight:700}
+    .pastilha-on{background:#e8f7ee;color:#1c7a45}
+    .pastilha-off{background:#fdeef2;color:var(--red)}
     /* --- Acessos --- */
     .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem}
     .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1rem 1.1rem;box-shadow:0 2px 8px rgba(68,56,184,.05)}
@@ -108,6 +114,19 @@
         <p style="color:var(--muted)">Suas edições ficam salvas no banco. Clique em <b>Publicar site</b> para atualizar as páginas com o novo conteúdo.</p>
         <button class="btn btn-navy mt" onclick="publishSite()">🚀 Publicar site</button>
         <p class="hint mt" id="pub-log"></p>
+      </div>
+
+      <div class="card" id="card-manutencao">
+        <h3 style="margin:0 0 .3rem">Modo manutenção</h3>
+        <p class="hint mb">Tira o site do ar e mostra um aviso com a identidade da clínica. Use antes de atualizar o servidor. Você, logado aqui, continua vendo o site normalmente.</p>
+        <div id="manut-estado" class="manut-estado"></div>
+        <label>Título do aviso</label><input id="manut_titulo">
+        <label>Mensagem</label><input id="manut_texto">
+        <div class="topbar mt" style="margin-bottom:0">
+          <button class="btn btn-ghost btn-sm" onclick="salvarTextoManutencao()">Salvar mensagem</button>
+          <button class="btn" id="btn-manut" onclick="alternarManutencao()"></button>
+        </div>
+        <p class="hint mt">Enquanto ligado, o site responde <b>503</b> — o Google entende que é temporário e não tira suas páginas do índice.</p>
       </div>
     </section>
 
@@ -212,8 +231,48 @@ async function login() {
 }
 async function logout() { await api("/api/logout", "POST"); location.reload(); }
 $("#pw")?.addEventListener("keydown", (e) => e.key === "Enter" && login());
+/* ------------------------------ Manutenção ------------------------------ */
+let MANUT = null;
+async function carregarManutencao() {
+  try { MANUT = await api("/api/manutencao"); } catch { return; }
+  $("#manut_titulo").value = MANUT.titulo || "";
+  $("#manut_texto").value = MANUT.texto || "";
+  pintarManutencao();
+}
+function pintarModo(ligado) {
+  $("#card-manutencao").classList.toggle("manut-on", ligado);
+  $("#manut-estado").innerHTML = ligado
+    ? '<span class="pastilha pastilha-off">● Site FORA DO AR para visitantes</span>'
+    : '<span class="pastilha pastilha-on">● Site no ar, normalmente</span>';
+  const b = $("#btn-manut");
+  b.textContent = ligado ? "✓ Colocar o site de volta no ar" : "⏻ Tirar o site do ar";
+  b.className = "btn " + (ligado ? "btn-mint" : "btn-danger");
+}
+function pintarManutencao() { pintarModo(!!MANUT?.ligado); }
+
+async function alternarManutencao() {
+  const ligando = !MANUT?.ligado;
+  if (ligando && !confirm("Tirar o site do ar agora?\n\nOs visitantes verão o aviso de manutenção. Você continuará vendo o site normalmente por estar logado.")) return;
+  try {
+    MANUT = await api("/api/manutencao", "POST", {
+      ligar: ligando, titulo: $("#manut_titulo").value, texto: $("#manut_texto").value,
+    });
+    pintarManutencao();
+    toast(ligando ? "Site fora do ar." : "Site de volta ao ar! 🪷");
+  } catch (e) { toast(e.message, true); }
+}
+async function salvarTextoManutencao() {
+  try {
+    MANUT = await api("/api/manutencao", "POST", {
+      ligar: !!MANUT?.ligado, titulo: $("#manut_titulo").value, texto: $("#manut_texto").value,
+    });
+    toast("Mensagem salva.");
+  } catch (e) { toast(e.message, true); }
+}
+
 async function showApp() {
   $("#app").hidden = false;
+  carregarManutencao();
   // vem do servidor (não do HTML) para não mostrar número velho vindo do cache
   try { const me = await api("/api/me"); $("#app-versao").textContent = "v" + (me.version || "?"); } catch {}
   await loadAll();

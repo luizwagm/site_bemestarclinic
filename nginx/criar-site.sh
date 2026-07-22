@@ -15,6 +15,8 @@ set -uo pipefail
 DOMINIO="${1:-}"
 PORTA="${2:-}"
 EMAIL="${3:-admin@$DOMINIO}"
+# raiz da aplicação: de onde o nginx lê a página de manutenção nas quedas
+APP_ROOT="${APP_ROOT:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}"
 
 [ -z "$DOMINIO" ] || [ -z "$PORTA" ] && {
   echo "Uso: sudo $0 <dominio> <porta> [email]"; exit 1; }
@@ -121,6 +123,21 @@ server {
     location ~ /\\.(git|env|gitignore) {
         deny all;
         return 404;
+    }
+
+
+    # ------------------------------------------------------------------
+    #  Página de manutenção quando a APLICAÇÃO está fora do ar.
+    #  O modo manutenção do painel cobre o caso do app rodando; isto cobre
+    #  restart, deploy, git stash e queda — quando não há app para responder.
+    #  Sem isto o visitante veria a tela cinza de "502 Bad Gateway".
+    # ------------------------------------------------------------------
+    error_page 502 503 504 /manutencao.html;
+    location = /manutencao.html {
+        root $APP_ROOT;
+        internal;
+        add_header Retry-After 3600 always;
+        add_header Cache-Control "no-store" always;
     }
 
     location / {
