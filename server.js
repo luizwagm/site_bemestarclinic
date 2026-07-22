@@ -569,6 +569,27 @@ function setMarker(html, key, content) {
   return html.replace(re, (_m, open, close) => `${open}\n${content}\n${close}`);
 }
 
+/* --------------------------------------------------------------------------
+   Opções dos <select> de especialidade (formulário de contato e /agendar/).
+
+   No site "Psicanálise (Individual e Casal)" é UMA especialidade, com uma
+   página só — e continua assim em todo lugar. Mas na hora de agendar são duas
+   necessidades diferentes, e quem responde precisa saber qual antes de marcar.
+   Por isso o desdobramento vive aqui, no formulário, e não no cadastro.
+
+   Para desdobrar outra especialidade, basta acrescentar uma linha ao mapa.
+   -------------------------------------------------------------------------- */
+const DESDOBRA_NO_FORMULARIO = {
+  "Psicanálise (Individual e Casal)": ["Psicanálise (Individual)", "Psicanálise (Casal)"],
+};
+
+function opcoesDoFormulario(services) {
+  return services
+    .flatMap((s) => DESDOBRA_NO_FORMULARIO[s.title] || [s.title])
+    .map((titulo) => `<option>${esc(titulo)}</option>`)
+    .join("\n                ");
+}
+
 function publish() {
   const S = {}; for (const r of db.prepare("SELECT key,value FROM settings").all()) S[r.key] = r.value;
   const services = db.prepare("SELECT * FROM services ORDER BY sort,id").all();
@@ -702,8 +723,7 @@ function publish() {
   // o e-mail do rodapé vinha fixo no HTML e divergia do cadastrado no painel
   html = setMarker(html, "FOOTER_EMAIL", `          <a href="mailto:${esc(S.contact_email)}">${esc(S.contact_email)}</a>`);
   html = setMarker(html, "BLOG", "          " + posts.slice(0, 3).map(postCard).join("\n          "));
-  const formServices = services.map((s) => `<option>${esc(s.title)}</option>`).join("\n                ");
-  html = setMarker(html, "FORM_SERVICES", "                " + formServices);
+  html = setMarker(html, "FORM_SERVICES", "                " + opcoesDoFormulario(services));
   html = setMarker(html, "CNPJ", S.cnpj);
   // atualiza QUALQUER wa.me/<numero> restante (footer etc.)
   html = html.replace(/wa\.me\/\d+/g, `wa.me/${S.whatsapp}`);
@@ -880,7 +900,7 @@ function publish() {
   const agendarTpl = fs.readFileSync(path.join(ROOT, "src", "agendar.html"), "utf8");
   fs.mkdirSync(path.join(ROOT, "agendar"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "agendar", "index.html"),
-    setMarker(aplicarTextos(agendarTpl, S), "FORM_SERVICES", "                " + services.map((s) => `<option>${esc(s.title)}</option>`).join("\n                "))
+    setMarker(aplicarTextos(agendarTpl, S), "FORM_SERVICES", "                " + opcoesDoFormulario(services))
       .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
 
   /* ---------- índice de busca (search-index.json) ---------- */
@@ -1163,6 +1183,14 @@ function aplicarTextos(html, S) {
 function slug(s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 
 /* ------------------------------ Servidor ---------------------------------- */
+// `node server.js --publicar` regenera as páginas sem subir o servidor: serve
+// para conferir uma alteração de template sem passar pelo painel
+if (process.argv.includes("--publicar")) {
+  const r = publish();
+  console.log(`  publicado: ${JSON.stringify(r)}`);
+  process.exit(0);
+}
+
 http.createServer(async (req, res) => {
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
