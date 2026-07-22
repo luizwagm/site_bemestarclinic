@@ -18,7 +18,7 @@ const PORT = 5185;
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.6.2";
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1153,7 +1153,10 @@ http.createServer(async (req, res) => {
     console.error(`  ✖ erro em ${p}:`, e.message);
     json(res, 500, { error: "Erro interno" });
   }
-}).listen(PORT, () => {
+// Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
+// ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.
+// Para expor direto (ambiente sem proxy), rode com HOST=0.0.0.0
+}).listen(PORT, process.env.HOST || "127.0.0.1", () => {
   console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
   console.log(`  · Site:   http://localhost:${PORT}/`);
   console.log(`  · Painel: http://localhost:${PORT}/admin/`);
