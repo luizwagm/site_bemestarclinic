@@ -109,8 +109,19 @@ azul "6/7  Devolvendo banco e fotos"
 mkdir -p data assets/img/uploads
 [ -f "$COFRE/site.db" ] && mv "$COFRE/site.db" data/site.db
 [ -d "$COFRE/uploads" ] && cp -rn "$COFRE/uploads/." assets/img/uploads/ 2>/dev/null
-chown -R www-data:www-data data assets/img/uploads 2>/dev/null
-verde "     de volta no lugar"
+
+# O dono precisa ser o usuário do serviço, não um palpite: com o dono errado o
+# SQLite responde "attempt to write a readonly database" e o painel não salva
+# nada. O systemd sem User= significa root.
+DONO=$(systemctl show "$SERVICO" -p User --value 2>/dev/null)
+[ -z "$DONO" ] && DONO="root"
+GRUPO=$(systemctl show "$SERVICO" -p Group --value 2>/dev/null)
+[ -z "$GRUPO" ] && GRUPO="$DONO"
+chown -R "$DONO:$GRUPO" data assets/img/uploads 2>/dev/null
+# a pasta precisa ser gravável: o SQLite cria o -journal ao lado do banco
+chmod 755 data assets/img/uploads 2>/dev/null
+[ -f data/site.db ] && chmod 644 data/site.db
+verde "     de volta no lugar (dono: $DONO:$GRUPO)"
 
 systemctl start "$SERVICO"
 sleep 3

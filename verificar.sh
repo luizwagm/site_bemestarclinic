@@ -25,6 +25,21 @@ else
 fi
 echo
 
+echo "--- Permissão de escrita no banco ---"
+DONO_SVC=$(systemctl show "$SERVICO" -p User --value 2>/dev/null); [ -z "$DONO_SVC" ] && DONO_SVC="root"
+echo "  serviço roda como : $DONO_SVC"
+echo "  dono de data/     : $(stat -c '%U:%G %a' data 2>/dev/null || echo '—')"
+echo "  dono do site.db   : $(stat -c '%U:%G %a' data/site.db 2>/dev/null || echo '—')"
+# o SQLite grava um -journal ao lado do banco: sem escrita NA PASTA, dá
+# "attempt to write a readonly database" mesmo com o .db gravável
+if sudo -u "$DONO_SVC" test -w data 2>/dev/null && sudo -u "$DONO_SVC" test -w data/site.db 2>/dev/null; then
+  echo "  resultado         : OK, o serviço consegue gravar"
+else
+  echo "  resultado         : SEM PERMISSÃO — o painel não vai salvar nada"
+  echo "                      corrija com: sudo chown -R $DONO_SVC: data assets/img/uploads"
+fi
+echo
+
 echo "--- Conteúdo do banco ---"
 if [ -f data/site.db ]; then
   echo "  arquivo: $(du -h data/site.db | cut -f1)"

@@ -1351,6 +1351,18 @@ http.createServer(async (req, res) => {
   console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
   console.log(`  · Site:   http://localhost:${PORT}/`);
   console.log(`  · Painel: http://localhost:${PORT}/admin/`);
+
+  // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
+  // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.
+  try {
+    setS("_teste_escrita", String(Date.now()));
+    db.prepare("DELETE FROM settings WHERE key='_teste_escrita'").run();
+  } catch (e) {
+    const usuario = (() => { try { return require("node:os").userInfo().username; } catch { return "root"; } })();
+    console.error(`  ✖ BANCO SEM PERMISSÃO DE ESCRITA: ${e.message}`);
+    console.error("    O painel não vai conseguir salvar nada. O processo roda como:", usuario);
+    console.error(`    Corrija com: sudo chown -R ${usuario}: "${ROOT}/data" "${ROOT}/assets/img/uploads"`);
+  }
   // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
   if (confereSenha("bemestar-admin", getS("admin_password_hash")))
     console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
