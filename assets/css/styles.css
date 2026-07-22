@@ -612,7 +612,21 @@ p { margin: 0 0 1rem; }
   background: var(--violet-soft); color: var(--violet-ink); text-decoration: none;
 }
 .prof-card__tags a { padding: 0; background: none; }
-.prof-card__tags-mais { background: var(--violet); color: #fff; font-weight: 700; cursor: help; }
+
+/* Especialidades além das 4 primeiras: só aparecem ao tocar no "+N".
+   O seletor repete `li` de propósito: `.prof-card__tags li` (0,1,1) tem mais
+   especificidade que uma classe sozinha (0,1,0) e venceria o display:none. */
+.prof-card__tags li.prof-card__tag--extra { display: none; }
+.prof-card.is-open .prof-card__tags li.prof-card__tag--extra { display: inline-block; }
+.prof-card__tags li.prof-card__tags-toggle { padding: 0; background: none; }
+.prof-card__tags-mais {
+  padding: .3rem .7rem; border: 0; border-radius: 999px;
+  background: var(--violet); color: #fff; font: inherit; font-size: .72rem; font-weight: 700;
+  cursor: pointer; transition: background .2s ease;
+  min-height: 28px;   /* alvo de toque confortável no celular */
+}
+.prof-card__tags-mais:hover { background: var(--gold); }
+.prof-card__tags-mais:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .prof-card__tags li:hover { background: var(--violet); }
 .prof-card__tags li:hover a, .prof-card__tags li:hover { color: #fff; }
 /* o WhatsApp encosta no rodapé do card — alinha entre cards de alturas diferentes */

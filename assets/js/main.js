@@ -264,6 +264,28 @@ function initConsent() {
   else if (escolha === "aceito") carregarMedicao();
 }
 
+/* "+N" no card do profissional: mostra/esconde as especialidades extras.
+   Antes era só um title (tooltip), que não existe em toque — no celular o
+   botão simplesmente não fazia nada. */
+function initTagsMais() {
+  const botoes = $$(".prof-card__tags-mais");
+  if (!botoes.length) return;
+  botoes.forEach((b) => {
+    const card = b.closest(".prof-card");
+    const n = b.dataset.mais;
+    b.addEventListener("click", () => {
+      const abrindo = !card.classList.contains("is-open");
+      card.classList.toggle("is-open", abrindo);
+      b.setAttribute("aria-expanded", String(abrindo));
+      b.textContent = abrindo ? "− menos" : `+${n}`;
+      b.setAttribute("aria-label", abrindo
+        ? "Mostrar menos especialidades"
+        : `Mostrar mais ${n} especialidades`);
+    });
+    b.setAttribute("aria-label", `Mostrar mais ${n} especialidades`);
+  });
+}
+
 function initYear() { const y = $("#year"); if (y) y.textContent = new Date().getFullYear(); }
 
 /* Lupa no topo → abre campo → leva para /busca/?q= */
@@ -356,6 +378,6 @@ async function initSearchResults() {
     </a>`).join("");
 }
 
-function boot() { initHeader(); initMobileNav(); initHeaderSearch(); initReveal(); initForm(); initFab(); initYear(); initSearchResults(); initAgendarForm(); initConsent(); }
+function boot() { initHeader(); initMobileNav(); initHeaderSearch(); initReveal(); initForm(); initFab(); initYear(); initSearchResults(); initAgendarForm(); initTagsMais(); initConsent(); }
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
 else boot();

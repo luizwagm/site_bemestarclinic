@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# ==========================================================================
+#  verificar.sh — só olha, não altera nada.
+#  Rode ANTES do deploy para saber em que estado a produção está.
+# ==========================================================================
+APP_DIR="${APP_DIR:-$(cd "$(dirname "$(readlink -f "$0")")" && pwd)}"
+SERVICO="${SERVICO:-bemestar.service}"
+PORTA="${PORTA:-5185}"
+cd "$APP_DIR" || exit 1
+
+echo "===================== ESTADO DA PRODUÇÃO ====================="
+echo
+echo "Commit atual : $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
+echo "Node         : $(node -v)"
+echo "Serviço      : $(systemctl is-active "$SERVICO" 2>/dev/null)"
+printf "Site         : HTTP %s\n" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORTA/")"
+echo
+
+echo "--- O banco corre risco no próximo pull? ---"
+if git ls-files --error-unmatch data/site.db >/dev/null 2>&1; then
+  echo "  ATENÇÃO: data/site.db ainda é RASTREADO neste commit."
+  echo "  Um git pull simples pode apagá-lo. Use ./deploy.sh, que o protege."
+else
+  echo "  OK: data/site.db não é rastreado — o git não mexe nele."
+fi
+echo
+
+echo "--- Conteúdo do banco ---"
+if [ -f data/site.db ]; then
+  echo "  arquivo: $(du -h data/site.db | cut -f1)"
+  node -e '
+    const { DatabaseSync } = require("node:sqlite");
+    try {
+      const db = new DatabaseSync("data/site.db");
+      for (const t of ["services","team","posts","portfolio","testimonials","settings","visits"])
+        console.log("  " + t.padEnd(14) + db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c);
+      console.log("  integridade   " + db.prepare("PRAGMA integrity_check").get().integrity_check);
+      const at = db.prepare("SELECT value FROM settings WHERE key=?").get("atendimento");
+      if (at) console.log("  bloco Atendemos " + (/<p/.test(at.value) ? "COM HTML (será corrigido no boot)" : "texto puro, ok"));
+    } catch (e) { console.log("  ERRO ao ler: " + e.message); }
+  ' 2>/dev/null
+else
+  echo "  data/site.db NÃO EXISTE"
+fi
+echo
+
+echo "--- Backups guardados ---"
+# o || não pega o caso vazio porque quem define o código de saída é o sed
+LISTA=$(ls -1t backups/site.db.* 2>/dev/null | head -5)
+if [ -n "$LISTA" ]; then echo "$LISTA" | sed 's/^/  /'; else echo "  nenhum ainda (o primeiro sai no próximo deploy)"; fi
+echo
+echo "=============================================================="

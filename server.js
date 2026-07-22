@@ -18,7 +18,7 @@ const PORT = 5185;
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -237,6 +237,7 @@ function migrarTextos() {
     for (const m of html.matchAll(/<!--#([A-Z_]+)-->/g)) {
       const chave = m[1].toLowerCase();
       if (!KEYS.includes(chave)) continue;      // marcador de bloco gerado, não é texto editável
+      if (chave === "atendimento") continue;    // texto puro, tem valor próprio mais abaixo
       if (getS(chave) !== undefined) continue;  // já existe: respeita o que o cliente salvou
       let valor = lerMarcador(html, m[1]) || "";
       if (chave.startsWith("img_")) {
@@ -256,6 +257,19 @@ function migrarTextos() {
   if (getS("img_og") === undefined) setS("img_og", "/assets/img/og-image.png");
   if (getS("atendimento") === undefined) setS("atendimento",
     "Atendemos pacientes de toda a região!\n📍 Consultas presenciais: somente em Caruaru – PE.\n💻 Consultas online: para todo o Brasil e exterior.");
+
+  /* Reparo: a v1.6.0 gravou o HTML já renderizado do bloco em vez do texto puro,
+     e blocoAtendimento() escapa o conteúdo — resultado: as tags <p> apareciam na
+     tela. Converte de volta para uma linha por parágrafo. Roda uma vez só. */
+  const at = getS("atendimento") || "";
+  if (/<p[^>]*class="atendimento__/.test(at)) {
+    const linhas = [...at.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/g)]
+      .map((x) => x[1].replace(/<[^>]+>/g, "").trim()).filter(Boolean);
+    if (linhas.length) {
+      setS("atendimento", linhas.join("\n"));
+      console.log("  · bloco “Atendemos pacientes…” corrigido (tinha HTML no lugar do texto)");
+    }
+  }
   if (novos) console.log(`  · ${novos} texto(s) do site migrados para o painel`);
 }
 
@@ -689,13 +703,15 @@ function publish() {
             <h3 class="prof-card__nome">${esc(m.name)}</h3>
             <p class="prof-card__role">${esc(m.role)}</p>
             ${m.bio ? `<p class="prof-card__bio">${esc(m.bio)}</p>` : ""}
-            ${esp.length ? `<ul class="prof-card__tags">${esp.slice(0, 4).map((e) => {
+            ${esp.length ? `<ul class="prof-card__tags">${esp.map((e, k) => {
               const sv = services.find((s) => s.title === e);
-              return `<li>${sv && sv.slug ? `<a href="/especialidades/${esc(sv.slug)}/">${esc(e)}</a>` : esc(e)}</li>`;
+              // quem atende muita coisa (o Dr. Ronalldo tem 9) estouraria a altura do
+              // card: as extras ficam no HTML (boas para o Google) mas escondidas até
+              // o toque no "+N" — tooltip via title não existe em celular
+              const extra = k >= 4 ? ' class="prof-card__tag--extra"' : "";
+              return `<li${extra}>${sv && sv.slug ? `<a href="/especialidades/${esc(sv.slug)}/">${esc(e)}</a>` : esc(e)}</li>`;
             }).join("")}${esp.length > 4
-              // quem atende muita coisa (o Dr. Ronalldo tem 9) estouraria a altura
-              // do card e desalinharia a linha inteira do grid
-              ? `<li class="prof-card__tags-mais" title="${esc(esp.slice(4).join(" · "))}">+${esp.length - 4}</li>`
+              ? `<li class="prof-card__tags-toggle"><button type="button" class="prof-card__tags-mais" aria-expanded="false" data-mais="${esp.length - 4}">+${esp.length - 4}</button></li>`
               : ""}</ul>` : ""}
             ${m.whatsapp
               ? `<a class="prof-card__wa" href="https://wa.me/${esc(m.whatsapp)}" target="_blank" rel="noopener">WhatsApp: ${esc(waFmt(m.whatsapp))}</a>`
