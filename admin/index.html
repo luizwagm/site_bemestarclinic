@@ -93,7 +93,6 @@
     <button class="navbtn" data-p="portfolio">Nosso Espaço</button>
     <button class="navbtn" data-p="texts">Textos do site</button>
     <button class="navbtn" data-p="testimonials">Depoimentos</button>
-    <button class="navbtn" data-p="contact">Contato</button>
     <button class="navbtn" data-p="password">Senha</button>
     <div style="margin-top:auto">
       <a class="navbtn" href="/" target="_blank" style="text-decoration:none;display:block">↗ Ver o site</a>
@@ -158,23 +157,14 @@
     </section>
 
     <section class="panel" id="p-texts">
-      <div class="topbar"><h1>Textos do site</h1><button class="btn btn-navy" onclick="saveTexts()">Salvar textos</button></div>
-      <div class="card">
-        <h3>Topo (hero)</h3>
-        <label>Selo</label><input id="s_hero_badge">
-        <label>Título <span class="hint">use &lt;em&gt;palavra&lt;/em&gt; para destacar em dourado</span></label><textarea id="s_hero_title"></textarea>
-        <label>Subtítulo</label><textarea id="s_hero_lead"></textarea>
-        <label>Métricas <span class="hint">uma por linha: numero | texto</span></label><textarea id="s_stats"></textarea>
+      <div class="topbar">
+        <h1>Textos do site</h1>
+        <button class="btn btn-navy" onclick="saveTexts()">Salvar textos</button>
       </div>
-      <div class="card">
-        <h3>Seção "A Clínica"</h3>
-        <label>Título</label><input id="s_about_title">
-        <label>Texto</label><textarea id="s_about_lead"></textarea>
-        <label>Bullets <span class="hint">um por linha</span></label><textarea id="s_about_bullets"></textarea>
-      </div>
-      <div class="card">
-        <h3>Rodapé</h3>
-        <label>Frase da marca</label><textarea id="s_footer_tagline"></textarea>
+      <p class="hint mb">Tudo que está escrito e as fotos fixas do site. Depois de salvar, clique em <b>Publicar</b> para as mudanças entrarem no ar.</p>
+      <div id="texts-form"></div>
+      <div class="topbar" style="margin-top:1rem">
+        <span></span><button class="btn btn-navy" onclick="saveTexts()">Salvar textos</button>
       </div>
     </section>
 
@@ -183,26 +173,13 @@
       <div id="testimonials-list"></div>
     </section>
 
-    <section class="panel" id="p-contact">
-      <div class="topbar"><h1>Dados de contato</h1><button class="btn btn-navy" onclick="saveTexts()">Salvar contato</button></div>
-      <div class="card">
-        <div class="row">
-          <div><label>WhatsApp (só números, com 55)</label><input id="s_whatsapp" inputmode="numeric" placeholder="5587900000000"></div>
-          <div><label>WhatsApp (como aparece no site)</label><input id="s_whatsapp_display" placeholder="(87) 90000-0000"></div>
-        </div>
-        <label>E-mail</label><input id="s_contact_email" type="email">
-        <label>Telefone fixo</label><input id="s_phone_fixed" placeholder="(81) 4105-1109">
-        <label>Instagram (sem @)</label><input id="s_instagram">
-        <label>Endereço (aparece no card de contato)</label><textarea id="s_address"></textarea>
-        <label>CNPJ</label><input id="s_cnpj" placeholder="00.000.000/0001-00">
-      </div>
-    </section>
 
     <section class="panel" id="p-password">
       <div class="topbar"><h1>Trocar senha</h1></div>
       <div class="card" style="max-width:420px">
         <label>Senha atual</label><input type="password" id="pw_cur" autocomplete="current-password">
-        <label>Nova senha</label><input type="password" id="pw_new" autocomplete="new-password">
+        <label>Nova senha</label><input type="password" id="pw_new" autocomplete="new-password" minlength="8">
+        <p class="hint">Mínimo de 8 caracteres. Trocar a senha desconecta o painel em todos os outros dispositivos.</p>
         <button class="btn btn-navy mt" onclick="changePw()">Salvar nova senha</button>
       </div>
     </section>
@@ -289,12 +266,65 @@ async function loadStats() {
 
 async function loadAll() {
   DATA = await api("/api/content");
-  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","phone_fixed","contact_email","instagram","address","cnpj"])
-    $("#s_" + k).value = DATA.settings[k];
-  $("#s_stats").value = JSON.parse(DATA.settings.stats || "[]").map((s) => `${s.num} | ${s.label}`).join("\n");
-  $("#s_about_bullets").value = JSON.parse(DATA.settings.about_bullets || "[]").join("\n");
+  renderTexts();
   $("#lista-esp").innerHTML = espDisponiveis().map((t) => `<option value="${escA(t)}">`).join("");
   renderTable("portfolio"); renderTable("services"); renderTable("testimonials"); renderTable("team"); renderTable("posts");
+}
+
+/* ------------------- Textos do site (montado a partir de /api/content) ------------------ */
+function valorParaCampo(chave, tipo) {
+  const v = DATA.settings[chave] ?? "";
+  if (tipo === "stats") {
+    try { return JSON.parse(v || "[]").map((x) => `${x.num} | ${x.label}`).join("\n"); } catch { return ""; }
+  }
+  if (tipo === "json_lista") {
+    try { return JSON.parse(v || "[]").join("\n"); } catch { return ""; }
+  }
+  return v;
+}
+
+function renderTexts() {
+  $("#texts-form").innerHTML = (DATA.campos || []).map((g) => `
+    <div class="card">
+      <h3>${escA(g.grupo)}</h3>
+      ${g.campos.map(([chave, rotulo, tipo]) => {
+        const val = valorParaCampo(chave, tipo);
+        const attrs = `data-k="${chave}" data-tipo="${tipo}"`;
+        if (tipo === "image") return `<label>${escA(rotulo)}</label>
+          <div class="imgrow">
+            <input ${attrs} value="${escA(val)}" style="flex:1">
+            <button class="btn btn-ghost btn-sm" onclick="pickImg(this)">Enviar foto</button>
+            ${val ? `<img class="thumb" src="${escA(val)}" alt="">` : ""}
+          </div>`;
+        if (tipo === "bigtext") return `<label>${escA(rotulo)}</label><textarea ${attrs} style="min-height:150px">${escA(val)}</textarea>`;
+        if (tipo === "textarea" || tipo === "lista" || tipo === "stats" || tipo === "json_lista")
+          return `<label>${escA(rotulo)}</label><textarea ${attrs}>${escA(val)}</textarea>`;
+        return `<label>${escA(rotulo)}</label><input ${attrs} value="${escA(val)}">`;
+      }).join("")}
+    </div>`).join("");
+}
+
+async function saveTexts() {
+  const body = {};
+  document.querySelectorAll("#texts-form [data-k]").forEach((el) => {
+    const { k, tipo } = el.dataset;
+    const v = el.value;
+    if (tipo === "stats") {
+      body[k] = JSON.stringify(v.split("\n").filter(Boolean).map((l) => {
+        const [num, ...r] = l.split("|"); return { num: num.trim(), label: r.join("|").trim() };
+      }));
+    } else if (tipo === "json_lista") {
+      body[k] = JSON.stringify(v.split("\n").map((x) => x.trim()).filter(Boolean));
+    } else {
+      body[k] = v;
+    }
+  });
+  try {
+    await api("/api/settings", "PUT", body);
+    DATA = await api("/api/content");
+    renderTexts();
+    toast("Textos salvos! Agora clique em Publicar.");
+  } catch (e) { toast(e.message, true); }
 }
 
 async function publishSite() {
@@ -306,17 +336,6 @@ async function publishSite() {
   } catch (e) { $("#pub-log").textContent = ""; toast(e.message, true); }
 }
 
-async function saveTexts() {
-  const body = {};
-  for (const k of ["hero_badge","hero_title","hero_lead","about_title","about_lead","footer_tagline","whatsapp","whatsapp_display","phone_fixed","contact_email","instagram","address","cnpj"])
-    body[k] = $("#s_" + k).value;
-  body.stats = JSON.stringify($("#s_stats").value.split("\n").filter(Boolean).map((l) => {
-    const [num, ...r] = l.split("|"); return { num: num.trim(), label: r.join("|").trim() };
-  }));
-  body.about_bullets = JSON.stringify($("#s_about_bullets").value.split("\n").map((s) => s.trim()).filter(Boolean));
-  await api("/api/settings", "PUT", body);
-  toast("Salvo! Lembre de publicar.");
-}
 
 const TDEFS = {
   portfolio: [["title","Título","input"],["subtitle","Legenda","input"],["image","Imagem (URL)","image"]],

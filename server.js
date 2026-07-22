@@ -18,7 +18,7 @@ const PORT = 5185;
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.6.0";
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -53,6 +53,39 @@ for (const col of ["whatsapp TEXT DEFAULT ''", "especialidades TEXT DEFAULT ''",
 }
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
+
+/* --------------------------------------------------------------------------
+   Senha do painel — scrypt com salt individual.
+   SHA-256 é rápido de propósito: uma GPU testa bilhões por segundo, então um
+   banco vazado entrega a senha em minutos. O scrypt é deliberadamente lento e
+   exige 16 MB de memória por tentativa, o que inviabiliza ataque em escala.
+   Formato guardado: scrypt$N$r$p$salt$derivado
+   -------------------------------------------------------------------------- */
+const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
+
+function hashSenha(senha) {
+  const salt = crypto.randomBytes(16);
+  const dk = crypto.scryptSync(String(senha), salt, SCRYPT.keylen, SCRYPT);
+  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString("hex")}$${dk.toString("hex")}`;
+}
+
+// comparação sempre em tempo constante — igualdade com === vaza informação pelo tempo
+const iguais = (a, b) => a.length === b.length && crypto.timingSafeEqual(a, b);
+
+function confereSenha(senha, guardado) {
+  if (!guardado) return false;
+  if (!guardado.startsWith("scrypt$")) {
+    // formato antigo (sha256 puro): ainda aceita para não travar ninguém —
+    // quem chama migra logo depois de validar
+    return iguais(Buffer.from(sha(senha)), Buffer.from(guardado));
+  }
+  const [, N, r, p, saltHex, dkHex] = guardado.split("$");
+  const dk = crypto.scryptSync(String(senha), Buffer.from(saltHex, "hex"), dkHex.length / 2,
+    { N: +N, r: +r, p: +p });
+  return iguais(Buffer.from(dkHex, "hex"), dk);
+}
+
+const senhaEhAntiga = (guardado) => !!guardado && !guardado.startsWith("scrypt$");
 const getS = (k) => db.prepare("SELECT value FROM settings WHERE key=?").get(k)?.value;
 const setS = (k, v) => db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(k, String(v));
 
@@ -172,11 +205,83 @@ function migrarGuia() {
   console.log("  · guia de profissionais migrado para o painel");
 }
 
+/* --------------------------------------------------------------------------
+   Migração dos textos para o banco.
+   Em vez de repetir aqui os valores padrão (que sairiam do ar com o HTML), a
+   migração LÊ o conteúdo que já está entre os marcadores nos arquivos e grava
+   no banco. Resultado: nada muda de aparência ao atualizar, e nenhuma chave
+   fica em branco. Só preenche o que ainda não existe — nunca sobrescreve
+   edição feita pelo cliente no painel.
+   -------------------------------------------------------------------------- */
+const IMG_TAG = {
+  img_hero:    { w: 620, h: 780, extra: 'fetchpriority="high" decoding="async"' },
+  img_clinica: { w: 620, h: 740, extra: 'loading="lazy" decoding="async"' },
+  img_online:  { w: 560, h: 640, extra: 'loading="lazy" decoding="async"' },
+};
+
+function lerMarcador(html, chave) {
+  const m = new RegExp(`<!--#${chave}-->([\\s\\S]*?)<!--/${chave}-->`).exec(html);
+  return m ? m[1].trim() : null;
+}
+
+function migrarTextos() {
+  const arquivos = [
+    path.join(ROOT, "index.html"),
+    ...["especialidades", "profissionais", "blog", "agendar", "privacidade"]
+      .map((n) => path.join(ROOT, "src", `${n}.html`)),
+  ];
+  let novos = 0;
+  for (const arq of arquivos) {
+    if (!fs.existsSync(arq)) continue;
+    const html = fs.readFileSync(arq, "utf8");
+    for (const m of html.matchAll(/<!--#([A-Z_]+)-->/g)) {
+      const chave = m[1].toLowerCase();
+      if (!KEYS.includes(chave)) continue;      // marcador de bloco gerado, não é texto editável
+      if (getS(chave) !== undefined) continue;  // já existe: respeita o que o cliente salvou
+      let valor = lerMarcador(html, m[1]) || "";
+      if (chave.startsWith("img_")) {
+        // guarda só a URL e o alt; a tag <img> é remontada na publicação
+        const src = /src="([^"]+)"/.exec(valor);
+        const alt = /alt="([^"]*)"/.exec(valor);
+        if (getS(chave + "_alt") === undefined && alt) setS(chave + "_alt", alt[1]);
+        valor = src ? src[1] : "";
+      }
+      if (chave === "online_list" || chave === "about_bullets") {
+        valor = [...valor.matchAll(/<li>([\s\S]*?)<\/li>/g)].map((x) => x[1].trim()).join("\n");
+      }
+      setS(chave, valor);
+      novos++;
+    }
+  }
+  if (getS("img_og") === undefined) setS("img_og", "/assets/img/og-image.png");
+  if (getS("atendimento") === undefined) setS("atendimento",
+    "Atendemos pacientes de toda a região!\n📍 Consultas presenciais: somente em Caruaru – PE.\n💻 Consultas online: para todo o Brasil e exterior.");
+  if (novos) console.log(`  · ${novos} texto(s) do site migrados para o painel`);
+}
+
+/* HTML do bloco "Atendemos pacientes…" — 1ª linha vira destaque, o resto parágrafo */
+function blocoAtendimento(S) {
+  const linhas = String(S.atendimento || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!linhas.length) return "";
+  const [titulo, ...resto] = linhas;
+  return `<p class="atendimento__titulo">${esc(titulo)}</p>\n` +
+    resto.map((l) => `          <p class="atendimento__linha">${esc(l)}</p>`).join("\n");
+}
+
+/* Remonta a tag <img> a partir da URL e do alt guardados no painel */
+function tagImagem(chave, S) {
+  const cfg = IMG_TAG[chave] || { w: 800, h: 600, extra: 'loading="lazy" decoding="async"' };
+  const src = S[chave] || "";
+  const alt = S[chave + "_alt"] || "";
+  if (!src) return "";
+  return `<img src="${esc(src)}" alt="${esc(alt)}" width="${cfg.w}" height="${cfg.h}" ${cfg.extra}>`;
+}
+
 /* ------------------------------- Seed ------------------------------------ */
 function seed() {
   if (getS("hero_title")) return;
   const S = {
-    admin_password_hash: sha("bemestar-admin"),
+    admin_password_hash: hashSenha("bemestar-admin"),
     hero_badge: "🪷 Saúde mental e práticas integrativas · Caruaru-PE e online",
     hero_title: "Seu bem-estar em <em>boas mãos</em>.",
     hero_lead: "Cuidamos da sua saúde mental, física e do seu bem-estar de forma completa e acessível: equipe de especialistas e uma ampla variedade de tratamentos integrativos para você e sua família — presencial em Caruaru e online.",
@@ -300,8 +405,43 @@ if (db.prepare("SELECT COUNT(*) AS c FROM team").get().c === 0) {
 }
 
 /* ------------------------------ Sessões ---------------------------------- */
+/* ------------------------- Sessão e força bruta --------------------------- */
+const SESSAO_HORAS = 12;          // sessão parada por mais que isso, cai
+const TENTATIVAS_MAX = 5;         // erros de senha antes do bloqueio
+const BLOQUEIO_MIN = 15;          // duração do bloqueio por IP
+
 const sessions = new Map();
-const authed = (req) => { const m = /(?:^|;\s*)sid=([a-f0-9]+)/.exec(req.headers.cookie || ""); return m && sessions.has(m[1]); };
+const authed = (req) => {
+  const m = /(?:^|;\s*)sid=([a-f0-9]+)/.exec(req.headers.cookie || "");
+  if (!m) return false;
+  const inicio = sessions.get(m[1]);
+  if (!inicio) return false;
+  // sessão sem prazo é sessão eterna: cookie roubado valeria para sempre
+  if (Date.now() - inicio > SESSAO_HORAS * 3600_000) { sessions.delete(m[1]); return false; }
+  sessions.set(m[1], Date.now());   // renova enquanto estiver em uso
+  return true;
+};
+
+/* Sem isto, dá para tentar senha à vontade: 100 mil tentativas por minuto
+   quebram qualquer senha curta. O bloqueio é por IP e some sozinho. */
+const tentativas = new Map();
+function loginBloqueado(ip) {
+  const t = tentativas.get(ip);
+  if (!t) return 0;
+  if (Date.now() > t.ate) { tentativas.delete(ip); return 0; }
+  return t.erros >= TENTATIVAS_MAX ? Math.ceil((t.ate - Date.now()) / 60000) : 0;
+}
+function registrarErro(ip) {
+  const t = tentativas.get(ip) || { erros: 0, ate: 0 };
+  t.erros++;
+  t.ate = Date.now() + BLOQUEIO_MIN * 60000;
+  tentativas.set(ip, t);
+}
+setInterval(() => {
+  const agora = Date.now();
+  for (const [k, v] of tentativas) if (agora > v.ate) tentativas.delete(k);
+  for (const [k, v] of sessions) if (agora - v > SESSAO_HORAS * 3600_000) sessions.delete(k);
+}, 10 * 60 * 1000).unref();
 
 /* ------------------------------ Publicar --------------------------------- */
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -315,207 +455,6 @@ const ICONS = [
 ];
 const CHECK = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
 
-/* --------------------------------------------------------------------------
-   Área de atendimento — gera /onde-atendemos/ e /terapia-em-<cidade>/.
-   Distâncias rodoviárias conferidas (emsampa/rotas; Garanhuns via BR-423).
-   IMPORTANTE: cada cidade tem contexto, perfil e FAQ PRÓPRIOS. Página local
-   só se sustenta no Google quando traz informação real que não existe nas
-   outras — molde repetido com o nome trocado é doorway page e derruba o site.
-   -------------------------------------------------------------------------- */
-const CIDADES = [
-  { slug: "caruaru", nome: "Caruaru", km: 0, rota: "A clínica fica no bairro Universitário, ao lado do Polo Comercial e a poucos minutos do centro.", sede: true,
-    contexto: [
-      "A BemEstarClinic é uma clínica caruaruense. Ficamos no Empresarial Nordeste Corporate, no bairro Universitário — a mesma região dos principais laboratórios, consultórios e faculdades da cidade, o que facilita para quem já resolve várias coisas no mesmo dia.",
-      "Caruaru concentra a maior rede de saúde do Agreste, mas a oferta de saúde mental ainda é desproporcional ao tamanho da cidade: filas longas na rede pública e poucos lugares que reúnem psicanálise, psicologia, avaliação psicológica e terapias integrativas sob o mesmo teto. Foi exatamente essa lacuna que a clínica veio ocupar, evoluindo do antigo CIPS para uma equipe multiprofissional.",
-      "Para o morador de Caruaru, isso significa consulta sem viagem, horários flexíveis (inclusive fora do horário comercial) e a possibilidade de alternar entre presencial e online na mesma semana, sem trocar de profissional."
-    ],
-    perfil: "Em Caruaru, a procura se divide entre psicanálise individual, atendimento de casal e avaliação psicológica — esta última puxada por processos de porte de arma, cirurgia bariátrica e concursos, que exigem laudo assinado.",
-    foco: ["psicanalise-individual-e-casal", "avaliacao-psicologica-e-psicossocial", "protocolo-integrativo-ozonioterapia-e-detox-ionico"],
-    faq: [
-      ["Onde fica a BemEstarClinic em Caruaru?", "Na Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Empresarial Nordeste Corporate, bairro Universitário, Caruaru-PE, CEP 55016-445. O prédio tem elevador e recepção."],
-      ["Preciso de encaminhamento médico para marcar?", "Não. Você mesmo pode marcar a sua consulta pelo WhatsApp ou pelo formulário do site. Encaminhamento só é necessário em casos específicos de avaliação solicitada por terceiros."],
-      ["Vocês atendem fora do horário comercial?", "Sim. Parte da equipe tem horários no fim da tarde e no início da noite, justamente para quem trabalha durante o dia. Confirme a disponibilidade no primeiro contato."]
-    ] },
-
-  { slug: "bezerros", nome: "Bezerros", km: 30, rota: "Pela BR-232, no sentido Recife — o trecho é duplicado em boa parte do caminho.",
-    contexto: [
-      "Bezerros fica a cerca de 30 km de Caruaru pela BR-232, a rodovia mais movimentada do Agreste. Na prática, é uma das cidades de onde se chega mais rápido à clínica: muita gente de Bezerros já trabalha, estuda ou faz compras em Caruaru e aproveita o mesmo deslocamento para a consulta.",
-      "A cidade é conhecida nacionalmente pelos Papangus e pelo artesanato em papel machê e madeira — uma economia criativa que gira em torno de temporadas. Quem vive de artesanato e de carnaval conhece bem a alternância entre meses de trabalho exaustivo e meses de renda incerta, e esse ciclo cobra seu preço em ansiedade e sono.",
-      "Para pacientes de Bezerros, costumamos sugerir o modelo misto: sessões online nas semanas cheias e presencial quando já houver viagem marcada para Caruaru."
-    ],
-    perfil: "De Bezerros chegam principalmente pedidos de psicanálise e terapia floral, além de acupuntura para dores crônicas de quem passa horas em trabalho manual repetitivo.",
-    foco: ["psicanalise-individual-e-casal", "acupuntura", "terapia-floral"],
-    faq: [
-      ["Quanto tempo leva de Bezerros até a clínica?", "São cerca de 30 km pela BR-232. Com trânsito normal, a viagem costuma ficar abaixo de 40 minutos até o bairro Universitário, em Caruaru."],
-      ["Dá para fazer terapia sem sair de Bezerros?", "Sim. As sessões de psicanálise, psicologia, terapia floral e aromaterapia funcionam integralmente online, pelo WhatsApp. Só os procedimentos de contato — como acupuntura e ozonioterapia — exigem presença na clínica."],
-      ["Posso concentrar consulta e procedimento no mesmo dia?", "Pode, e é o que recomendamos para quem vem de fora. Avise no agendamento que você é de Bezerros e a recepção organiza os horários em sequência."]
-    ] },
-
-  { slug: "riacho-das-almas", nome: "Riacho das Almas", km: 24,
-    rota: "Estrada curta e direta: é uma das cidades vizinhas mais próximas da clínica.",
-    contexto: [
-      "Com cerca de 24 km de distância, Riacho das Almas é praticamente um bairro estendido de Caruaru em termos de deslocamento. É perto o suficiente para que uma sessão semanal presencial caiba na rotina sem virar um sacrifício logístico.",
-      "É um município de porte pequeno, com economia ligada à agricultura e à pecuária e uma rede de saúde enxuta. Serviços de saúde mental praticamente não existem no município, o que faz de Caruaru a referência natural — e é de lá que vem boa parte dos nossos pacientes do entorno rural.",
-      "Para quem depende de transporte alternativo ou de carona, o atendimento online resolve a maior parte das necessidades sem custo de deslocamento."
-    ],
-    perfil: "A procura de Riacho das Almas se concentra em psicologia clínica, psicanálise e fitoterapia — esta última com boa aceitação em famílias que já têm tradição no uso de plantas medicinais.",
-    foco: ["psicologia", "psicanalise-individual-e-casal", "fitoterapia"],
-    faq: [
-      ["Riacho das Almas é longe da clínica?", "Não. São cerca de 24 km até Caruaru, uma das menores distâncias entre as cidades que atendemos."],
-      ["Não tenho carro. Como faço?", "O atendimento online pelo WhatsApp elimina o deslocamento e mantém o mesmo profissional e o mesmo sigilo. Você só precisa de um celular e de um lugar reservado para conversar."],
-      ["Vocês trabalham com fitoterapia de verdade?", "Sim, com prescrição individualizada feita por profissional habilitado — não é indicação genérica de chá. Veja a página de fitoterapia para entender como funciona."]
-    ] },
-
-  { slug: "toritama", nome: "Toritama", km: 37,
-    rota: "Pela BR-104, no sentido norte.",
-    contexto: [
-      "Toritama fica a cerca de 37 km de Caruaru pela BR-104 e é conhecida como a capital do jeans: uma cidade pequena que produz uma fatia enorme do jeans consumido no Brasil, em milhares de facções e lavanderias.",
-      "Essa engrenagem tem um custo humano bem documentado — jornadas que se estendem noite adentro, trabalho por produção, semanas de pico antes das grandes feiras e uma linha muito tênue entre casa e oficina. O resultado que chega ao consultório é sempre parecido: exaustão, insônia, irritabilidade, crises de ansiedade e dores no pescoço, ombros e punhos de quem passa o dia na máquina.",
-      "Por isso, com pacientes de Toritama o trabalho costuma começar por dois eixos ao mesmo tempo: a escuta do que está sendo empurrado com a barriga e o alívio físico do corpo que está sustentando essa rotina."
-    ],
-    perfil: "De Toritama vêm sobretudo casos ligados a estresse e exaustão do trabalho por produção: psicanálise, acupuntura para dores osteomusculares e ventosaterapia para tensão em ombros e coluna.",
-    foco: ["psicanalise-individual-e-casal", "acupuntura", "ventosaterapia"],
-    faq: [
-      ["Trabalho na facção o dia todo. Tem horário para mim?", "Tem. Parte da equipe atende no fim da tarde e à noite, e o online permite sessão de casa depois do expediente, sem contar o tempo de estrada."],
-      ["Quanto tempo de viagem de Toritama até Caruaru?", "São cerca de 37 km pela BR-104, normalmente menos de 40 minutos de carro."],
-      ["Acupuntura ajuda em dor de quem costura o dia inteiro?", "É uma das indicações mais frequentes para dores osteomusculares e tensão muscular. A avaliação inicial define o número de sessões e se vale combinar com ventosaterapia."]
-    ] },
-
-  { slug: "santa-cruz-do-capibaribe", nome: "Santa Cruz do Capibaribe", km: 57,
-    rota: "Pela BR-104, no sentido norte — mesmo eixo de Toritama.",
-    contexto: [
-      "Santa Cruz do Capibaribe está a cerca de 57 km de Caruaru pela BR-104 e é o coração do Polo de Confecções do Agreste, com o Moda Center movimentando a cidade em ciclos que não respeitam fim de semana nem feriado.",
-      "A cidade cresceu rápido em torno do empreendedorismo familiar: quase todo mundo tem uma facção, uma banca ou um caminhão. Essa autonomia tem um lado difícil — não existe hora de desligar, o rendimento oscila e a pressão financeira é dividida dentro de casa, o que transforma questões de trabalho em questões conjugais com muita frequência.",
-      "É por isso que Santa Cruz do Capibaribe é uma das cidades de onde mais recebemos pedidos de terapia de casal, e não apenas individual."
-    ],
-    perfil: "De Santa Cruz do Capibaribe chegam principalmente demandas de terapia de casal, psicanálise individual e o protocolo integrativo para quem chega no limite do esgotamento físico.",
-    foco: ["psicanalise-individual-e-casal", "psicologia", "protocolo-integrativo-ozonioterapia-e-detox-ionico"],
-    faq: [
-      ["Vocês fazem terapia de casal para quem mora em Santa Cruz?", "Fazemos, presencial em Caruaru ou online. No formato online, o casal pode participar do mesmo aparelho ou de aparelhos separados, conforme combinado com o profissional."],
-      ["Qual a distância até a clínica?", "Cerca de 57 km pela BR-104 — em geral, algo em torno de uma hora de viagem."],
-      ["Consigo marcar em semana de feira?", "Sim, mas as agendas enchem rápido nesses períodos. Quem trabalha no Moda Center costuma fixar um horário recorrente para não perder a vaga."]
-    ] },
-
-  { slug: "gravata", nome: "Gravatá", km: 53,
-    rota: "Pela BR-232, no sentido Recife.",
-    contexto: [
-      "Gravatá fica a cerca de 53 km de Caruaru pela BR-232 e ocupa uma posição peculiar: está a meio caminho entre o Agreste e a Região Metropolitana do Recife, o que dá ao morador a opção de seguir para qualquer um dos dois lados quando precisa de um serviço especializado.",
-      "Conhecida pelo clima serrano, pela gastronomia e pelo turismo de fim de semana, a cidade vive uma sazonalidade forte — população que dobra em feriados, trabalho concentrado em hotelaria, restaurantes e caseiros de sítio. Quem vive desse fluxo lida com jornadas irregulares e com a inversão do descanso: trabalha quando os outros descansam.",
-      "Para o paciente de Gravatá, Caruaru costuma compensar pela combinação de proximidade, custo e agenda — sobretudo quando a demanda envolve procedimentos que exigem retorno."
-    ],
-    perfil: "De Gravatá vêm bastante pedidos de aromaterapia e terapia floral associadas à psicanálise, além de nutrição para quem quer reorganizar a alimentação junto com o acompanhamento emocional.",
-    foco: ["psicanalise-individual-e-casal", "aromaterapia", "nutricao"],
-    faq: [
-      ["Compensa vir de Gravatá para Caruaru?", "São cerca de 53 km pela BR-232, uma das melhores estradas do estado. Para acompanhamento contínuo, muitos pacientes alternam sessões online com idas pontuais à clínica."],
-      ["Vocês atendem no fim de semana?", "A agenda regular é de segunda a sexta, mas quem trabalha em turismo e hotelaria costuma resolver bem com os horários de início da manhã ou fim da tarde. Vale perguntar a disponibilidade."],
-      ["Aromaterapia funciona online?", "Funciona. A consulta define o blend e as orientações de uso; os óleos você recebe as indicações para adquirir e usar em casa."]
-    ] },
-
-  { slug: "sao-caitano", nome: "São Caitano", km: 21,
-    rota: "Pela BR-423 — a cidade vizinha mais próxima da clínica.",
-    contexto: [
-      "São Caitano é a cidade vizinha mais próxima da clínica: cerca de 21 km pela BR-423. É perto o bastante para que a viagem não pese na decisão de começar um acompanhamento semanal.",
-      "O município combina agricultura familiar, pecuária leiteira e um punhado de facções que atendem o polo de confecções da região. É uma economia de vínculos curtos, em que quase todo mundo se conhece — e isso tem um efeito direto na saúde mental: o medo de ser visto entrando num consultório de psicologia ainda afasta muita gente do cuidado.",
-      "Esse é justamente um dos motivos pelos quais parte dos pacientes de São Caitano prefere fazer terapia em Caruaru, ou pelo online: o sigilo, que é obrigação profissional em qualquer formato, também vira uma questão prática de distância."
-    ],
-    perfil: "De São Caitano a procura maior é por psicanálise e psicologia clínica, com boa demanda também por homeopatia entre famílias que já têm essa cultura de tratamento.",
-    foco: ["psicanalise-individual-e-casal", "psicologia", "homeopatia"],
-    faq: [
-      ["São Caitano fica a quantos km da clínica?", "Cerca de 21 km pela BR-423 — a menor distância entre as cidades que atendemos regularmente."],
-      ["Alguém vai saber que eu faço terapia?", "Não. Sigilo é obrigação ética e legal do profissional, vale igualmente no presencial e no online, e nada do que é dito em sessão sai da sala."],
-      ["Vocês atendem adolescentes?", "Sim, com o acompanhamento de responsável no processo inicial. Explique a situação no primeiro contato para indicarmos o profissional adequado."]
-    ] },
-
-  { slug: "agrestina", nome: "Agrestina", km: 23,
-    rota: "Pela BR-104, no sentido sul.",
-    contexto: [
-      "Agrestina está a cerca de 23 km de Caruaru pela BR-104, no sentido sul — outra das cidades de onde se chega à clínica em pouco mais de meia hora.",
-      "O município tem tradição em confecção e agricultura, e é vizinho de Cupira e Altinho, formando um pequeno corredor de municípios que dependem de Caruaru para serviços de média e alta complexidade. Em saúde mental, essa dependência é praticamente total.",
-      "Como a distância é curta, é comum que pacientes de Agrestina mantenham o acompanhamento inteiramente presencial — o que ajuda bastante em processos que envolvem procedimentos, como ozonioterapia ou kinesioterapia."
-    ],
-    perfil: "De Agrestina chegam sobretudo demandas de psicanálise, kinesioterapia com fitas elásticas e avaliação psicológica para fins documentais.",
-    foco: ["psicanalise-individual-e-casal", "kinesioterapia-fitas-elasticas", "avaliacao-psicologica-e-psicossocial"],
-    faq: [
-      ["Quanto tempo leva de Agrestina até Caruaru?", "São cerca de 23 km pela BR-104, geralmente pouco mais de meia hora de carro."],
-      ["Vocês emitem laudo de avaliação psicológica?", "Sim, com profissional habilitado e prazo de entrega informado no momento da avaliação. Veja os detalhes na página de avaliação psicológica e psicossocial."],
-      ["Preciso marcar antes ou posso chegar?", "É necessário agendar. A clínica trabalha com hora marcada para garantir que cada atendimento tenha o tempo adequado."]
-    ] },
-
-  { slug: "garanhuns", nome: "Garanhuns", km: 101,
-    rota: "Pela BR-423, a Rodovia Mestre Dominguinhos — em torno de 1h35 de viagem.",
-    contexto: [
-      "Garanhuns é a mais distante das cidades que atendemos com regularidade: cerca de 101 km de Caruaru pela BR-423, algo em torno de uma hora e meia de estrada. Conhecida como a Suíça Pernambucana pelo clima ameno, é o principal centro do Agreste Meridional e sede do Festival de Inverno.",
-      "É também uma cidade universitária, com campus da UPE e da UFAPE e um fluxo constante de estudantes que vêm de municípios menores. Público universitário longe de casa, com pressão acadêmica e orçamento apertado, é um dos perfis que mais busca terapia — e um dos que mais se beneficia do formato online.",
-      "Pela distância, com pacientes de Garanhuns o online costuma ser a base do acompanhamento, com eventuais idas à clínica apenas quando há procedimento presencial indicado."
-    ],
-    perfil: "De Garanhuns predominam atendimentos online de psicanálise e psicologia, com procura relevante por avaliação psicológica e por acompanhamento de ansiedade em estudantes universitários.",
-    foco: ["psicologia", "psicanalise-individual-e-casal", "avaliacao-psicologica-e-psicossocial"],
-    faq: [
-      ["Garanhuns é muito longe para fazer terapia em Caruaru?", "Para o presencial, são cerca de 101 km pela BR-423 (aproximadamente 1h35). Por isso, com pacientes de Garanhuns o acompanhamento costuma ser feito online, sem perda de qualidade."],
-      ["O atendimento online tem o mesmo valor do presencial?", "Do ponto de vista clínico, sim: mesmo profissional, mesma duração, mesmo sigilo. A diferença é apenas o meio."],
-      ["Sou estudante. Vocês têm alguma condição?", "Vale conversar no primeiro contato. A clínica trabalha com formatos e frequências diferentes, e nem sempre a sessão semanal é o que faz sentido no começo."]
-    ] },
-
-  { slug: "belo-jardim", nome: "Belo Jardim", km: 53,
-    rota: "Pela BR-232, no sentido interior.",
-    contexto: [
-      "Belo Jardim fica a cerca de 53 km de Caruaru pela BR-232 e tem um perfil econômico diferente das vizinhas: é uma cidade industrial, marcada pela presença da Acumuladores Moura e de toda a cadeia de fornecedores que se formou ao redor dela.",
-      "Onde há indústria de porte, há também exigência formal de saúde ocupacional — e é aí que a BemEstarClinic costuma ser procurada por empresas de Belo Jardim, não só por pessoas físicas. A NR-1, que passou a exigir o gerenciamento dos riscos psicossociais, colocou a saúde mental dentro da pauta obrigatória do RH.",
-      "Atendemos, portanto, os dois lados: o trabalhador que busca acompanhamento individual e a empresa que precisa estruturar avaliação psicossocial e laudos."
-    ],
-    perfil: "De Belo Jardim vêm tanto demandas individuais de psicanálise quanto contratos corporativos de saúde e segurança do trabalhador e riscos psicossociais (NR-1).",
-    foco: ["riscos-psicossociais-nr-1", "saude-e-seguranca-do-trabalhador", "psicanalise-individual-e-casal"],
-    faq: [
-      ["Vocês atendem empresas de Belo Jardim?", "Sim. A clínica tem uma frente voltada a empresas, com avaliação psicossocial, laudos e apoio ao cumprimento da NR-1. Veja a seção Para Empresas na página inicial."],
-      ["Qual a distância até Caruaru?", "Cerca de 53 km pela BR-232."],
-      ["A avaliação psicossocial pode ser feita na empresa?", "Esse formato é avaliado caso a caso, conforme o número de colaboradores e o escopo do trabalho. Fale com a gente para montarmos a proposta."]
-    ] },
-
-  { slug: "brejo-da-madre-de-deus", nome: "Brejo da Madre de Deus", km: 66,
-    rota: "Subindo a serra, pelo acesso a Fazenda Nova.",
-    contexto: [
-      "Brejo da Madre de Deus está a cerca de 66 km de Caruaru e é uma das cidades mais altas e frias do Agreste — um brejo de altitude cercado por sertão, com agricultura de clima ameno e uma paisagem que destoa de tudo em volta.",
-      "É no distrito de Fazenda Nova que fica a Nova Jerusalém, o maior teatro ao ar livre do mundo, que movimenta a cidade inteira na Semana Santa. Assim como acontece em Gravatá e Bezerros, é uma economia de temporada: meses de intensidade total seguidos de meses de espera.",
-      "A distância é média, o que faz do formato misto a escolha mais frequente: online na maior parte do acompanhamento e presencial nos momentos em que faz diferença estar na sala."
-    ],
-    perfil: "De Brejo da Madre de Deus chegam principalmente pedidos de psicanálise, terapia floral e nutrição, com interesse crescente pelo exame de biorressonância.",
-    foco: ["psicanalise-individual-e-casal", "terapia-floral", "exame-de-biorressonancia"],
-    faq: [
-      ["Quantos km separam Brejo da Madre de Deus da clínica?", "Cerca de 66 km até Caruaru."],
-      ["O que é o exame de biorressonância?", "É uma avaliação usada dentro da abordagem integrativa da clínica. A página do exame explica o que ele analisa e como o resultado é utilizado no plano de cuidado."],
-      ["Consigo fazer tudo online?", "As sessões de conversa e a terapia floral, sim. Biorressonância e procedimentos de contato precisam ser feitos presencialmente, em Caruaru."]
-    ] },
-
-  { slug: "surubim", nome: "Surubim", km: 76,
-    rota: "No sentido norte do Agreste.",
-    contexto: [
-      "Surubim fica a cerca de 76 km de Caruaru, no Agreste Setentrional, e funciona como polo de comércio e serviços para um conjunto de municípios menores ao redor — Vertentes, Casinhas, Santa Maria do Cambucá, João Alfredo.",
-      "Isso cria uma situação comum no interior: a cidade é referência para os vizinhos, mas ela própria precisa recorrer a Caruaru ou ao Recife quando a demanda é de especialidade. Em saúde mental, a distância até o Recife torna Caruaru a alternativa mais razoável.",
-      "Pela distância, recomendamos começar pelo online e reservar o deslocamento para quando houver indicação de procedimento presencial."
-    ],
-    perfil: "De Surubim a procura se concentra em psicologia e psicanálise online, além de homeopatia e fitoterapia para acompanhamento continuado.",
-    foco: ["psicologia", "homeopatia", "fitoterapia"],
-    faq: [
-      ["Vale a pena vir de Surubim até Caruaru?", "São cerca de 76 km. Para sessões de conversa, o online costuma fazer mais sentido; a viagem se justifica quando há procedimento presencial indicado."],
-      ["Como funciona a primeira consulta online?", "Você agenda pelo site ou WhatsApp, recebe o horário confirmado e a orientação de como a sessão acontece. Só precisa de um lugar reservado e conexão estável."],
-      ["Homeopatia e fitoterapia podem ser acompanhadas à distância?", "Podem, com consultas de retorno para ajuste da prescrição, sempre com profissional habilitado."]
-    ] },
-
-  { slug: "pesqueira", nome: "Pesqueira", km: 83,
-    rota: "Pela BR-232, no sentido Sertão.",
-    contexto: [
-      "Pesqueira está a cerca de 83 km de Caruaru pela BR-232, já na transição do Agreste para o Sertão. A cidade tem história industrial ligada às fábricas de conservas de tomate e uma forte presença do povo indígena Xukuru do Ororubá, cuja terra ocupa boa parte do município.",
-      "Esse é um contexto em que o cuidado em saúde precisa ser exercido com escuta e sem imposição cultural: modos próprios de entender adoecimento e cura convivem com a demanda por atendimento clínico formal. Terapias integrativas dialogam bem com esse território, desde que praticadas com respeito e por profissional habilitado.",
-      "A distância torna o online a via principal, com deslocamento reservado para avaliações e procedimentos."
-    ],
-    perfil: "De Pesqueira vêm principalmente demandas de psicanálise e psicologia online, com interesse por fitoterapia e terapia floral dentro de uma abordagem integrativa.",
-    foco: ["psicanalise-individual-e-casal", "fitoterapia", "terapia-floral"],
-    faq: [
-      ["Qual a distância de Pesqueira até a clínica?", "Cerca de 83 km pela BR-232, no sentido de Caruaru."],
-      ["Vocês atendem online para o Sertão também?", "Sim. O atendimento online pelo WhatsApp não tem limite geográfico dentro do Brasil — e também alcança brasileiros que moram fora."],
-      ["Terapias integrativas substituem tratamento médico?", "Não. Elas são complementares e não substituem acompanhamento médico nem medicação prescrita. A clínica trabalha de forma integrada, não concorrente."]
-    ] },
-];
 
 function setMarker(html, key, content) {
   const re = new RegExp(`(<!--#${key}-->)[\\s\\S]*?(<!--\\/${key}-->)`);
@@ -616,9 +555,9 @@ function publish() {
       address: { "@type": "PostalAddress",
         streetAddress: "Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Empresarial Nordeste Corporate",
         addressLocality: "Caruaru", addressRegion: "PE", postalCode: "55016-445", addressCountry: "BR" },
+      // presencial só em Caruaru; online sem fronteira
       areaServed: [
-        ...CIDADES.map((c) => ({ "@type": "City", name: c.nome, containedInPlace: { "@type": "State", name: "Pernambuco" } })),
-        { "@type": "State", name: "Pernambuco" },
+        { "@type": "City", name: "Caruaru", containedInPlace: { "@type": "State", name: "Pernambuco" } },
         { "@type": "Country", name: "Brasil" },
       ],
       availableService: services.map((s) => ({ "@type": "MedicalTherapy", name: s.title,
@@ -636,35 +575,32 @@ function publish() {
   const idx = path.join(ROOT, "index.html");
   let html = fs.readFileSync(idx, "utf8");
   html = setMarker(html, "JSONLD", "  " + jsonldHtml);
-  html = setMarker(html, "HERO_BADGE", S.hero_badge);
-  html = setMarker(html, "HERO_TITLE", S.hero_title);
-  html = setMarker(html, "HERO_LEAD", S.hero_lead);
+  // todos os textos de seção e as imagens do painel, de uma vez
+  html = aplicarTextos(html, S);
   html = setMarker(html, "STATS", "            " + stats);
   html = setMarker(html, "SERVICES", "          " + servicesHtml);
-  html = setMarker(html, "ABOUT_TITLE", S.about_title);
-  html = setMarker(html, "ABOUT_LEAD", S.about_lead);
   html = setMarker(html, "ABOUT_BULLETS", "            " + bullets);
+  html = setMarker(html, "ONLINE_LIST", "            " +
+    String(S.online_list || "").split("\n").map((l) => l.trim()).filter(Boolean)
+      .map((l) => `<li>${esc(l)}</li>`).join("\n            "));
+  html = setMarker(html, "ATENDIMENTO", "          " + blocoAtendimento(S));
   html = setMarker(html, "TEAM", "          " + teamHtml);
   html = setMarker(html, "PORTFOLIO", "          " + worksHtml);
   html = setMarker(html, "TESTIMONIALS", "          " + depsHtml);
   html = setMarker(html, "CONTACT_INFO", "            " + contactInfo);
   const footerEsp = services.map((s) => `<a href="/especialidades/${esc(s.slug)}/">${esc(s.title)}</a>`).join("\n            ");
   html = setMarker(html, "FOOTER_ESP", "            " + footerEsp);
-  // Âncora curta (só o nome): o título "Atendemos em" já dá o contexto, e repetir
-  // "Terapia em" 15 vezes empilhava 13 linhas no celular sem ganho de SEO.
-  const footerCidades = [...CIDADES.map((c) => `<a href="/terapia-em-${c.slug}/">${esc(c.nome)}</a>`),
-    `<a href="/terapia-em-pernambuco/">Todo o Pernambuco (online)</a>`,
-    `<a href="/onde-atendemos/"><b>Ver toda a área →</b></a>`].join("\n            ");
-  html = setMarker(html, "FOOTER_CIDADES", "            " + footerCidades);
   // o e-mail do rodapé vinha fixo no HTML e divergia do cadastrado no painel
   html = setMarker(html, "FOOTER_EMAIL", `          <a href="mailto:${esc(S.contact_email)}">${esc(S.contact_email)}</a>`);
   html = setMarker(html, "BLOG", "          " + posts.slice(0, 3).map(postCard).join("\n          "));
   const formServices = services.map((s) => `<option>${esc(s.title)}</option>`).join("\n                ");
   html = setMarker(html, "FORM_SERVICES", "                " + formServices);
-  html = setMarker(html, "FOOTER_TAGLINE", S.footer_tagline);
   html = setMarker(html, "CNPJ", S.cnpj);
   // atualiza QUALQUER wa.me/<numero> restante (footer etc.)
   html = html.replace(/wa\.me\/\d+/g, `wa.me/${S.whatsapp}`);
+  // o preload do LCP aponta para a foto do topo — se ela mudar no painel,
+  // um preload apontando para a imagem antiga baixaria um arquivo à toa
+  if (S.img_hero) html = html.replace(/(<link rel="preload" as="image"[^>]*href=")[^"]*(")/, `$1${S.img_hero}$2`);
   fs.writeFileSync(idx, html);
 
   /* ---------- /especialidades/ + /especialidades/<slug>/ ---------- */
@@ -682,7 +618,7 @@ function publish() {
       itemListElement: services.filter((s) => s.slug).map((s, i) => ({ "@type": "ListItem", position: i + 1,
         name: s.title, url: `${SITE}/especialidades/${s.slug}/` })) } ] };
   fs.writeFileSync(path.join(ROOT, "especialidades", "index.html"),
-    listTpl.replaceAll("{{SERVICES_HTML}}", "          " + servicesAllHtml)
+    aplicarTextos(listTpl, S).replaceAll("{{SERVICES_HTML}}", "          " + servicesAllHtml)
       .replaceAll("{{COUNT}}", String(services.length))
       .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(listJ, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
       .replace(/wa\.me\/\d+/g, `wa.me/${S.whatsapp}`));
@@ -704,8 +640,6 @@ function publish() {
     }
     const tLongo = `${sv.title} em Caruaru-PE e Online`;
     const espTitleTag = tLongo.length <= 62 ? tLongo : `${sv.title} — Caruaru-PE`;
-    const cidadesLinks = [...CIDADES.map((c) => `<a href="/terapia-em-${c.slug}/">${esc(c.nome)}</a>`),
-      `<a href="/terapia-em-pernambuco/">todo o Pernambuco</a>`].join("\n            ");
     const ej = { "@context": "https://schema.org", "@graph": [
       { "@type": "MedicalWebPage", name: `${sv.title} — BemEstarClinic`, url: `${SITE}/especialidades/${sv.slug}/`,
         description: sv.text, inLanguage: "pt-BR",
@@ -717,14 +651,13 @@ function publish() {
         { "@type": "ListItem", position: 3, name: sv.title, item: `${SITE}/especialidades/${sv.slug}/` } ] } ] };
     fs.mkdirSync(path.join(ROOT, "especialidades", sv.slug), { recursive: true });
     fs.writeFileSync(path.join(ROOT, "especialidades", sv.slug, "index.html"),
-      espTpl.replaceAll("{{TITLE}}", esc(sv.title))
+      aplicarTextos(espTpl, S).replaceAll("{{TITLE}}", esc(sv.title))
         .replaceAll("{{TITLE_ENC}}", encodeURIComponent(sv.title))
         .replaceAll("{{WA_TEXT}}", encodeURIComponent(`Olá! Quero agendar ${sv.title} na BemEstarClinic 🪷`))
         .replaceAll("{{SLUG}}", esc(sv.slug))
         .replaceAll("{{EXCERPT}}", esc(sv.text || ""))
         .replaceAll("{{META_DESC}}", esc(metaEsp))
         .replaceAll("{{TITLE_TAG}}", esc(espTitleTag))
-        .replaceAll("{{CIDADES_LINKS}}", "            " + cidadesLinks)
         .replaceAll("{{ICON}}", ICONS[i % ICONS.length])
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
         .replaceAll("{{RELATED}}", "          " + others)
@@ -805,145 +738,12 @@ function publish() {
   ] };
   // ATENÇÃO à ordem: o wa.me é normalizado no TEMPLATE primeiro. Se fosse depois,
   // trocaria o número de cada nutricionista pelo número geral da clínica.
-  const guiaOut = guiaTpl.replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`)
+  const guiaOut = aplicarTextos(guiaTpl, S).replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`)
     .replaceAll("{{PROFISSIONAIS_HTML}}", "          " + cardsProf)
     .replaceAll("{{GRUPOS_HTML}}", "          " + gruposHtml)
     .replaceAll("{{TOTAL}}", String(team.length))
     .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(guiaJ, null, 2).replace(/\n/g, "\n  ")}\n  </script>`);
   fs.writeFileSync(path.join(ROOT, "profissionais", "index.html"), guiaOut);
-
-  /* ---------- /onde-atendemos/ + /terapia-em-<cidade>/ ---------- */
-  const cidadeTpl = fs.readFileSync(path.join(ROOT, "src", "cidade.html"), "utf8");
-  const hubTpl = fs.readFileSync(path.join(ROOT, "src", "onde-atendemos.html"), "utf8");
-  const svcBySlug = new Map(services.filter((s) => s.slug).map((s) => [s.slug, s]));
-
-  // página estadual: mesma estrutura, conteúdo próprio (foco em online)
-  const ESTADO = { slug: "pernambuco", nome: "Pernambuco", estado: true,
-    rota: "Presencial na sede, em Caruaru; online pelo WhatsApp para qualquer município do estado.",
-    contexto: [
-      "Pernambuco tem 184 municípios, e a oferta de saúde mental está longe de ser distribuída de forma equilibrada entre eles. Fora do Recife e de meia dúzia de polos regionais, encontrar psicanalista, psicólogo ou terapeuta integrativo com agenda disponível ainda é difícil — quando existe.",
-      "A BemEstarClinic atende presencialmente em Caruaru, no Agreste, e online para todo o estado. O formato online é feito pelo WhatsApp e mantém exatamente as mesmas condições do presencial: o mesmo profissional, a mesma duração de sessão e o mesmo dever de sigilo, que é obrigação ética e legal independentemente do meio.",
-      "Na prática, isso significa que morar em Petrolina, em Serra Talhada, em Ouricuri ou no Recife não impede ninguém de começar um acompanhamento aqui. Só os procedimentos de contato direto — ozonioterapia, detox iônico, acupuntura, ventosaterapia, kinesioterapia e o exame de biorressonância — exigem presença física na clínica."
-    ],
-    perfil: "No atendimento estadual, a maior parte da procura é por psicanálise e psicologia online, seguidas por avaliação psicológica com laudo e pelas terapias integrativas que dispensam contato presencial.",
-    foco: ["psicanalise-individual-e-casal", "psicologia", "avaliacao-psicologica-e-psicossocial"],
-    faq: [
-      ["Vocês atendem online em todo o Pernambuco?", "Sim. O atendimento online é feito pelo WhatsApp e alcança qualquer município do estado, sem custo de deslocamento e com o mesmo sigilo do presencial."],
-      ["Qual a diferença entre terapia online e presencial?", "Do ponto de vista clínico, nenhuma: mesmo profissional, mesma duração, mesmo compromisso ético. A diferença é apenas o meio pelo qual a sessão acontece."],
-      ["O que precisa ser feito presencialmente?", "Os procedimentos de contato — ozonioterapia e detox iônico, acupuntura, ventosaterapia, kinesioterapia com fitas elásticas e o exame de biorressonância. Todo o resto funciona à distância."],
-      ["Onde fica a clínica para quem quiser ir presencialmente?", "Na Rua Arthur Antônio da Silva, 481, Sala 707 — Empresarial Nordeste Corporate, bairro Universitário, Caruaru-PE."]
-    ] };
-
-  const LOCAIS = [...CIDADES, ESTADO];
-  const cidadeUrl = (c) => `/terapia-em-${c.slug}/`;
-
-  for (const c of LOCAIS) {
-    const isEstado = !!c.estado, isSede = !!c.sede;
-    // title ≤ ~60 e description ≤ ~158: acima disso o Google trunca na SERP e o CTR cai.
-    // Nomes longos (Santa Cruz do Capibaribe, Brejo da Madre de Deus) usam a versão curta.
-    const titleLongo = `Terapia em ${c.nome} — PE | Psicanálise e Terapias Integrativas`;
-    const titleTag = isEstado
-      ? "Terapia online em Pernambuco | BemEstarClinic"
-      : titleLongo.length <= 62 ? titleLongo : `Terapia em ${c.nome}-PE | BemEstarClinic`;
-    const metaDesc = isEstado
-      ? "Terapia online para todo o Pernambuco: psicanálise, psicologia, avaliação psicológica e terapias integrativas, com o mesmo sigilo do presencial."
-      : isSede
-        ? "Psicanálise, psicologia, ozonioterapia e terapias integrativas em Caruaru-PE, no bairro Universitário. Presencial e online. Agende sua consulta."
-        : `Terapia em ${c.nome}-PE: psicanálise, psicologia e terapias integrativas na clínica em Caruaru, a ${c.km} km — ou online. Agende sua consulta.`;
-    const h1 = isEstado
-      ? "Terapia <em>online</em> em Pernambuco"
-      : isSede ? "Terapia em <em>Caruaru</em> — PE" : `Terapia em <em>${esc(c.nome)}</em> — PE`;
-    const intro = isEstado
-      ? "Psicanálise, psicologia, avaliação psicológica e terapias integrativas para quem mora em qualquer canto de Pernambuco — online pelo WhatsApp, ou presencial na nossa sede em Caruaru."
-      : isSede
-        ? "Somos uma clínica caruaruense de saúde mental e terapias integrativas, no bairro Universitário. Psicanálise, psicologia, avaliação psicológica, ozonioterapia e mais — presencial ou online."
-        : `Mora em ${esc(c.nome)} e procura terapia? A BemEstarClinic fica a cerca de ${c.km} km, em Caruaru — e atende também online, pelo WhatsApp, para quem prefere não pegar a estrada.`;
-    const h2Chegar = isEstado
-      ? "Como funciona o atendimento em <em>todo o estado</em>"
-      : isSede ? "Onde <em>estamos</em> em Caruaru" : `Como chegar até a clínica saindo de <em>${esc(c.nome)}</em>`;
-    const h2Foco = isEstado
-      ? "Mais procurado no <em>atendimento online</em>"
-      : isSede ? "Mais procurado por quem mora em <em>Caruaru</em>" : `Mais procurado por quem vem de <em>${esc(c.nome)}</em>`;
-    const h2Faq = isEstado
-      ? "Perguntas sobre a <em>terapia online</em>"
-      : `Perguntas de quem mora em <em>${esc(c.nome)}</em>`;
-    const ctaTexto = isEstado
-      ? "Onde quer que você esteja em Pernambuco, dá para começar esta semana — a primeira conversa já organiza o caminho."
-      : isSede
-        ? "Você está na mesma cidade que a gente: dá para marcar e vir sem nenhuma viagem pela frente."
-        : `Se você mora em ${esc(c.nome)} ou na região, dá para começar hoje mesmo — presencial em Caruaru ou online, do jeito que couber na sua rotina.`;
-    const labelDist = isEstado ? "Cobertura" : isSede ? "Localização" : "Distância";
-    const distancia = isEstado ? "Todo o estado de Pernambuco, no formato online"
-      : isSede ? "Bairro Universitário, Caruaru-PE" : `Cerca de ${c.km} km até a clínica, em Caruaru`;
-
-    const contextoHtml = c.contexto.map((p) => `<p>${esc(p)}</p>`).join("\n          ");
-    const focoHtml = c.foco.map((slug, i) => {
-      const sv = svcBySlug.get(slug); if (!sv) return "";
-      return `<article class="card" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
-              <div class="service__icon">${ICONS[i % ICONS.length]}</div>
-              <h3 class="service__title">${esc(sv.title)}</h3>
-              <p class="service__text">${esc(sv.text)}</p>
-              <a class="service__more" href="/especialidades/${esc(sv.slug)}/">Saiba mais →</a>
-            </article>`;
-    }).filter(Boolean).join("\n          ");
-    const faqHtml = c.faq.map(([q, a]) =>
-      `<details class="faq__item"><summary class="faq__q">${esc(q)}</summary><div class="faq__a"><p>${esc(a)}</p></div></details>`).join("\n          ");
-    const outrasHtml = LOCAIS.filter((o) => o.slug !== c.slug)
-      .map((o) => `<a href="${cidadeUrl(o)}">${esc(o.nome)}</a>`).join("\n            ");
-
-    const cj = { "@context": "https://schema.org", "@graph": [
-      { "@type": "MedicalClinic", "@id": `${SITE}${cidadeUrl(c)}#clinica`, name: "BemEstarClinic",
-        url: `${SITE}${cidadeUrl(c)}`, image: `${SITE}/assets/img/og-image.png`, telephone: "+" + S.whatsapp,
-        description: metaDesc, priceRange: "$$",
-        address: { "@type": "PostalAddress", streetAddress: "Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Empresarial Nordeste Corporate",
-          addressLocality: "Caruaru", addressRegion: "PE", postalCode: "55016-445", addressCountry: "BR" },
-        areaServed: isEstado
-          ? [{ "@type": "State", name: "Pernambuco" }]
-          : [{ "@type": "City", name: c.nome, containedInPlace: { "@type": "State", name: "Pernambuco" } }],
-        availableService: c.foco.map((sl) => svcBySlug.get(sl)).filter(Boolean).map((sv) => ({ "@type": "MedicalTherapy", name: sv.title })),
-        parentOrganization: { "@id": `${SITE}/#org` } },
-      { "@type": "BreadcrumbList", itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Início", item: `${SITE}/` },
-        { "@type": "ListItem", position: 2, name: "Onde atendemos", item: `${SITE}/onde-atendemos/` },
-        { "@type": "ListItem", position: 3, name: c.nome, item: `${SITE}${cidadeUrl(c)}` } ] },
-      { "@type": "FAQPage", mainEntity: c.faq.map(([q, a]) => ({
-        "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) },
-    ] };
-
-    fs.mkdirSync(path.join(ROOT, `terapia-em-${c.slug}`), { recursive: true });
-    fs.writeFileSync(path.join(ROOT, `terapia-em-${c.slug}`, "index.html"),
-      cidadeTpl.replaceAll("{{SLUG}}", esc(c.slug)).replaceAll("{{CIDADE}}", esc(c.nome))
-        .replaceAll("{{TITLE_TAG}}", esc(titleTag)).replaceAll("{{META_DESC}}", esc(metaDesc))
-        .replaceAll("{{H1}}", h1).replaceAll("{{INTRO}}", intro)
-        .replaceAll("{{H2_CHEGAR}}", h2Chegar).replaceAll("{{H2_FOCO}}", h2Foco).replaceAll("{{H2_FAQ}}", h2Faq)
-        .replaceAll("{{CTA_TEXTO}}", ctaTexto)
-        .replaceAll("{{LABEL_DISTANCIA}}", labelDist).replaceAll("{{DISTANCIA}}", esc(distancia))
-        .replaceAll("{{ROTA}}", esc(c.rota)).replaceAll("{{PERFIL}}", esc(c.perfil))
-        .replaceAll("{{CONTEXTO_HTML}}", contextoHtml).replaceAll("{{FOCO_HTML}}", focoHtml)
-        .replaceAll("{{FAQ_HTML}}", faqHtml).replaceAll("{{OUTRAS_HTML}}", outrasHtml)
-        .replaceAll("{{COUNT}}", String(services.length))
-        .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(cj, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
-        .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
-  }
-
-  // hub /onde-atendemos/
-  const hubCards = LOCAIS.map((c, i) => `<a class="card cidade-card" href="${cidadeUrl(c)}" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
-            <h3 class="cidade-card__nome">${esc(c.nome)}</h3>
-            <p class="cidade-card__dist">${c.estado ? "Online, todo o estado" : c.sede ? "Aqui é a nossa sede" : `a cerca de ${c.km} km da clínica`}</p>
-            <span class="cidade-card__more">Ver atendimento →</span>
-          </a>`).join("\n          ");
-  const hubJ = { "@context": "https://schema.org", "@graph": [
-    { "@type": "BreadcrumbList", itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE}/` },
-      { "@type": "ListItem", position: 2, name: "Onde atendemos", item: `${SITE}/onde-atendemos/` } ] },
-    { "@type": "ItemList", name: "Cidades atendidas pela BemEstarClinic",
-      itemListElement: LOCAIS.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.nome, url: `${SITE}${cidadeUrl(c)}` })) },
-  ] };
-  fs.mkdirSync(path.join(ROOT, "onde-atendemos"), { recursive: true });
-  fs.writeFileSync(path.join(ROOT, "onde-atendemos", "index.html"),
-    hubTpl.replaceAll("{{CIDADES_HTML}}", "          " + hubCards)
-      .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(hubJ, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
-      .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
 
   /* ---------- /privacidade/ (LGPD) ---------- */
   const privTpl = fs.readFileSync(path.join(ROOT, "src", "privacidade.html"), "utf8");
@@ -957,7 +757,7 @@ function publish() {
       { "@type": "ListItem", position: 1, name: "Início", item: `${SITE}/` },
       { "@type": "ListItem", position: 2, name: "Política de Privacidade", item: `${SITE}/privacidade/` } ] } ] };
   fs.mkdirSync(path.join(ROOT, "privacidade"), { recursive: true });
-  let privHtml = privTpl.replaceAll("{{DATA_BR}}", dateBR(hojeISO))
+  let privHtml = aplicarTextos(privTpl, S).replaceAll("{{DATA_BR}}", dateBR(hojeISO))
     .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(privJ, null, 2).replace(/\n/g, "\n  ")}\n  </script>`);
   privHtml = setMarker(privHtml, "PRIV_CNPJ", esc(S.cnpj));
   privHtml = setMarker(privHtml, "PRIV_ENDERECO", esc(S.address));
@@ -969,7 +769,7 @@ function publish() {
   const agendarTpl = fs.readFileSync(path.join(ROOT, "src", "agendar.html"), "utf8");
   fs.mkdirSync(path.join(ROOT, "agendar"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "agendar", "index.html"),
-    setMarker(agendarTpl, "FORM_SERVICES", "                " + services.map((s) => `<option>${esc(s.title)}</option>`).join("\n                "))
+    setMarker(aplicarTextos(agendarTpl, S), "FORM_SERVICES", "                " + services.map((s) => `<option>${esc(s.title)}</option>`).join("\n                "))
       .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
 
   /* ---------- índice de busca (search-index.json) ---------- */
@@ -984,10 +784,7 @@ function publish() {
     ...services.filter((s) => s.slug).map((s) => ({ t: s.title, u: `/especialidades/${s.slug}/`, tipo: "Especialidade", d: strip(s.text) + " " + strip(s.content).slice(0, 300) })),
     ...posts.map((po) => ({ t: po.title, u: `/blog/${po.slug}/`, tipo: "Feed", d: strip(po.excerpt) + " " + strip(po.content).slice(0, 300) })),
     ...team.map((m) => ({ t: m.name, u: "/#profissionais", tipo: "Profissional", d: `${strip(m.role)}. ${strip(m.bio)}` })),
-    { t: "Onde atendemos — Caruaru e região", u: "/onde-atendemos/", tipo: "Cobertura", d: "Cidades do Agreste atendidas pela clínica, com distância, acesso e as especialidades mais procuradas em cada uma." },
     { t: "Política de Privacidade", u: "/privacidade/", tipo: "Institucional", d: "Como tratamos os seus dados pessoais: o que coletamos, por quê, com quem compartilhamos, prazos de guarda e como exercer os seus direitos pela LGPD." },
-    ...LOCAIS.map((c) => ({ t: c.estado ? "Terapia online em Pernambuco" : `Terapia em ${c.nome}`, u: cidadeUrl(c),
-      tipo: "Cidade", d: strip(c.perfil) + " " + strip(c.contexto[0]) })),
   ];
   fs.mkdirSync(path.join(ROOT, "assets", "data"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "assets", "data", "search-index.json"), JSON.stringify(searchIndex));
@@ -1002,7 +799,7 @@ function publish() {
   const postTpl = fs.readFileSync(path.join(ROOT, "src", "post.html"), "utf8");
   fs.mkdirSync(path.join(ROOT, "blog"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "blog", "index.html"),
-    blogTpl.replaceAll("{{POSTS_HTML}}", "          " + (posts.map(postCard).join("\n          ") || '<p class="blog-empty">Em breve, novidades por aqui! 🪷</p>'))
+    aplicarTextos(blogTpl, S).replaceAll("{{POSTS_HTML}}", "          " + (posts.map(postCard).join("\n          ") || '<p class="blog-empty">Em breve, novidades por aqui! 🪷</p>'))
       .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
   const keepPosts = new Set(posts.map((x) => x.slug));
   for (const d of fs.readdirSync(path.join(ROOT, "blog"), { withFileTypes: true }))
@@ -1015,7 +812,7 @@ function publish() {
       publisher: { "@id": `${SITE}/#org` }, mainEntityOfPage: `${SITE}/blog/${po.slug}/` };
     fs.mkdirSync(path.join(ROOT, "blog", po.slug), { recursive: true });
     fs.writeFileSync(path.join(ROOT, "blog", po.slug, "index.html"),
-      postTpl.replaceAll("{{TITLE}}", esc(po.title)).replaceAll("{{EXCERPT}}", esc(po.excerpt))
+      aplicarTextos(postTpl, S).replaceAll("{{TITLE}}", esc(po.title)).replaceAll("{{EXCERPT}}", esc(po.excerpt))
         .replaceAll("{{SLUG}}", esc(po.slug)).replaceAll("{{IMAGE}}", esc(po.image))
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
@@ -1029,8 +826,6 @@ function publish() {
     { loc: `${SITE}/`, pri: "1.0", freq: "weekly" },
     { loc: `${SITE}/especialidades/`, pri: "0.9", freq: "monthly" },
     ...services.filter((s) => s.slug).map((s) => ({ loc: `${SITE}/especialidades/${s.slug}/`, pri: "0.8", freq: "monthly" })),
-    { loc: `${SITE}/onde-atendemos/`, pri: "0.9", freq: "monthly" },
-    ...LOCAIS.map((c) => ({ loc: `${SITE}${cidadeUrl(c)}`, pri: c.sede || c.estado ? "0.9" : "0.8", freq: "monthly" })),
     { loc: `${SITE}/profissionais/`, pri: "0.8", freq: "monthly" },
     { loc: `${SITE}/blog/`, pri: "0.7", freq: "weekly" },
     ...posts.map((po) => ({ loc: `${SITE}/blog/${po.slug}/`, pri: "0.6", freq: "yearly" })),
@@ -1062,18 +857,160 @@ const readBody = (req) => new Promise((ok, bad) => {
   req.on("end", () => { try { ok(d ? JSON.parse(d) : {}); } catch { bad(new Error("JSON inválido")); } });
 });
 const TABLES = { services: ["title", "slug", "text", "content", "sort"], portfolio: ["title", "subtitle", "image", "sort"], testimonials: ["text", "name", "role", "initials", "sort"], team: ["name", "role", "bio", "photo", "whatsapp", "especialidades", "na_home", "sort"], posts: ["title", "slug", "excerpt", "content", "image", "date", "sort"] };
-const KEYS = ["hero_badge", "hero_title", "hero_lead", "stats", "about_title", "about_lead", "about_bullets",
-  "whatsapp", "whatsapp_display", "phone_fixed", "contact_email", "instagram", "address", "footer_tagline", "cnpj"];
+/* ==========================================================================
+   CAMPOS — declaração única de tudo que é editável em "Textos do site".
+   O painel monta a tela a partir daqui, então incluir um campo novo é acrescentar
+   uma linha nesta lista + o marcador <!--#CHAVE--> no HTML. Nada mais.
+   tipos: input | textarea | bigtext | image | lista
+   ========================================================================== */
+const CAMPOS = [
+  { grupo: "🏠 Topo da página inicial", campos: [
+    ["hero_badge", "Selo acima do título", "input"],
+    ["hero_title", "Título principal — <em>texto</em> deixa em itálico dourado", "input"],
+    ["hero_lead", "Texto de apoio", "textarea"],
+    ["img_hero", "Foto do topo", "image"],
+    ["img_hero_alt", "Descrição da foto do topo (acessibilidade e Google)", "input"],
+    ["stats", "Números do topo — um por linha: 16+ | especialidades", "stats"],
+  ]},
+  { grupo: "🌿 Seção Especialidades", campos: [
+    ["sec_esp_eyebrow", "Rótulo", "input"],
+    ["sec_esp_title", "Título", "input"],
+    ["sec_esp_sub", "Subtítulo", "textarea"],
+  ]},
+  { grupo: "💜 Seção A Clínica", campos: [
+    ["about_title", "Título", "input"],
+    ["about_lead", "Texto de apresentação", "textarea"],
+    ["about_bullets", "Diferenciais — um por linha", "json_lista"],
+    ["img_clinica", "Foto da seção", "image"],
+    ["img_clinica_alt", "Descrição da foto", "input"],
+    ["mvv_missao", "Missão", "textarea"],
+    ["mvv_visao", "Visão", "textarea"],
+    ["mvv_valores", "Valores", "textarea"],
+  ]},
+  { grupo: "👩‍⚕️ Seção Profissionais", campos: [
+    ["sec_prof_eyebrow", "Rótulo", "input"],
+    ["sec_prof_title", "Título", "input"],
+    ["sec_prof_sub", "Subtítulo", "textarea"],
+  ]},
+  { grupo: "💻 Seção Atendimento Online", campos: [
+    ["sec_online_eyebrow", "Rótulo", "input"],
+    ["sec_online_title", "Título", "input"],
+    ["sec_online_sub", "Texto", "textarea"],
+    ["online_list", "Itens da lista (um por linha)", "lista"],
+    ["img_online", "Foto da seção", "image"],
+    ["img_online_alt", "Descrição da foto", "input"],
+  ]},
+  { grupo: "🏢 Seção Para Empresas", campos: [
+    ["sec_emp_eyebrow", "Rótulo", "input"],
+    ["sec_emp_title", "Título", "input"],
+    ["sec_emp_sub", "Subtítulo", "textarea"],
+  ]},
+  { grupo: "🪷 Seção Nosso Espaço", campos: [
+    ["sec_espaco_eyebrow", "Rótulo", "input"],
+    ["sec_espaco_title", "Título", "input"],
+    ["sec_espaco_sub", "Subtítulo", "textarea"],
+  ]},
+  { grupo: "⭐ Seção Depoimentos", campos: [
+    ["sec_dep_eyebrow", "Rótulo", "input"],
+    ["sec_dep_title", "Título", "input"],
+  ]},
+  { grupo: "📰 Seção Feed (home)", campos: [
+    ["sec_feed_eyebrow", "Rótulo", "input"],
+    ["sec_feed_title", "Título", "input"],
+    ["sec_feed_sub", "Subtítulo", "textarea"],
+  ]},
+  { grupo: "📞 Seção Contato", campos: [
+    ["sec_contato_eyebrow", "Rótulo", "input"],
+    ["sec_contato_title", "Título", "input"],
+    ["sec_contato_sub", "Subtítulo", "textarea"],
+    ["sec_passos_title", "Título do bloco “Três passos”", "input"],
+    ["atendimento", "Bloco “Atendemos pacientes…” — uma linha por parágrafo", "bigtext"],
+  ]},
+  { grupo: "📄 Página Especialidades", campos: [
+    ["pg_esp_title", "Título da página", "input"],
+    ["pg_esp_lead", "Texto de abertura", "textarea"],
+  ]},
+  { grupo: "📄 Página Profissionais", campos: [
+    ["pg_prof_title", "Título da página", "input"],
+    ["pg_prof_lead", "Texto de abertura", "textarea"],
+  ]},
+  { grupo: "📄 Página Feed", campos: [
+    ["pg_feed_title", "Título da página", "input"],
+    ["pg_feed_lead", "Texto de abertura", "textarea"],
+  ]},
+  { grupo: "📄 Página Agendar consulta", campos: [
+    ["pg_agendar_title", "Título da página", "input"],
+    ["pg_agendar_lead", "Texto de abertura", "textarea"],
+  ]},
+  { grupo: "📄 Página Privacidade", campos: [
+    ["pg_priv_title", "Título da página", "input"],
+    ["pg_priv_lead", "Texto de abertura", "textarea"],
+  ]},
+  { grupo: "🔗 Rodapé e contato", campos: [
+    ["footer_tagline", "Frase do rodapé", "textarea"],
+    ["whatsapp", "WhatsApp (só números, com 55)", "input"],
+    ["whatsapp_display", "WhatsApp como aparece na tela", "input"],
+    ["phone_fixed", "Telefone fixo", "input"],
+    ["contact_email", "E-mail", "input"],
+    ["instagram", "Instagram (sem @)", "input"],
+    ["address", "Endereço completo", "textarea"],
+    ["cnpj", "CNPJ", "input"],
+    ["img_og", "Imagem de compartilhamento (WhatsApp/Facebook)", "image"],
+  ]},
+];
+const KEYS = CAMPOS.flatMap((g) => g.campos.map(([k]) => k));
+// precisa vir depois de KEYS: a migração consulta a lista para saber o que é editável
+migrarTextos();
+
+/* Aplica em qualquer arquivo os textos simples guardados no painel.
+   Chaves com formatação própria (listas, imagens) são tratadas à parte. */
+const ESPECIAIS = ["stats", "about_bullets", "online_list", "atendimento"];
+function aplicarTextos(html, S) {
+  for (const chave of KEYS) {
+    if (ESPECIAIS.includes(chave) || chave.endsWith("_alt")) continue;
+    const MARCA = chave.toUpperCase();
+    if (!html.includes(`<!--#${MARCA}-->`)) continue;
+    html = setMarker(html, MARCA, chave.startsWith("img_") ? tagImagem(chave, S) : (S[chave] ?? ""));
+  }
+  // imagem de compartilhamento (og:image / twitter:image) em todas as páginas
+  if (S.img_og) {
+    const abs = S.img_og.startsWith("http") ? S.img_og : "https://bemestarclinic.com" + S.img_og;
+    html = html.replace(/(<meta (?:property|name)="(?:og|twitter):image" content=")[^"]*(")/g, `$1${abs}$2`);
+  }
+  return html;
+}
 function slug(s) { return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 
 /* ------------------------------ Servidor ---------------------------------- */
 http.createServer(async (req, res) => {
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
+
+  // Cabeçalhos de segurança em toda resposta
+  res.setHeader("X-Content-Type-Options", "nosniff");        // barra MIME sniffing
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");            // impede clickjacking no painel
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
+
   try {
     if (p.startsWith("/api/")) {
       if (p === "/api/login" && req.method === "POST") {
+        const ip = clientIp(req);
+        const faltam = loginBloqueado(ip);
+        if (faltam) return json(res, 429, { error: `Muitas tentativas. Tente de novo em ${faltam} min.` });
         const { password } = await readBody(req);
-        if (sha(password) !== getS("admin_password_hash")) return json(res, 401, { error: "Senha incorreta" });
+        const guardado = getS("admin_password_hash");
+        if (!confereSenha(password, guardado)) {
+          registrarErro(ip);
+          console.warn(`  ⚠ senha incorreta no painel — origem ${ip}`);
+          return json(res, 401, { error: "Senha incorreta" });
+        }
+        // migração transparente: quem ainda estava no sha256 sobe para scrypt
+        // no primeiro login certo, sem precisar trocar de senha
+        if (senhaEhAntiga(guardado)) {
+          setS("admin_password_hash", hashSenha(password));
+          console.log("  · senha do painel migrada de sha256 para scrypt");
+        }
+        tentativas.delete(ip);
         const t = crypto.randomBytes(24).toString("hex");
         sessions.set(t, Date.now());
         // Secure só quando a requisição chegou por HTTPS (nginx informa no X-Forwarded-Proto).
@@ -1091,15 +1028,21 @@ http.createServer(async (req, res) => {
       }
       if (p === "/api/password" && req.method === "POST") {
         const { current, next } = await readBody(req);
-        if (sha(current) !== getS("admin_password_hash")) return json(res, 400, { error: "Senha atual incorreta" });
-        if (!next || String(next).length < 6) return json(res, 400, { error: "Nova senha deve ter 6+ caracteres" });
-        setS("admin_password_hash", sha(next));
+        if (!confereSenha(current, getS("admin_password_hash"))) return json(res, 400, { error: "Senha atual incorreta" });
+        if (!next || String(next).length < 8) return json(res, 400, { error: "A nova senha precisa ter pelo menos 8 caracteres" });
+        if (confereSenha(next, getS("admin_password_hash"))) return json(res, 400, { error: "A nova senha é igual à atual" });
+        setS("admin_password_hash", hashSenha(next));
+        // trocar a senha derruba as outras sessões: se alguém tinha um cookie
+        // roubado, ele para de valer no momento da troca
+        const meu = (/sid=([a-f0-9]+)/.exec(req.headers.cookie || "") || [])[1];
+        for (const k of [...sessions.keys()]) if (k !== meu) sessions.delete(k);
         return json(res, 200, { ok: true });
       }
       if (p === "/api/content") {
         const S = {}; for (const k of KEYS) S[k] = getS(k) || "";
         return json(res, 200, {
           settings: S,
+          campos: CAMPOS,   // o painel monta a tela "Textos do site" a partir daqui
           services: db.prepare("SELECT * FROM services ORDER BY sort,id").all(),
           portfolio: db.prepare("SELECT * FROM portfolio ORDER BY sort,id").all(),
           testimonials: db.prepare("SELECT * FROM testimonials ORDER BY sort,id").all(),
@@ -1164,7 +1107,17 @@ http.createServer(async (req, res) => {
         .replaceAll("{{APP_VERSION}}", APP_VERSION);
       return res.end(adminHtml);
     }
-    if (/^\/(data|src|server\.js)(\/|$)/.test(p)) { res.writeHead(404); return res.end("404"); }
+    /* Nunca servir: banco, fontes, metadados de repositório e arquivos ocultos.
+       O /.git é o mais crítico — com ele, um git-dumper reconstrói o repositório
+       inteiro (histórico incluso) a partir do site publicado.
+       Exceção: /.well-known/ precisa passar, é por onde o Let's Encrypt valida
+       o domínio para emitir e renovar o certificado. */
+    const ocultoProibido = /(^|\/)\.(?!well-known\/)/.test(p);
+    const extProibida = /\.(js|json|md|db|log|bak|sqlite3?|ya?ml|toml|lock)$/i.test(p) && !p.startsWith("/assets/");
+    if (/^\/(data|src|node_modules)(\/|$)/.test(p) || ocultoProibido || extProibida) {
+      res.writeHead(404, { "Content-Type": "text/plain" });
+      return res.end("404");
+    }
 
     let file = path.normalize(path.join(ROOT, decodeURIComponent(p)));
     if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end("403"); }
@@ -1178,13 +1131,18 @@ http.createServer(async (req, res) => {
 
     res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
     res.end(fs.readFileSync(file));
-  } catch (e) { json(res, 500, { error: e.message }); }
+  } catch (e) {
+    // detalhe do erro vai só para o log do servidor: mensagem de exceção
+    // costuma revelar caminho de arquivo e estrutura interna
+    console.error(`  ✖ erro em ${p}:`, e.message);
+    json(res, 500, { error: "Erro interno" });
+  }
 }).listen(PORT, () => {
   console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
   console.log(`  · Site:   http://localhost:${PORT}/`);
   console.log(`  · Painel: http://localhost:${PORT}/admin/`);
   // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
-  if (getS("admin_password_hash") === sha("bemestar-admin"))
+  if (confereSenha("bemestar-admin", getS("admin_password_hash")))
     console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
   else console.log("");
 });

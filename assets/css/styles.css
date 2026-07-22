@@ -748,23 +748,19 @@ p { margin: 0 0 1rem; }
 .online__cities a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
 .online__cities a:hover { color: var(--gold-soft); }
 
-/* "Atendemos em" — dentro da seção de contato (link contextual pesa mais que rodapé) */
-.contact__cities { margin-top: 2.4rem; padding-top: 1.8rem; border-top: 1px solid var(--line); }
-.contact__cities-title {
-  font-size: .78rem; font-weight: 700; letter-spacing: .22em; text-transform: uppercase;
-  color: var(--violet); margin: 0 0 1rem; text-align: center;
+/* "Atendemos pacientes de toda a região" — fecha a seção de contato */
+.atendimento {
+  margin-top: 2.4rem; padding: 1.6rem 1.4rem; text-align: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-soft);
 }
-.contact__cities-list { display: flex; flex-wrap: wrap; justify-content: center; gap: .55rem; }
-.contact__cities-list a {
-  display: inline-block; padding: .42rem .95rem; border-radius: 999px;
-  background: var(--surface); border: 1px solid var(--line);
-  font-size: .86rem; font-weight: 600; color: var(--violet-ink); text-decoration: none;
-  transition: background .25s ease, color .25s ease, border-color .25s ease, transform .25s ease;
+.atendimento__titulo {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(1.25rem, 2.6vw, 1.6rem); color: var(--violet-ink); margin: 0 0 .8rem;
 }
-.contact__cities-list a:hover {
-  background: var(--violet); border-color: var(--violet); color: #fff; transform: translateY(-2px);
+.atendimento__linha {
+  margin: .35rem 0; color: var(--ink); font-size: .98rem; line-height: 1.6;
 }
-.contact__cities-list a b { font-weight: 700; }
 
 /* --------------------------- Página legal (privacidade) --------------------- */
 .legal { padding: clamp(2.4rem, 6vh, 3.6rem) 0 1rem; color: var(--ink); font-size: 1rem; line-height: 1.75; }

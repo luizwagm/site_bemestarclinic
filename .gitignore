@@ -20,3 +20,6 @@ Thumbs.db
 .DS_Store
 *.log
 node_modules/
+
+# Backups do banco gerados pelo deploy.sh
+backups/
