@@ -25,7 +25,7 @@ const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
 // Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
 // casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "1.1.1";
+const SISTEMA_VERSION = "1.2.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -177,21 +177,44 @@ if (db.prepare("SELECT COUNT(*) c FROM salas").get().c === 0) {
   ["Consultório 01", "Consultório 02", "Consultório 03"]
     .forEach((n, i) => db.prepare("INSERT INTO salas(nome,ativo,sort,criado) VALUES(?,1,?,?)").run(n, i, AGORA_SEED));
 }
+/* Cores OFICIAIS da clínica — extraídas do documento "AGENDA PRA O CADASTRO DA
+   CLÍNICA.docx", onde cada procedimento estava escrito na sua cor. A cor é por
+   FAMÍLIA: consulta e sessão do mesmo procedimento usam a mesma. */
+const CORES_PROCEDIMENTO = {
+  "Psicanálise Individual": "#FF0000",
+  "Psicanálise Casal": "#0000CC",
+  "Protocolo Integrativo — Ozônio e Detox": "#4472C4",
+  "Ozonioterapia": "#538135",
+  "Detox Iônico": "#FFC000",
+  "Acupuntura": "#C00000",
+  "Aromaterapia": "#7030A0",
+  "Terapia Floral": "#FF0066",
+  "Exame de Biorressonância": "#00FF00",
+  "Ventosaterapia": "#FFFF00",
+  "Kinesioterapia": "#00CCFF",
+};
 if (db.prepare("SELECT COUNT(*) c FROM procedimentos").get().c === 0) {
-  // [nome, tipo, cor] — a cor identifica o procedimento na agenda
-  [["Psicanálise Individual", "Consulta", "#5B4FD8"], ["Psicanálise Individual", "Sessão", "#7C6FE8"],
-   ["Psicanálise Casal", "Consulta", "#4338A8"], ["Psicanálise Casal", "Sessão", "#6C5FD0"],
-   ["Protocolo Integrativo — Ozônio e Detox", "Consulta", "#0E8F7E"], ["Protocolo Integrativo — Ozônio e Detox", "Sessão", "#14B8A6"],
-   ["Ozonioterapia", "Consulta", "#0F766E"], ["Ozonioterapia", "Sessão", "#2DD4BF"],
-   ["Detox Iônico", "Consulta", "#B45309"], ["Detox Iônico", "Sessão", "#F59E0B"],
-   ["Acupuntura", "Consulta", "#BE185D"], ["Acupuntura", "Sessão", "#EC4899"],
-   ["Aromaterapia", "Consulta", "#7C3AED"],
-   ["Terapia Floral", "Consulta", "#A855F7"],
-   ["Exame de Biorressonância", "Procedimento", "#0284C7"],
-   ["Ventosaterapia", "Consulta", "#C2410C"], ["Ventosaterapia", "Sessão", "#F97316"],
-   ["Kinesioterapia", "Consulta", "#15803D"], ["Kinesioterapia", "Sessão", "#22C55E"]]
+  [["Psicanálise Individual", "Consulta"], ["Psicanálise Individual", "Sessão"],
+   ["Psicanálise Casal", "Consulta"], ["Psicanálise Casal", "Sessão"],
+   ["Protocolo Integrativo — Ozônio e Detox", "Consulta"], ["Protocolo Integrativo — Ozônio e Detox", "Sessão"],
+   ["Ozonioterapia", "Consulta"], ["Ozonioterapia", "Sessão"],
+   ["Detox Iônico", "Consulta"], ["Detox Iônico", "Sessão"],
+   ["Acupuntura", "Consulta"], ["Acupuntura", "Sessão"],
+   ["Aromaterapia", "Consulta"],
+   ["Terapia Floral", "Consulta"],
+   ["Exame de Biorressonância", "Procedimento"],
+   ["Ventosaterapia", "Consulta"], ["Ventosaterapia", "Sessão"],
+   ["Kinesioterapia", "Consulta"], ["Kinesioterapia", "Sessão"]]
     .forEach((p, i) => db.prepare("INSERT INTO procedimentos(nome,tipo,cor,duracao,ativo,sort,criado) VALUES(?,?,?,40,1,?,?)")
-      .run(p[0], p[1], p[2], i, AGORA_SEED));
+      .run(p[0], p[1], CORES_PROCEDIMENTO[p[0]] || "#5B4FD8", i, AGORA_SEED));
+}
+/* Bancos que já nasceram com as cores provisórias recebem as oficiais UMA vez.
+   A trava em g_config garante que, se a clínica trocar uma cor depois, o deploy
+   seguinte não desfaça a escolha dela. */
+if (getC("cores_oficiais") !== "1") {
+  const upd = db.prepare("UPDATE procedimentos SET cor=? WHERE nome=?");
+  for (const [nome, cor] of Object.entries(CORES_PROCEDIMENTO)) upd.run(cor, nome);
+  setC("cores_oficiais", "1");
 }
 if (db.prepare("SELECT COUNT(*) c FROM profissionais").get().c === 0) {
   [["Dr. Ronalldo JM", "#5B4FD8"], ["Dr. Samuel Teixdan", "#0E8F7E"]]

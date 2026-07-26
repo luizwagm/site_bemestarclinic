@@ -129,6 +129,22 @@
     .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.35rem .8rem;border:1px solid var(--line2);border-radius:9px;padding:.7rem .8rem;max-height:200px;overflow:auto}
     .chk{display:flex;align-items:center;gap:.45rem;font-weight:500;font-size:.88rem;color:var(--text);cursor:pointer}
     .chk input{width:auto}
+    /* cabeçalho de tipo dentro da grade de procedimentos */
+    .chk-grupo{grid-column:1/-1;font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
+      color:var(--marinho);background:#f3f0fb;border-radius:6px;padding:.22rem .5rem;margin:.35rem 0 .1rem}
+    .chk-grupo:first-child{margin-top:0}
+    /* procedimento identificado por bolinha colorida + texto escuro */
+    .pt-cor{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto;
+      border:1px solid rgba(0,0,0,.22);box-shadow:0 0 0 1px rgba(255,255,255,.6) inset}
+    .proc-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.86rem;color:var(--text)}
+    /* grupos por tipo dentro da lista de busca (Consulta / Sessão / Procedimento) */
+    .cbx-grupo{position:sticky;top:0;background:#f3f0fb;color:var(--marinho);font-weight:700;
+      font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;padding:.3rem .7rem;border-bottom:1px solid var(--line)}
+    .cbx-op{display:flex;align-items:center;gap:.45rem}
+    /* filtro de profissional na agenda */
+    .filtro-prof{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+    .filtro-prof select{max-width:280px}
+    .prof-cor{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.2)}
     /* tabelas das anamneses (matrizes e listas) */
     .anam-m{width:100%;border-collapse:collapse;font-size:.86rem;margin:.2rem 0}
     .anam-m th,.anam-m td{border:1px solid var(--line);padding:.32rem .5rem;text-align:left}
@@ -250,6 +266,7 @@
         <button class="vbtn" data-v="agenda" onclick="trocarVista('agenda')">▦ Agenda</button>
         <button class="vbtn" data-v="kanban" onclick="trocarVista('kanban')">▤ Kanban</button>
       </div>
+      <div id="mod-prof" class="filtro-prof" hidden></div>
       <div id="mod-filtro"></div>
       <div class="card" id="mod-tabela" style="padding:0;overflow:auto">
         <table>
@@ -294,6 +311,10 @@ const escA = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
 /* Cor usada dentro de style="": escA não neutraliza ";" nem "(", então um valor
    forjado via API poderia injetar outras declarações CSS. Só passa hexadecimal. */
 const corSegura = (c, padrao) => /^#[0-9a-fA-F]{3,8}$/.test(String(c || "")) ? c : (padrao || "#5B4FD8");
+/* A cor do procedimento vira uma BOLINHA, não a cor do texto: as cores oficiais
+   da clínica incluem amarelo (#FFFF00) e verde-limão (#00FF00), que somem sobre
+   fundo branco. Assim a identificação visual é fiel e o texto continua legível. */
+const bolinha = (cor) => `<span class="pt-cor" style="background:${corSegura(cor,"#9aa0ad")}"></span>`;
 const soDig = (s) => String(s ?? "").replace(/\D/g, "");
 let toastT;
 function toast(m, err) { const t = $("#toast"); t.textContent = m; t.classList.toggle("err", !!err); t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3000); }
@@ -468,7 +489,7 @@ const MODULOS = {
   anamneses: { titulo:"Anamneses", novo:"Nova anamnese", busca:true, anamnese:true,
     colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],["profissional","Profissional"]],
     campos:[] },   // formulário próprio, montado pelo modelo — ver abrirAnamnese()
-  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true,
+  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true, fichaPaciente:true,
     colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
     campos:[
       ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1}],
@@ -612,6 +633,8 @@ function mostrarModulo(){
   const ehAgenda = MOD==="atendimentos";
   $("#mod-vistas").hidden=!ehAgenda;
   $("#mod-imprimir").hidden=!ehAgenda;
+  $("#mod-prof").hidden=!ehAgenda;
+  if(ehAgenda) montarFiltroProfissional();
   if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
   else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; }
   carregarLista();
@@ -640,8 +663,8 @@ function celula(row,[chave,,tipo]){
   if(tipo==="sala") return escA(nomeSala(v));
   if(tipo==="anam") return escA(rotuloAnam(v));
   if(tipo==="proc"){ const p=acha("procedimentos",v);
-    if(!p) return "—"; const c=corSegura(p.cor,"#5a6480");
-    return `<span class="tag" style="background:${c}22;color:${c};border:1px solid ${c}55">${escA(rotuloProc(p))}</span>`; }
+    if(!p) return "—";
+    return `<span class="proc-tag">${bolinha(p.cor)}${escA(rotuloProc(p))}</span>`; }
   if(tipo==="servicos"){ let a=[]; try{a=JSON.parse(v||"[]");}catch{a=v?[v]:[];} return a.length?a.map(escA).join(", "):"—"; }
   if(tipo==="perfil") return escA(PERFIL_ROTULO[v]||v||"—");
   if(tipo==="arq") return v?`<a class="arq-link" href="${escA(v)}" target="_blank">abrir</a>`:"—";
@@ -657,8 +680,35 @@ async function carregarLista(){
   else renderTabela();
 }
 // na agenda, aplica o filtro do relatório; nas anamneses, o tipo do submenu
+/* ==========================================================================
+   AGENDA POR PROFISSIONAL — um de cada vez (escolha da clínica).
+   "Todos" continua disponível para a visão geral e para imprimir tudo junto.
+   Vale para as 3 vistas (tabela, calendário e kanban) e para a impressão.
+   ========================================================================== */
+let filtroProf = "";   // "" = todos
+function montarFiltroProfissional(){
+  const box=$("#mod-prof"); if(!box) return;
+  // o perfil "profissional" só enxerga a própria agenda — filtro não faz sentido
+  if(ME.perfil==="profissional"){ box.hidden=true; return; }
+  const ativos=(CACHE.profissionais||[]).filter((p)=>Number(p.ativo)!==0);
+  const p=acha("profissionais",filtroProf);
+  box.innerHTML=`<span style="font-weight:600;color:var(--muted);font-size:.85rem">Agenda de:</span>
+    <select onchange="trocarProfAgenda(this.value)">
+      <option value="">Todos os profissionais</option>
+      ${ativos.map((x)=>`<option value="${x.id}"${String(filtroProf)===String(x.id)?" selected":""}>${escA(x.nome)}</option>`).join("")}
+    </select>
+    ${p?`<span class="prof-cor" style="background:${corSegura(p.cor)}"></span>`:""}
+    ${filtroProf?`<button class="btn btn-ghost btn-sm" onclick="trocarProfAgenda('')">Ver todos</button>`:""}
+    <span style="color:var(--dim);font-size:.8rem">${filtroProf?"Mostrando só a agenda deste profissional":`${ativos.length} profissionais ativos`}</span>`;
+}
+function trocarProfAgenda(v){ filtroProf=v; montarFiltroProfissional(); pintarAtendimentos(); }
+
 function dadosVisiveis(){
-  if(MOD==="atendimentos") return aplicarFiltroAgenda(LISTA);
+  if(MOD==="atendimentos"){
+    let l=aplicarFiltroAgenda(LISTA);
+    if(filtroProf) l=l.filter((a)=>String(a.profissional_id)===String(filtroProf));
+    return l;
+  }
   if(MOD==="anamneses"){
     // filtra pelo modelo do submenu e pelo NOME DO PACIENTE digitado na busca
     // (o servidor não busca aqui porque a tabela não guarda o nome, só o id)
@@ -795,9 +845,18 @@ function campoHTML(campo, val){
   else if(tipo==="servicos_check"){
     let sel=[]; try{ sel=JSON.parse(val||"[]"); if(!Array.isArray(sel)) sel=[]; }catch{ sel=val?[val]:[]; }  // compat: texto antigo
     const lista=(CACHE.procedimentos||[]).filter((x)=>Number(x.ativo)!==0);
+    // agrupado por tipo, com a bolinha da cor — mesma leitura visual do combobox
+    const ordem=["Consulta","Sessão","Procedimento"];
+    const gr={}; lista.forEach((s)=>{ const t=s.tipo||"Outros"; (gr[t]=gr[t]||[]).push(s); });
+    const chaves=[...ordem.filter((t)=>gr[t]), ...Object.keys(gr).filter((t)=>!ordem.includes(t))];
+    const grade = chaves.map((t)=>
+      `<div class="chk-grupo">${escA(t)}</div>`+
+      gr[t].map((s)=>{const r=rotuloProc(s);
+        return `<label class="chk" data-tipo="${escA(t)}">${bolinha(s.cor)}<input type="checkbox" value="${escA(r)}"${sel.includes(r)?" checked":""}> ${escA(s.nome)}</label>`;}).join("")
+    ).join("");
     ctrl = lista.length
       ? `<input type="text" id="${id}-busca" class="chk-busca" placeholder="Buscar procedimento…" autocomplete="off" oninput="filtrarChkBusca('${id}')" style="margin-bottom:.5rem">
-         <div class="chk-grid" id="${id}-grid">`+lista.map((s)=>{const r=rotuloProc(s);return `<label class="chk"><input type="checkbox" value="${escA(r)}"${sel.includes(r)?" checked":""}> ${escA(r)}</label>`;}).join("")+`</div>`
+         <div class="chk-grid" id="${id}-grid">${grade}</div>`
       : `<p class="hint" style="color:var(--dim)">Nenhum procedimento cadastrado ainda. Cadastre em <b>Cadastros → Procedimentos</b>.</p>`;
   }
   else if(tipo==="cor") ctrl=`<div style="display:flex;gap:.6rem;align-items:center">
@@ -833,6 +892,7 @@ async function abrirForm(id){
   host.innerHTML=`<div class="modal-bg"><div class="modal">
     <h2>${id?"Editar":m.novo||"Novo"}</h2>
     <div class="modal-corpo">
+      ${m.fichaPaciente?`<div id="ficha-paciente"></div>`:""}
       <div class="formgrid">${campos.map((c)=>campoHTML(c,dados[c[0]])).join("")}</div>
       <div id="form-erros"></div>
     </div>
@@ -866,6 +926,19 @@ async function abrirForm(id){
     const prof=$("#f-"+campoProf[0]);
     if(prof){ prof.addEventListener("change",()=>filtrarServicos(false)); }
     filtrarServicos(true);
+  }
+  /* Prontuário: a ficha do paciente aparece no topo assim que ele é escolhido —
+     o profissional escreve a evolução vendo o cadastro, sem trocar de tela. */
+  if(m.fichaPaciente){
+    const campoPac=m.campos.find((c)=>c[3]&&c[3].tabela==="pacientes");
+    const el=campoPac?$("#f-"+campoPac[0]):null;
+    const pintar=async()=>{
+      const pid=el?el.value:"";
+      const p=pid ? await api("pacientes/"+pid).catch(()=>null) : null;
+      const box=$("#ficha-paciente"); if(box) box.innerHTML=blocoPacienteCard(p);
+    };
+    if(el) el.addEventListener("change",pintar);
+    pintar();
   }
   // agenda: escolher o paciente/procedimento traz os dados do cadastro
   if(MOD==="atendimentos"){
@@ -938,12 +1011,28 @@ function cbxFiltrar(id){
     }
     return !!(termo && r.codigo && String(r.codigo).toLowerCase().includes(termo));
   };
-  const ops=base.filter(casa).slice(0,60);
+  const ops=base.filter(casa).slice(0,80);
   // no paciente, mostra o CPF ao lado do nome para diferenciar homônimos
   const extra = (r) => (ehPaciente && r.cpf) ? ` <span style="color:var(--dim);font-size:.82em">· ${escA(r.cpf)}</span>` : "";
-  list.innerHTML = ops.length
-    ? ops.map((r)=>{ const v=usaNome?rotuloRef(r):r.id; return `<div class="cbx-op" data-v="${escA(String(v))}" data-l="${escA(rotuloRef(r))}">${escA(rotuloRef(r))}${extra(r)}</div>`; }).join("")
-    : '<div class="cbx-vazio">Nenhum resultado</div>';
+  const linha = (r) => { const v=usaNome?rotuloRef(r):r.id;
+    const marca = wrap.dataset.tab==="procedimentos" ? bolinha(r.cor) : "";
+    // no procedimento, o tipo já é o cabeçalho do grupo — o item mostra só o nome
+    const rot = wrap.dataset.tab==="procedimentos" ? r.nome : rotuloRef(r);
+    return `<div class="cbx-op" data-v="${escA(String(v))}" data-l="${escA(rotuloRef(r))}">${marca}<span>${escA(rot)}${extra(r)}</span></div>`; };
+
+  if(!ops.length){ list.innerHTML='<div class="cbx-vazio">Nenhum resultado</div>'; list.hidden=false; return; }
+  /* Procedimentos saem SEPARADOS por tipo (Consulta / Sessão / Procedimento),
+     com cabeçalho de grupo — é o que torna a escolha visual e rápida. */
+  if(wrap.dataset.tab==="procedimentos"){
+    const ordem=["Consulta","Sessão","Procedimento"];
+    const grupos={}; ops.forEach((r)=>{ const t=r.tipo||"Outros"; (grupos[t]=grupos[t]||[]).push(r); });
+    const chaves=[...ordem.filter((t)=>grupos[t]), ...Object.keys(grupos).filter((t)=>!ordem.includes(t))];
+    list.innerHTML = chaves.map((t)=>
+      `<div class="cbx-grupo">${escA(t)}${grupos[t].length>1?` (${grupos[t].length})`:""}</div>`+grupos[t].map(linha).join("")
+    ).join("");
+  } else {
+    list.innerHTML = ops.map(linha).join("");
+  }
   list.hidden=false;
 }
 function cbxEscolher(id,v,l){
@@ -1016,6 +1105,13 @@ function aplicarVisibilidadeServicos(id, inicial){
     const okBusca=!termo||lab.textContent.toLowerCase().includes(termo);
     lab.hidden=!(okProf&&okBusca);
     if(!okProf && !inicial) cb.checked=false;   // ao trocar de profissional, desmarca serviços não oferecidos
+  });
+  // cabeçalho de tipo some quando nenhum item daquele grupo está visível
+  grid.querySelectorAll(".chk-grupo").forEach((h)=>{
+    let algumVisivel=false;
+    for(let el=h.nextElementSibling; el && !el.classList.contains("chk-grupo"); el=el.nextElementSibling)
+      if(el.classList.contains("chk") && !el.hidden) { algumVisivel=true; break; }
+    h.hidden=!algumVisivel;
   });
   let aviso=grid.parentElement.querySelector(".chk-aviso");
   if(allow && allow.size===0){   // profissional sem serviços vinculados (independe da busca)
@@ -1253,17 +1349,26 @@ async function abrirAnamnese(id, tipoSugerido){
   pintarDadosPessoaisAnamnese();
   montarFormAnamnese(dados);
 }
-/* Cabeçalho só-leitura com os dados do cadastro do paciente escolhido. */
-function pintarDadosPessoaisAnamnese(){
-  const box=$("#an-dados-pessoais"); if(!box) return;
-  if(!ANAM_PAC){ box.innerHTML=`<p class="hint" style="color:var(--dim);margin:.8rem 0">Escolha o paciente — os dados do cadastro aparecem aqui automaticamente.</p>`; return; }
-  const p=ANAM_PAC, idade=idadeAnos(p.nascimento);
+/* ==========================================================================
+   BLOCO "DADOS DO PACIENTE" (só leitura) — usado na ANAMNESE e no PRONTUÁRIO.
+   É o que o Dr. pediu: escolheu o paciente, a ficha dele já aparece preenchida,
+   sem precisar sair da tela para consultar o cadastro.
+   ========================================================================== */
+function blocoPacienteCard(p, titulo){
+  if(!p) return `<p class="hint" style="color:var(--dim);margin:.8rem 0">Escolha o paciente — os dados do cadastro aparecem aqui automaticamente.</p>`;
+  const idade=idadeAnos(p.nascimento);
   const item=(r,v)=> v?`<div><span style="color:var(--dim);font-size:.72rem">${escA(r)}</span><br><b style="font-weight:600">${escA(v)}</b></div>`:"";
-  box.innerHTML=`<div class="card" style="margin:.9rem 0;background:#f7f5fd;border-color:#e6e2f5">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-      <b style="color:var(--marinho)">Dados pessoais (do cadastro)</b>
-      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirCadastroDoPaciente()">Editar cadastro</button>
+  // alertas que o profissional precisa ver antes de atender
+  const alertas=[];
+  if(p.prioridade && p.prioridade!=="Nenhuma") alertas.push(p.prioridade);
+  if(idade!==null && idade<18) alertas.push("Menor de idade" + (p.resp_nome?` · responsável: ${p.resp_nome}`:" · SEM responsável cadastrado"));
+  if(!Number(p.consentimento)) alertas.push("Termo de consentimento não registrado");
+  return `<div class="card" style="margin:.9rem 0;background:#f7f5fd;border-color:#e6e2f5">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin-bottom:.5rem;flex-wrap:wrap">
+      <b style="color:var(--marinho)">${escA(titulo||"Dados do paciente (do cadastro)")}</b>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="imprimirFicha(${p.id})">Imprimir ficha</button>
     </div>
+    ${alertas.length?`<p style="margin:0 0 .6rem;font-size:.82rem;color:var(--ambar);font-weight:600">⚠ ${alertas.map(escA).join(" · ")}</p>`:""}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem 1rem;font-size:.86rem">
       ${item("Nome",p.nome)}
       ${item("Nascimento",p.nascimento?dataBR(p.nascimento)+(idade!==null?` (${idade}a)`:""):"")}
@@ -1274,9 +1379,13 @@ function pintarDadosPessoaisAnamnese(){
       ${item("Convênio",nomeConv(p.convenio_id))}
       ${item("Endereço",enderecoCompleto(p))}
       ${p.altura?item("Altura",p.altura+" m"):""}${p.peso?item("Peso",p.peso+" kg"):""}
+      ${item("Observação do cadastro",p.observacao)}
     </div></div>`;
 }
-function abrirCadastroDoPaciente(){ if(ANAM_PAC) window.open("/restrito/","_self"); }
+function pintarDadosPessoaisAnamnese(){
+  const box=$("#an-dados-pessoais"); if(!box) return;
+  box.innerHTML=blocoPacienteCard(ANAM_PAC);
+}
 
 /* Monta os campos do modelo escolhido. */
 function montarFormAnamnese(dados){
@@ -1576,6 +1685,8 @@ function imprimirAgenda(){
   const datas=[...new Set(dados.map((a)=>a.data))].sort();
   const periodo=`Período de ${dataBR(datas[0])} até ${dataBR(datas[datas.length-1])}`;
   const filtro=filtroAgenda?` · Filtro: ${escA(rotuloFiltro())}`:"";
+  // quando a agenda está por profissional, o impresso diz de quem ela é
+  const deQuem = filtroProf ? `Agenda de ${nomeProf(filtroProf)}` : "Todos os profissionais";
   const linha=(a)=>{
     const faixa=a.hora?`${a.hora}${a.hora_fim?"–"+a.hora_fim:""}`:"—";
     const cor=CORES_STATUS[a.status||"Agendado"]||"#94a3b8";
@@ -1609,7 +1720,7 @@ function imprimirAgenda(){
     corpo+=dados.filter((x)=>x.data===dia).map(linha).join("");
   }
   corpo+=`<p class="ag-tot">Total de registros: ${dados.length}</p>`;
-  abrirImpressao("Agenda de atendimentos", corpo, { paisagem: true });
+  abrirImpressao("Agenda de atendimentos", corpo, { paisagem: true, subtitulo: deQuem });
 }
 
 /* ------------------------------ uploads -------------------------------- */
