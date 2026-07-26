@@ -1,0 +1,19 @@
+{
+  "name": "bemestarclinic",
+  "version": "1.11.0",
+  "private": true,
+  "description": "Site, painel administrativo (/admin) e sistema de gestão clínica (/restrito) da BemEstarClinic.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "publicar": "node server.js --publicar",
+    "backup": "node server.js --backup",
+    "backup:status": "node server.js --backup-status"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -28,6 +28,8 @@
     .btn-cel{background:var(--celeste);color:#fff}
     .btn-ghost{background:#fff;border-color:var(--line2);color:var(--marinho)}
     .btn-danger{background:#fceef2;color:var(--red);border-color:#f4c9d5}
+    /* ação que conclui e cria algo (finalizar anamnese, vincular) */
+    .btn-ok{background:#2f7d43;color:#fff;border-color:#2f7d43}
     .btn-sm{padding:.35rem .7rem;font-size:.82rem}
     #login{position:fixed;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#253282,#1EA1E4);padding:1.5rem;z-index:50}
     #login .card{width:min(370px,92vw);background:#fff;border-radius:18px;padding:2rem;text-align:center;box-shadow:0 30px 70px rgba(20,30,80,.3)}
@@ -129,11 +131,41 @@
     .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.35rem .8rem;border:1px solid var(--line2);border-radius:9px;padding:.7rem .8rem;max-height:200px;overflow:auto}
     .chk{display:flex;align-items:center;gap:.45rem;font-weight:500;font-size:.88rem;color:var(--text);cursor:pointer}
     .chk input{width:auto}
+    /* nº dos prontuários do paciente, onde houver vínculo com ele */
+    .chips-pront{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin:.1rem 0 .5rem}
+    .chips-pront .rot{color:var(--dim);font-size:.74rem;margin-right:.15rem}
+    .chip-pront{display:inline-flex;align-items:center;gap:.3rem;background:#f0edfa;border:1px solid #ddd7f0;
+      border-radius:999px;padding:.14rem .55rem;font-size:.78rem;color:var(--marinho)}
+    .chip-pront b{font-family:ui-monospace,"Consolas",monospace;letter-spacing:.02em}
+    .chip-pront.alta{background:#f4f4f7;border-color:#e2e2ea;color:var(--muted)}
+    /* pasta de prontuário: faixa de situação e áreas de lançamento */
+    .pasta-topo{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+      background:#f3f0fb;border:1px solid #ddd7f0;border-radius:10px;padding:.6rem .8rem;margin:.2rem 0 1rem}
+    .pasta-topo.alta{background:#fdf4e6;border-color:#f0dcc0}
+    .pasta-meta{color:var(--muted);font-size:.8rem;margin-left:.5rem}
+    .areas-cab{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;
+      margin:1.4rem 0 .5rem;border-top:1px solid var(--line);padding-top:1rem}
+    .areas-cab h3{font-size:.85rem;text-transform:uppercase;letter-spacing:.05em;color:var(--marinho)}
+    .area{border:1px solid var(--line);border-radius:10px;padding:.7rem .8rem;margin-bottom:.8rem;background:#fcfbff}
+    .area-cab{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:.5rem}
+    .area-cab b{color:var(--marinho);font-size:.9rem}
+    .anam-m tr.arquivado{opacity:.55}
+    .lc-texto{min-height:260px;line-height:1.6;font-size:.95rem}
     /* número de controle do prontuário */
     .num-pront{font-family:ui-monospace,"Consolas","Courier New",monospace;font-weight:700;
       color:var(--marinho);background:#f0edfa;border:1px solid #ddd7f0;border-radius:6px;
       padding:.1rem .45rem;font-size:.84rem;letter-spacing:.03em;white-space:nowrap}
     .num-pront--grande{display:inline-block;font-size:1.05rem;padding:.4rem .8rem}
+    .sem-pront{color:var(--dim);font-size:.8rem;font-style:italic}
+    /* painel de vínculo do agendamento e faixa da anamnese finalizada */
+    .vinc-agenda{margin:.2rem 0 .3rem}
+    .vinc-ok,.vinc-falta{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;
+      border-radius:9px;padding:.6rem .75rem;font-size:.85rem;line-height:1.45}
+    .vinc-ok{background:#eef6ef;border:1px solid #cfe4d2;color:#2f5d38}
+    .vinc-falta{background:#fdf4e6;border:1px solid #f0dcc0;color:#8a5a15}
+    .faixa-final{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;
+      background:#eef6ef;border:1px solid #cfe4d2;color:#2f5d38;border-radius:9px;
+      padding:.6rem .75rem;font-size:.85rem;margin:0 0 .9rem}
     /* aviso de cadastro com histórico (não pode ser excluído) */
     .aviso-hist{background:#fdf4e6;border:1px solid #f0dcc0;color:#8a5a15;border-radius:9px;
       padding:.55rem .75rem;font-size:.84rem;margin:0 0 .9rem}
@@ -145,6 +177,10 @@
     .pt-cor{display:inline-block;width:10px;height:10px;border-radius:50%;flex:0 0 auto;
       border:1px solid rgba(0,0,0,.22);box-shadow:0 0 0 1px rgba(255,255,255,.6) inset}
     .proc-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.86rem;color:var(--text)}
+    /* procedimento na agenda: etiqueta preenchida com a cor do procedimento */
+    .proc-tag-cheia{display:inline-block;max-width:100%;padding:.16rem .55rem;border-radius:999px;
+      font-size:.78rem;font-weight:600;line-height:1.5;white-space:nowrap;overflow:hidden;
+      text-overflow:ellipsis;vertical-align:middle}
     /* grupos por tipo dentro da lista de busca (Consulta / Sessão / Procedimento) */
     .cbx-grupo{position:sticky;top:0;background:#f3f0fb;color:var(--marinho);font-weight:700;
       font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;padding:.3rem .7rem;border-bottom:1px solid var(--line)}
@@ -323,6 +359,26 @@ const corSegura = (c, padrao) => /^#[0-9a-fA-F]{3,8}$/.test(String(c || "")) ? c
    da clínica incluem amarelo (#FFFF00) e verde-limão (#00FF00), que somem sobre
    fundo branco. Assim a identificação visual é fiel e o texto continua legível. */
 const bolinha = (cor) => `<span class="pt-cor" style="background:${corSegura(cor,"#9aa0ad")}"></span>`;
+/* Texto legível sobre a cor do procedimento. As cores oficiais da clínica vão do
+   amarelo puro (#FFC000) ao vermelho escuro (#C00000): letra branca some no
+   amarelo, letra preta some no vermelho. Decide pela luminância percebida
+   (fórmula ITU-R BT.601), a mesma que o olho usa para julgar "claro/escuro". */
+function corTexto(cor){
+  let h=String(corSegura(cor,"#9aa0ad")).replace("#","");
+  if(h.length===3) h=h.split("").map((c)=>c+c).join("");
+  const r=parseInt(h.slice(0,2),16), g=parseInt(h.slice(2,4),16), b=parseInt(h.slice(4,6),16);
+  /* Corte em 140: o verde-limão puro (#00FF00) dá 149,7 e o ciano (#00CCFF)
+     148,8 — com um corte em 150 os dois recebiam letra branca e sumiam. */
+  return (0.299*r + 0.587*g + 0.114*b) > 140 ? "#1b1b22" : "#fff";
+}
+/* O procedimento na agenda: etiqueta PREENCHIDA com a cor dele. Identifica o
+   tipo de atendimento de relance, que é como a recepção lê o dia. */
+function tagProcedimento(p){
+  if(!p) return '<span style="color:var(--dim)">—</span>';
+  const bg=corSegura(p.cor);
+  return `<span class="proc-tag-cheia" style="background:${bg};color:${corTexto(p.cor)}"
+    title="${escA(rotuloProc(p))}">${escA(rotuloProc(p))}</span>`;
+}
 const soDig = (s) => String(s ?? "").replace(/\D/g, "");
 let toastT;
 function toast(m, err) { const t = $("#toast"); t.textContent = m; t.classList.toggle("err", !!err); t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3000); }
@@ -330,7 +386,16 @@ function toast(m, err) { const t = $("#toast"); t.textContent = m; t.classList.t
 async function api(url, method = "GET", body) {
   const r = await fetch("/restrito/api/" + url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || r.statusText);
+  if (!r.ok) {
+    /* "Rota não encontrada" numa tela que existe = o navegador já está com a
+       versão nova (o HTML é lido do disco a cada acesso), mas o processo Node
+       continua rodando o código antigo em memória. Acontece quando se atualiza
+       o servidor sem reiniciá-lo. Melhor dizer isso do que deixar o usuário
+       diante de um erro sem sentido. */
+    if (r.status === 404 && /rota não encontrada/i.test(j.error || ""))
+      throw new Error("Esta função não existe no servidor que está rodando. O sistema foi atualizado, mas o serviço não foi reiniciado — peça para reiniciar (systemctl restart bemestar) e tente de novo.");
+    throw new Error(j.error || r.statusText);
+  }
   return j;
 }
 
@@ -355,12 +420,15 @@ const dataBR = (iso) => { if(!iso) return "—"; const [a,m,d]=String(iso).split
 const idadeAnos = (iso) => { if(!iso) return null; const [a,m,d]=String(iso).split("-").map(Number); if(!a||!m||!d) return null; const h=new Date(); let x=h.getFullYear()-a; if(h.getMonth()+1<m||(h.getMonth()+1===m&&h.getDate()<d)) x--; return x; };
 const ehMenor = (iso) => { const x=idadeAnos(iso); return x!==null && x<18; };
 const mesBR = (ym) => { if(!ym) return "—"; const [a,m]=ym.split("-"); const nomes=["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]; return `${nomes[+m]}/${a}`; };
+/* Data+hora de um carimbo ISO do banco (data de cadastro, arquivamento…). */
+const dataHoraBR = (iso) => { if(!iso) return ""; const d=new Date(iso);
+  return isNaN(d) ? String(iso).slice(0,10) : d.toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}); };
 
 /* ============================ dados de apoio ========================== */
 const ESCOLARIDADE = ["Não alfabetizado","Ensino Fundamental incompleto","Ensino Fundamental completo",
   "Ensino Médio incompleto","Ensino Médio completo","Ensino Superior incompleto","Ensino Superior completo","Pós-graduação"];
 const ESTADO_CIVIL = ["Solteiro(a)","Casado(a)","União estável","Divorciado(a)","Separado(a)","Viúvo(a)"];
-const CACHE = { pacientes: [], profissionais: [], convenios: [], procedimentos: [], salas: [] };
+const CACHE = { pacientes: [], profissionais: [], convenios: [], procedimentos: [], salas: [], prontuario: [] };
 let MODELOS = {};    // modelos de anamnese, vindos do servidor (fonte única)
 async function recarregarCache(){
   try { CACHE.pacientes = await api("pacientes"); } catch {}
@@ -368,6 +436,10 @@ async function recarregarCache(){
   try { CACHE.convenios = await api("convenios"); } catch {}
   try { CACHE.procedimentos = await api("procedimentos"); } catch {}
   try { CACHE.salas = await api("salas"); } catch {}
+  // as pastas entram no cache só para exibir o Nº ao lado do agendamento e da
+  // anamnese. A recepção não lê prontuário: para ela a chamada dá 403 e a lista
+  // fica vazia — o que faz a coluna mostrar "sem prontuário", sem vazar nada.
+  try { CACHE.prontuario = await api("prontuario"); } catch { CACHE.prontuario = []; }
   try { MODELOS = await api("modelos"); } catch {}
 }
 // rótulo de um procedimento inclui o tipo: "Acupuntura (Sessão)"
@@ -379,18 +451,25 @@ const nomeProf = (id) => { const r=acha("profissionais",id); return r?r.nome:"�
 const nomeConv = (id) => { const r=acha("convenios",id); return r?r.nome:"—"; };
 const nomeSala = (id) => { const r=acha("salas",id); return r?r.nome:"—"; };
 const nomeProc = (id) => { const r=acha("procedimentos",id); return r?rotuloProc(r):"—"; };
+const achaPront = (id) => id?acha("prontuario",id):null;
+/* O NOME do procedimento é a chave da pasta — "Ozonioterapia (Consulta)" e
+   "(Sessão)" são o mesmo tratamento e caem no mesmo prontuário. */
+const nomeBaseProc = (id) => { const r=acha("procedimentos",id); return r?r.nome:""; };
+const modeloDoProc = (id) => { const r=acha("procedimentos",id); return r?(r.anamnese_modelo||""):""; };
+const prontDoPar = (pacienteId,nomeProcedimento) => (CACHE.prontuario||[])
+  .find((x)=>String(x.paciente_id)===String(pacienteId) && x.especialidade===nomeProcedimento) || null;
 const rotuloAnam = (t) => (MODELOS[t] && MODELOS[t].rotulo) || t || "—";
 
 /* ========================= definição dos módulos ===================== */
 const MODULOS = {
   pacientes: { titulo:"Pacientes", novo:"Cadastrar Paciente", busca:true, imprimir:true, historico:true,
-    colunas:[["nome","Nome"],["nascimento","Nascimento","data"],["cpf","CPF"],["celular","Celular"],["convenio_id","Convênio","conv"]],
+    colunas:[["codigo","Código","numero"],["nome","Nome"],["nascimento","Nascimento","data"],["cpf","CPF"],["celular","Celular"],["convenio_id","Convênio","conv"]],
     campos:[
       ["foto","Foto do paciente","foto",{full:1}],
       ["_ident","Identificação","titulo",{full:1}],
+      ["codigo","Código do paciente","somenteleitura",{full:1,dica:"Gerado pelo sistema no cadastro. É por ele — ou por nome e CPF — que se localiza a pessoa no agendamento, prontuário, documentos e anamneses."}],
       ["nome","Nome completo","text",{req:1}],
       ["nome_contato","Nome de contato (como prefere ser chamado)","text"],
-      ["codigo","Código (nº do prontuário)","text"],
       ["cpf","CPF","cpf"],
       ["rg","RG","text"],
       ["sexo","Sexo","select",{opcoes:[["M","Masculino"],["F","Feminino"],["O","Outro"]],placeholder:"Selecione…"}],
@@ -446,10 +525,13 @@ const MODULOS = {
       ["sort","Ordem (menor aparece primeiro)","number"],
     ]},
   procedimentos: { titulo:"Procedimentos", novo:"Novo procedimento", busca:true,
-    colunas:[["nome","Procedimento"],["tipo","Tipo","tag"],["valor","Valor"],["duracao","Duração (min)"],["ativo","Ativo","bool"]],
+    colunas:[["nome","Procedimento"],["tipo","Tipo","tag"],["anamnese_modelo","Anamnese","anammod"],["valor","Valor"],["duracao","Duração (min)"],["ativo","Ativo","bool"]],
     campos:[
-      ["nome","Nome do procedimento","text",{req:1}],
+      ["nome","Nome do procedimento","text",{req:1,dica:"Procedimentos de MESMO nome (Consulta e Sessão) compartilham o mesmo prontuário — é o nome que identifica o tratamento."}],
       ["tipo","Tipo","select",{opcoes:["Consulta","Sessão","Procedimento"],padrao:"Consulta"}],
+      ["anamnese_modelo","Anamnese que este procedimento pede","select",
+        {opcoes:[["","Nenhuma"],["psicanalise","Psicanálise"],["ozonio","Ozonioterapia / Detox"],["integrativas","Terapias integrativas"]],
+         full:1,dica:"É o que faz o agendamento oferecer o atalho para a anamnese certa — e é a anamnese finalizada que abre o prontuário."}],
       ["valor","Valor (R$)","money"],
       ["duracao","Duração em minutos","number",{padrao:40}],
       ["cor","Cor na agenda","cor"],
@@ -476,20 +558,23 @@ const MODULOS = {
       ["acesso_senha","Senha (mín. 8 — em branco mantém a atual)","password"],
       ["ativo","Situação","select",{opcoes:[["1","Ativo"],["0","Bloqueado (não entra no sistema)"]],padrao:"1",full:1}],
     ]},
-  atendimentos: { titulo:"Agendamento", novo:"Novo agendamento",
-    colunas:[["data","Data","data"],["hora","Início"],["hora_fim","Fim"],["paciente_id","Paciente","pac"],["profissional_id","Profissional","prof"],["procedimento_id","Procedimento","proc"],["sala_id","Sala","sala"],["status","Status","tag"]],
+  atendimentos: { titulo:"Agendamento", novo:"Novo agendamento", agenda:true, busca:true,
+    colunas:[["data","Data","data"],["hora","Início"],["hora_fim","Fim"],["paciente_id","Paciente","pac"],["profissional_id","Profissional","prof"],["procedimento_id","Procedimento","proc"],["sala_id","Sala","sala"],["prontuario_id","Prontuário","prontnum"],["status","Status","tag"]],
     campos:[
-      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1,preenche:"paciente"}],
+      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1,preenche:"paciente",dica:"Só é possível agendar para paciente cadastrado."}],
       ["nome_agenda","Nome na agenda","text"],
       ["celular","Celular","tel"],
       ["convenio_id","Convênio","ref",{tabela:"convenios"}],
       ["profissional_id","Profissional","busca",{tabela:"profissionais",ocultarPara:"profissional",filtraServicos:1}],
       ["procedimento_id","Procedimento","busca",{tabela:"procedimentos",filtradoPorProf:1,preenche:"procedimento"}],
+      // painel de vínculo: mostra a pasta em que este agendamento cai e, quando
+      // ela ainda não existe, o atalho para a anamnese que a abre
+      ["_vinc","","vinculoagenda",{full:1}],
       ["sala_id","Sala / Consultório","ref",{tabela:"salas"}],
       ["valor","Valor (R$)","money"],
       ["data","Data","date",{req:1}],
-      ["hora","Início","time"],
-      ["hora_fim","Fim","time"],
+      ["hora","Início","time",{req:1}],
+      ["hora_fim","Fim","time",{req:1,dica:"Sugerido pela duração do procedimento — pode alterar"}],
       ["status","Situação","select",{opcoes:["Agendado","Confirmado","Atendido","Faltou","Remarcado","Cancelado"],padrao:"Agendado"}],
       ["primeira","1º atendimento","checkbox"],
       ["encaixe","Encaixe","checkbox"],
@@ -498,22 +583,25 @@ const MODULOS = {
       ["observacoes","Observação","textarea",{full:1}],
     ]},
   anamneses: { titulo:"Anamneses", novo:"Nova anamnese", busca:true, anamnese:true,
-    colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],["profissional","Profissional"]],
+    colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],
+      ["procedimento","Procedimento"],["status","Situação","statusanam"],["prontuario_id","Prontuário","prontnum"],["profissional","Profissional"]],
     campos:[] },   // formulário próprio, montado pelo modelo — ver abrirAnamnese()
-  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true, fichaPaciente:true, imprimirEvolucao:true,
-    colunas:[["numero","Nº do prontuário","numero"],["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
+  /* PRONTUÁRIO = a pasta do paciente num PROCEDIMENTO. Uma por procedimento.
+     (a coluna do banco se chama `especialidade` por herança — o que ela guarda é
+     o nome do procedimento.)
+     Os lançamentos (avaliação, evolução, plano, encaminhamento) ficam DENTRO da
+     pasta, em áreas próprias — ver montarAreasProntuario(). */
+  prontuario: { titulo:"Prontuários", novo:"Abrir prontuário", busca:true, fichaPaciente:true,
+    prontuarioPasta:true,
+    colunas:[["numero","Nº","numero"],["paciente_id","Paciente","pac"],["especialidade","Procedimento"],
+      ["profissional","Profissional"],["aberto_em","Aberto em","data"],["status","Situação","statuspront"]],
     campos:[
-      ["numero","Nº do prontuário","somenteleitura",{full:1,dica:"Gerado pelo sistema — único e sequencial. Use-o para localizar e controlar este registro."}],
-      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1}],
-      ["profissional","Profissional responsável","busca",{tabela:"profissionais",valor:"nome",filtraServicos:1}],
-      ["data","Data do atendimento","date",{req:1}],
-      ["especialidade","Procedimento","servicos_check",{full:1}],
-      ["avaliacao","Avaliação","textarea",{full:1}],
-      ["evolucao","Evolução da sessão","textarea",{full:1}],
-      ["plano","Plano terapêutico","textarea",{full:1}],
-      ["encaminhamentos","Encaminhamentos","textarea",{full:1}],
-      ["anexos","Anexo (foto/PDF)","arquivo",{full:1}],
-      ["responsavel","Assinatura / responsável técnico","text"],
+      ["numero","Nº do prontuário","somenteleitura",{full:1,dica:"Gerado pelo sistema. É por ele que a clínica localiza esta pasta — aparece na anamnese, no agendamento e nos documentos."}],
+      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1,travaSeSalvo:1}],
+      ["especialidade","Procedimento","especialidade_pront",{req:1,travaSeSalvo:1,dica:"Um prontuário por paciente e procedimento. Consulta e Sessão do mesmo tratamento usam a mesma pasta."}],
+      ["profissional","Profissional responsável","busca",{tabela:"profissionais",valor:"nome"}],
+      ["aberto_em","Aberto em","date"],
+      ["observacao","Observação da pasta","textarea",{full:1}],
     ]},
   documentos_gestao: { titulo:"Documentos", novo:"Novo documento", busca:true,
     colunas:[["data","Data","data"],["tipo","Tipo"],["titulo","Título"],["paciente_id","Paciente","pac"],["arquivo","Arquivo","arq"]],
@@ -641,15 +729,18 @@ function mostrarModulo(){
   $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0, filtroAnamTipo)) : (()=>abrirForm());
   $("#mod-busca").hidden=!m.busca; $("#mod-busca").value="";
   $("#mod-busca").placeholder =
-    MOD==="pacientes"  ? "Buscar por nome, CPF ou código…" :
-    MOD==="prontuario" ? "Buscar pelo nº do prontuário ou profissional…" :
-    MOD==="anamneses"  ? "Buscar pelo nome do paciente…" : "Buscar por nome…";
+    MOD==="pacientes"  ? "Buscar por nome, código ou CPF…" :
+    MOD==="atendimentos" ? "Buscar o paciente por nome, código ou CPF…" :
+    MOD==="documentos_gestao" ? "Buscar por título ou paciente (nome/código/CPF)…" :
+    MOD==="prontuario" ? "Buscar pelo nº da pasta, procedimento, profissional ou paciente (nome/código/CPF)…" :
+    MOD==="anamneses"  ? "Buscar pelo nome, código ou CPF do paciente…" : "Buscar por nome…";
   $("#mod-thead").innerHTML="<tr>"+m.colunas.map(([,lab])=>`<th>${lab}</th>`).join("")+"<th></th></tr>";
   const ehAgenda = MOD==="atendimentos";
   $("#mod-vistas").hidden=!ehAgenda;
   $("#mod-imprimir").hidden=!ehAgenda;
-  $("#mod-prof").hidden=!ehAgenda;
+  $("#mod-prof").hidden=!(ehAgenda || MOD==="prontuario");
   if(ehAgenda) montarFiltroProfissional();
+  else if(MOD==="prontuario") montarFiltroSituacao();
   if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
   else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; }
   carregarLista();
@@ -681,9 +772,19 @@ function celula(row,[chave,,tipo]){
   if(tipo==="sala") return escA(nomeSala(v));
   if(tipo==="anam") return escA(rotuloAnam(v));
   if(tipo==="numero") return v?`<span class="num-pront">${escA(v)}</span>`:'<span style="color:var(--dim)">—</span>';
-  if(tipo==="proc"){ const p=acha("procedimentos",v);
-    if(!p) return "—";
-    return `<span class="proc-tag">${bolinha(p.cor)}${escA(rotuloProc(p))}</span>`; }
+  if(tipo==="statuspront") return String(v)==="Alta"
+    ? '<span class="tag tag-nao">Alta (inativo)</span>'
+    : '<span class="tag tag-Ativo">Em tratamento</span>';
+  // anamnese: Rascunho não abriu prontuário nenhum; Finalizada, sim
+  if(tipo==="statusanam") return String(v)==="Finalizada"
+    ? '<span class="tag tag-Ativo">Finalizada</span>'
+    : '<span class="tag tag-Agendado">Rascunho</span>';
+  // nº da pasta a que este registro está pendurado
+  if(tipo==="prontnum"){ const pr=achaPront(v);
+    return pr?`<span class="num-pront">${escA(pr.numero||"")}</span>`
+             :'<span class="sem-pront">sem prontuário</span>'; }
+  if(tipo==="anammod") return v?escA(rotuloAnam(v)):'<span style="color:var(--dim)">—</span>';
+  if(tipo==="proc") return tagProcedimento(acha("procedimentos",v));
   if(tipo==="servicos"){ let a=[]; try{a=JSON.parse(v||"[]");}catch{a=v?[v]:[];} return a.length?a.map(escA).join(", "):"—"; }
   if(tipo==="perfil") return escA(PERFIL_ROTULO[v]||v||"—");
   if(tipo==="arq") return v?`<a class="arq-link" href="${escA(v)}" target="_blank">abrir</a>`:"—";
@@ -722,18 +823,90 @@ function montarFiltroProfissional(){
 }
 function trocarProfAgenda(v){ filtroProf=v; montarFiltroProfissional(); pintarAtendimentos(); }
 
+/* Relação de prontuários ATIVOS (em tratamento) e INATIVOS (com alta). */
+let filtroSituacao = "";
+function montarFiltroSituacao(){
+  const box=$("#mod-prof"); if(!box) return;
+  const bt=(v,r)=>`<button class="vbtn${filtroSituacao===v?" on":""}" onclick="trocarSituacao('${v}')">${r}</button>`;
+  box.innerHTML=`<span style="font-weight:600;color:var(--muted);font-size:.85rem">Situação:</span>
+    <span class="vista-toggle" style="margin:0">${bt("","Todos")}${bt("Ativo","Em tratamento")}${bt("Alta","Alta (inativos)")}</span>
+    <button class="btn btn-ghost btn-sm" onclick="imprimirRelacaoProntuarios()">🖨 Imprimir relação</button>
+    <span style="color:var(--dim);font-size:.8rem" id="sit-contagem"></span>`;
+}
+function trocarSituacao(v){ filtroSituacao=v; montarFiltroSituacao(); carregarLista(); }
+
+/* Relação impressa de prontuários conforme o filtro atual. */
+async function imprimirRelacaoProntuarios(){
+  const dados=dadosVisiveis();
+  if(!dados.length) return toast("Nada para imprimir.",true);
+  const rot = filtroSituacao==="Ativo" ? "Pacientes em tratamento"
+            : filtroSituacao==="Alta" ? "Pacientes com alta (inativos)"
+            : "Todos os prontuários";
+  const ativos=dados.filter((x)=>x.status!=="Alta").length;
+  const corpo=`<div class="cards">
+      <div class="kpi"><b>${dados.length}</b><span>Prontuários</span></div>
+      <div class="kpi"><b>${ativos}</b><span>Em tratamento</span></div>
+      <div class="kpi"><b>${dados.length-ativos}</b><span>Com alta</span></div>
+    </div>
+    <table class="m"><tr><th style="width:110px">Nº</th><th>Paciente</th><th>Especialidade</th>
+      <th>Profissional</th><th style="width:88px">Aberto</th><th style="width:88px">Alta</th><th style="width:110px">Situação</th></tr>`+
+    dados.map((x)=>`<tr><td>${escA(x.numero||"—")}</td><td>${escA(nomePac(x.paciente_id))}</td>
+      <td>${escA(x.especialidade||"—")}</td><td>${escA(x.profissional||"—")}</td>
+      <td>${escA(dataBR(x.aberto_em))}</td><td>${x.alta_em?escA(dataBR(x.alta_em)):"—"}</td>
+      <td>${x.status==="Alta"?"Alta (inativo)":"Em tratamento"}</td></tr>`).join("")+`</table>`;
+  abrirImpressao("Relação de prontuários", corpo, { paisagem:true, subtitulo: rot });
+}
+
+/* ==========================================================================
+   BUSCAR PELO PACIENTE — nome, CÓDIGO ou CPF (com ou sem máscara)
+   Vale para agenda, anamneses e documentos: essas tabelas guardam só o
+   paciente_id, então quem cruza com nome/código/CPF é o cache, aqui.
+   `extra` deixa cada módulo acrescentar o que mais faz sentido procurar.
+   ========================================================================== */
+function filtrarPorPaciente(lista, extra){
+  const q=(($("#mod-busca")||{}).value||"").trim().toLowerCase();
+  if(!q) return lista;
+  const dig=soDig(q);
+  return lista.filter((r)=>{
+    const p=acha("pacientes",r.paciente_id);
+    if(p){
+      if(String(p.nome||"").toLowerCase().includes(q)) return true;
+      if(String(p.codigo||"").toLowerCase().includes(q)) return true;
+      if(dig.length>=3 && soDig(p.cpf).includes(dig)) return true;
+    }
+    return extra ? !!extra(r,q) : false;
+  });
+}
 function dadosVisiveis(){
   if(MOD==="atendimentos"){
     let l=aplicarFiltroAgenda(LISTA);
     if(filtroProf) l=l.filter((a)=>String(a.profissional_id)===String(filtroProf));
+    l=filtrarPorPaciente(l);
+    return l;
+  }
+  if(MOD==="documentos_gestao") return filtrarPorPaciente(LISTA,(d,q)=>String(d.titulo||"").toLowerCase().includes(q));
+  if(MOD==="prontuario"){
+    let l = filtroSituacao ? LISTA.filter((x)=>(x.status||"Ativo")===filtroSituacao) : LISTA;
+    const c=$("#sit-contagem"); if(c) c.textContent = `${l.length} prontuário(s)`;
     return l;
   }
   if(MOD==="anamneses"){
-    // filtra pelo modelo do submenu e pelo NOME DO PACIENTE digitado na busca
-    // (o servidor não busca aqui porque a tabela não guarda o nome, só o id)
+    /* Filtra pelo modelo do submenu e pelo PACIENTE digitado na busca. A busca
+       roda aqui, e não no servidor, porque a tabela guarda só o paciente_id —
+       nome, código e CPF vêm do cache. Casa por nome, por código e por CPF com
+       ou sem máscara (compara só os dígitos dos dois lados). */
     let l = filtroAnamTipo ? LISTA.filter((a)=>a.tipo===filtroAnamTipo) : LISTA;
     const q=(($("#mod-busca")||{}).value||"").trim().toLowerCase();
-    if(q) l = l.filter((a)=>nomePac(a.paciente_id).toLowerCase().includes(q));
+    if(q){
+      const dig=soDig(q);
+      l = l.filter((a)=>{
+        const p=acha("pacientes",a.paciente_id); if(!p) return false;
+        if(String(p.nome||"").toLowerCase().includes(q)) return true;
+        if(String(p.codigo||"").toLowerCase().includes(q)) return true;
+        if(dig.length>=3 && soDig(p.cpf).includes(dig)) return true;
+        return String(a.procedimento||"").toLowerCase().includes(q);
+      });
+    }
     return l;
   }
   return LISTA;
@@ -747,7 +920,7 @@ function renderTabela(){
   tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
     <td style="text-align:right;white-space:nowrap">${
       anam ? `<button class="btn btn-ghost btn-sm" onclick="imprimirAnamnese(${row.id})">Imprimir</button> `
-           : m.imprimirEvolucao ? `<button class="btn btn-ghost btn-sm" onclick="imprimirEvolucao(${row.id})">Imprimir</button> `
+           : m.prontuarioPasta ? `<button class="btn btn-ghost btn-sm" onclick="imprimirPasta(${row.id})">Imprimir</button> `
            : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
     }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
     }${MOD==="profissionais"?`<button class="btn btn-ghost btn-sm" onclick="alternarBloqueio(${row.id},${Number(row.ativo)!==0?1:0})">${Number(row.ativo)!==0?"Bloquear":"Desbloquear"}</button> `:""
@@ -880,9 +1053,23 @@ function campoHTML(campo, val){
          <div class="chk-grid" id="${id}-grid">${grade}</div>`
       : `<p class="hint" style="color:var(--dim)">Nenhum procedimento cadastrado ainda. Cadastre em <b>Cadastros → Procedimentos</b>.</p>`;
   }
+  /* Especialidade da pasta: os nomes distintos dos procedimentos (sem o tipo
+     Consulta/Sessão) — "Psicanálise Individual", "Ozonioterapia"… */
+  else if(tipo==="especialidade_pront"){
+    const nomes=[...new Set((CACHE.procedimentos||[]).filter((x)=>Number(x.ativo)!==0).map((x)=>x.nome))].sort();
+    if(val && !nomes.includes(val)) nomes.push(val);          // mantém o já gravado
+    ctrl=`<select id="${id}"><option value="">Selecione…</option>`+
+      nomes.map((n)=>{const p=(CACHE.procedimentos||[]).find((x)=>x.nome===n);
+        return `<option value="${escA(n)}"${String(val)===n?" selected":""}>${escA(n)}</option>`;}).join("")+`</select>`;
+  }
   else if(tipo==="somenteleitura") ctrl = val
     ? `<div class="num-pront num-pront--grande">${escA(val)}</div>`
     : `<p class="hint" style="color:var(--dim);margin:.2rem 0">Será gerado automaticamente ao salvar.</p>`;
+  /* Painel de vínculo do AGENDAMENTO. Mostra em qual pasta este atendimento
+     cai e, quando ela ainda não existe, oferece a anamnese que a abre — no
+     modelo que o procedimento escolhido pede. Redesenhado por
+     pintarVinculoAgenda() a cada troca de paciente ou procedimento. */
+  else if(tipo==="vinculoagenda") ctrl=`<div id="vinc-agenda" class="vinc-agenda"></div>`;
   else if(tipo==="cor") ctrl=`<div style="display:flex;gap:.6rem;align-items:center">
       <input type="color" id="${id}" value="${escA(val||"#5B4FD8")}" style="width:56px;height:38px;padding:2px">
       <span class="hint" style="color:var(--dim)">Cor de identificação na agenda</span></div>`;
@@ -921,13 +1108,15 @@ async function abrirForm(id){
     <h2>${id?"Editar":m.novo||"Novo"}</h2>
     <div class="modal-corpo">
       ${m.fichaPaciente?`<div id="ficha-paciente"></div>`:""}
+      ${m.prontuarioPasta&&id?`<div id="pasta-topo"></div>`:""}
       ${temHistorico?`<p class="aviso-hist">🔒 Este cadastro já tem histórico (${escA(dados._vinculos.join(", "))}) e por isso <b>não pode ser excluído</b>${temAtivo?" — para tirá-lo de uso, mude a Situação para <b>Bloqueado</b>":""}.</p>`:""}
       <div class="formgrid">${campos.map((c)=>campoHTML(c,dados[c[0]])).join("")}</div>
+      ${m.prontuarioPasta&&id?`<div id="pasta-areas"></div>`:""}
       <div id="form-erros"></div>
     </div>
     <div class="acoes">
       ${m.imprimir&&id?`<button class="btn btn-ghost" onclick="imprimirFicha(${id})">Imprimir ficha</button>`:""}
-      ${m.imprimirEvolucao&&id?`<button class="btn btn-ghost" onclick="imprimirEvolucao(${id})">Imprimir (ficha + evolução)</button>`:""}
+      ${m.prontuarioPasta&&id?`<button class="btn btn-ghost" onclick="imprimirPasta(${id})">Imprimir prontuário</button>`:""}
       ${m.historico&&id?`<button class="btn btn-ghost" onclick="imprimirHistorico(${id})">Imprimir prontuário completo</button>`:""}
       ${id&&!temHistorico?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
@@ -960,6 +1149,16 @@ async function abrirForm(id){
     if(prof){ prof.addEventListener("change",()=>filtrarServicos(false)); }
     filtrarServicos(true);
   }
+  /* Pasta de prontuário: paciente e especialidade definem a identidade da pasta
+     — depois de salva, não mudam (senão o número passaria a apontar para outra
+     coisa). E monta as áreas de lançamento. */
+  if(m.prontuarioPasta && id){
+    for(const [k,,,op={}] of m.campos) if(op.travaSeSalvo){
+      const el=$("#f-"+k); if(el) el.disabled=true;
+      const txt=$("#f-"+k+"-txt"); if(txt) txt.disabled=true;
+    }
+    PASTA=dados; pintarTopoPasta(); montarAreasProntuario(id);
+  }
   /* Prontuário: a ficha do paciente aparece no topo assim que ele é escolhido —
      o profissional escreve a evolução vendo o cadastro, sem trocar de tela. */
   if(m.fichaPaciente){
@@ -969,6 +1168,7 @@ async function abrirForm(id){
       const pid=el?el.value:"";
       const p=pid ? await api("pacientes/"+pid).catch(()=>null) : null;
       const box=$("#ficha-paciente"); if(box) box.innerHTML=blocoPacienteCard(p);
+      if(p) chipsProntuarios(p.id, "chips-pront-"+p.id);   // nº das pastas do paciente
     };
     if(el) el.addEventListener("change",pintar);
     pintar();
@@ -976,9 +1176,34 @@ async function abrirForm(id){
   // agenda: escolher o paciente/procedimento traz os dados do cadastro
   if(MOD==="atendimentos"){
     const pac=$("#f-paciente_id");
+    if(pac){
+      /* Mostra os prontuários do paciente (com o número) logo abaixo do campo.
+         A inserção precisa ser irmã do CAMPO INTEIRO, não do que estiver colado
+         no input: subimos até o filho direto da grade. (Antes isto usava
+         `pac.closest("div").nextSibling`, que dava certo só enquanto não houvesse
+         nada depois do combobox dentro do campo — bastou acrescentar uma dica
+         para o insertBefore estourar e abortar o resto do formulário.) */
+      if(!$("#chips-agenda")){
+        const d=document.createElement("div"); d.id="chips-agenda"; d.className="full";
+        const grade=pac.closest(".formgrid");
+        let campo=pac.parentElement;
+        while(campo && campo.parentElement!==grade) campo=campo.parentElement;
+        if(grade && campo) campo.after(d); else if(grade) grade.appendChild(d);
+      }
+      const mostrar=async()=>{ const v=pac.value;
+        const box=$("#chips-agenda"); if(!box) return;
+        if(!v){ box.innerHTML=""; return; }
+        box.innerHTML=`<div id="chips-pront-${v}"></div>`; chipsProntuarios(v,"chips-pront-"+v); };
+      pac.addEventListener("change",mostrar); mostrar();
+    }
     if(pac) pac.addEventListener("change",()=>preencherDoPaciente(!id));
     const proc=$("#f-procedimento_id");
     if(proc) proc.addEventListener("change",()=>preencherDoProcedimento(!id));
+    // painel de vínculo: em qual pasta este agendamento cai, e o atalho para a
+    // anamnese quando ela ainda não existe
+    if(pac) pac.addEventListener("change",pintarVinculoAgenda);
+    if(proc) proc.addEventListener("change",pintarVinculoAgenda);
+    pintarVinculoAgenda();
     const prof=$("#f-profissional_id");
     // trocar de profissional pode invalidar o procedimento escolhido
     if(prof) prof.addEventListener("change",()=>{
@@ -990,6 +1215,72 @@ async function abrirForm(id){
     if(hi) hi.addEventListener("change",()=>calcularFim());
   }
 }
+/* ==========================================================================
+   PAINEL DE VÍNCULO DO AGENDAMENTO
+   O agendamento nunca cria prontuário. Aqui a recepção vê, antes de salvar, em
+   que pé está:
+     · pasta existe   → o agendamento entra nela sozinho, com o nº à vista;
+     · pasta não existe → é o primeiro atendimento daquele procedimento, e o
+       atalho abre a anamnese JÁ no modelo que o procedimento pede — é ela que
+       abre a pasta. Depois, este agendamento é recolhido para dentro.
+   ========================================================================== */
+function pintarVinculoAgenda(){
+  const box=$("#vinc-agenda"); if(!box) return;
+  const pid=($("#f-paciente_id")||{}).value||"";
+  const procId=($("#f-procedimento_id")||{}).value||"";
+  if(!pid||!procId){
+    box.innerHTML=`<p class="hint" style="color:var(--dim);margin:0">Escolha o paciente e o procedimento para ver o prontuário correspondente.</p>`;
+    return;
+  }
+  const nome=nomeBaseProc(procId);
+  const pasta=prontDoPar(pid,nome);
+  if(pasta){
+    box.innerHTML=`<div class="vinc-ok">
+      <span>Este agendamento entra no prontuário
+        <b class="num-pront">${escA(pasta.numero||"")}</b> — ${escA(pasta.especialidade||"")}
+        ${pasta.status==="Alta"?'<span class="tag tag-nao">alta</span>':""}</span>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirPastaPorId(${pasta.id})">Abrir prontuário</button>
+    </div>`;
+    return;
+  }
+  const modelo=modeloDoProc(procId);
+  /* O atalho da anamnese só aparece com o agendamento JÁ SALVO. Durante a
+     criação ele levaria o usuário para outra tela antes de o horário existir —
+     e o que estivesse digitado se perderia. Aqui só se informa o que vai
+     acontecer; o botão surge quando se reabre o agendamento. */
+  const salvo = !!FORM_ID;
+  box.innerHTML=`<div class="vinc-falta">
+    <span>Ainda não há prontuário de <b>${escA(nome||"—")}</b> para este paciente.
+      ${modelo
+        ? "É a anamnese finalizada que o abre." + (salvo?"":" Salve o agendamento para preencher a anamnese.")
+        : "Este procedimento não tem anamnese vinculada — o prontuário pode ser aberto em Prontuários."}</span>
+    ${(modelo && salvo)?`<button type="button" class="btn btn-ok btn-sm"
+        onclick="anamneseDoAgendamento('${escA(modelo)}','${escA(nome)}',${Number(pid)})">Preencher anamnese de ${escA(rotuloAnam(modelo))}</button>`:""}
+  </div>`;
+}
+/* Troca de módulo pelo mesmo caminho do menu — assim título, busca e filtros
+   são montados como sempre. Devolve quando a lista já está na tela. */
+function irParaModulo(nav){
+  return new Promise((ok)=>{
+    const btn=document.querySelector(`.navbtn[data-nav="${nav}"]`);
+    if(!btn) return ok(false);
+    btn.click();
+    setTimeout(()=>ok(true),0);       // deixa o mostrarModulo() terminar
+  });
+}
+/* Sai do agendamento e abre a anamnese certa, já com paciente e procedimento. */
+async function anamneseDoAgendamento(modelo, procedimento, pacienteId){
+  if(!confirm("Abrir a anamnese agora? Alterações feitas neste agendamento e ainda não salvas serão perdidas.")) return;
+  fecharModal();
+  if(!await irParaModulo("anamneses")) return toast("Seu perfil não tem acesso às anamneses.",true);
+  abrirAnamnese(0, modelo, { procedimento, paciente_id: pacienteId });
+}
+async function abrirPastaPorId(id){
+  fecharModal();
+  if(!await irParaModulo("prontuario")) return toast("Seu perfil não tem acesso aos prontuários.",true);
+  abrirForm(id);
+}
+
 /* Ao escolher o paciente na agenda, puxa nome, celular e convênio do cadastro.
    Só sobrescreve campo vazio quando estamos editando (não apaga o que já existe). */
 function preencherDoPaciente(novo){
@@ -1045,8 +1336,13 @@ function cbxFiltrar(id){
     return !!(termo && r.codigo && String(r.codigo).toLowerCase().includes(termo));
   };
   const ops=base.filter(casa).slice(0,80);
-  // no paciente, mostra o CPF ao lado do nome para diferenciar homônimos
-  const extra = (r) => (ehPaciente && r.cpf) ? ` <span style="color:var(--dim);font-size:.82em">· ${escA(r.cpf)}</span>` : "";
+  /* No paciente, mostra CÓDIGO e CPF ao lado do nome: é o que diferencia
+     homônimos e o que confirma que se achou a pessoa certa. */
+  const extra = (r) => {
+    if(!ehPaciente) return "";
+    const partes=[r.codigo, r.cpf].filter(Boolean).map(escA);
+    return partes.length?` <span style="color:var(--dim);font-size:.82em">· ${partes.join(" · ")}</span>`:"";
+  };
   const linha = (r) => { const v=usaNome?rotuloRef(r):r.id;
     const marca = wrap.dataset.tab==="procedimentos" ? bolinha(r.cor) : "";
     // no procedimento, o tipo já é o cabeçalho do grupo — o item mostra só o nome
@@ -1154,6 +1450,254 @@ function aplicarVisibilidadeServicos(id, inicial){
 }
 function filtrarServicos(inicial){ aplicarVisibilidadeServicos("f-especialidade", inicial); }   // gatilho: troca de profissional
 function filtrarChkBusca(id){ aplicarVisibilidadeServicos(id, true); }                            // gatilho: campo de busca
+/* ==========================================================================
+   PASTA DE PRONTUÁRIO — o que acontece DENTRO do modal
+   Quatro áreas (avaliação, evolução, plano, encaminhamento). Cada uma lista os
+   lançamentos daquele tipo, com data automática, e permite acrescentar mais.
+   Nada é excluído: o que sai de uso é ARQUIVADO e pode voltar.
+   ========================================================================== */
+let PASTA = null, MOSTRAR_ARQUIVADOS = false;
+const TIPOS_PRONT = [
+  ["avaliacao","Avaliação","Avaliações registradas"],
+  ["evolucao","Evolução","Evoluções das sessões"],
+  ["plano","Plano terapêutico","Planos registrados"],
+  ["encaminhamento","Encaminhamento","Encaminhamentos"],
+];
+
+/* Faixa superior: situação da pasta e os botões de alta / reabertura. */
+function pintarTopoPasta(){
+  const box=$("#pasta-topo"); if(!box||!PASTA) return;
+  const alta = PASTA.status==="Alta";
+  box.innerHTML=`<div class="pasta-topo ${alta?"alta":""}">
+    <div>
+      <span class="tag ${alta?"tag-nao":"tag-Ativo"}">${alta?"Alta (inativo)":"Em tratamento"}</span>
+      <span class="pasta-meta">Aberto em ${escA(dataBR(PASTA.aberto_em))}${
+        alta&&PASTA.alta_em?` · alta em ${escA(dataBR(PASTA.alta_em))}`:""}${
+        PASTA.alta_motivo?` — ${escA(PASTA.alta_motivo)}`:""}${
+        PASTA.reativado_em?` · reaberto em ${escA(dataHoraBR(PASTA.reativado_em))}`:""}</span>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="verHistoricoPasta()">Histórico</button>
+      ${alta
+        ? `<button type="button" class="btn btn-navy btn-sm" onclick="reabrirPasta()">Reabrir prontuário</button>`
+        : `<button type="button" class="btn btn-ghost btn-sm" onclick="darAlta()">Dar alta</button>`}
+    </div></div>`;
+}
+
+/* Monta as quatro áreas e carrega os lançamentos. */
+async function montarAreasProntuario(prontId){
+  const box=$("#pasta-areas"); if(!box) return;
+  box.innerHTML=`<div id="pasta-vinculos"></div>
+    <div class="areas-cab">
+      <h3>Lançamentos do prontuário</h3>
+      <label class="chk" style="font-size:.82rem"><input type="checkbox" ${MOSTRAR_ARQUIVADOS?"checked":""}
+        onchange="MOSTRAR_ARQUIVADOS=this.checked;montarAreasProntuario(${prontId})"> mostrar arquivados</label>
+    </div>` +
+    TIPOS_PRONT.map(([tipo,rot,titulo])=>`
+      <div class="area" data-area="${tipo}">
+        <div class="area-cab">
+          <b>${escA(titulo)}</b>
+          <button type="button" class="btn btn-navy btn-sm" onclick="novoLancamento('${tipo}',${prontId})">+ ${escA(rot)}</button>
+        </div>
+        <div id="area-${tipo}"><p class="hint" style="color:var(--dim)">Carregando…</p></div>
+      </div>`).join("");
+  pintarVinculosPasta(prontId);
+  let regs=[];
+  try{ regs=await api(`prontuario_registros?prontuario_id=${prontId}${MOSTRAR_ARQUIVADOS?"&arquivados=1":""}`); }
+  catch(e){ return toast(e.message,true); }
+  for(const [tipo] of TIPOS_PRONT) pintarArea(tipo, regs.filter((r)=>r.tipo===tipo), prontId);
+}
+
+/* ==========================================================================
+   O QUE ESTÁ LIGADO A ESTA PASTA
+   O prontuário é o ponto de encontro: as anamneses que o abriram (pode ser mais
+   de uma ao longo do tratamento) e os agendamentos daquele procedimento.
+   O vínculo do agendamento acontece sozinho quando a pasta já existe; aqui é
+   onde se recolhe o PRIMEIRO atendimento, marcado antes de ela existir.
+   ========================================================================== */
+async function pintarVinculosPasta(prontId){
+  const box=$("#pasta-vinculos"); if(!box) return;
+  let v; try{ v=await api(`prontuario/${prontId}/vinculos`); }catch(e){ box.innerHTML=""; return; }
+  const anam=v.anamneses||[], atend=v.atendimentos||[];
+
+  const linhasAnam = anam.length
+    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th>Modelo</th><th style="width:130px">Situação</th><th style="width:150px">Profissional</th><th style="width:120px"></th></tr>`+
+      anam.map((a)=>`<tr>
+        <td>${escA(dataBR(a.data))}</td>
+        <td>${escA(rotuloAnam(a.tipo))}</td>
+        <td>${String(a.status)==="Finalizada"?'<span class="tag tag-Ativo">Finalizada</span>':'<span class="tag tag-Agendado">Rascunho</span>'}</td>
+        <td>${escA(a.profissional||"—")}</td>
+        <td style="text-align:right"><button type="button" class="btn btn-ghost btn-sm" onclick="abrirAnamneseDaPasta(${a.id})">Acessar</button></td>
+      </tr>`).join("")+`</table>`
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhuma anamnese vinculada.</p>`;
+
+  const linhasAtend = atend.length
+    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th style="width:110px">Horário</th><th>Procedimento</th><th style="width:150px">Profissional</th><th style="width:110px">Situação</th><th style="width:120px"></th></tr>`+
+      atend.map((a)=>`<tr>
+        <td>${escA(dataBR(a.data))}</td>
+        <td>${escA(a.hora||"")}${a.hora_fim?" – "+escA(a.hora_fim):""}</td>
+        <td>${escA(a.procedimento_nome||"—")}</td>
+        <td>${escA(a.profissional_nome||"—")}</td>
+        <td>${a.status?`<span class="tag tag-${escA(a.status)}">${escA(a.status)}</span>`:"—"}</td>
+        <td style="text-align:right"><button type="button" class="btn btn-ghost btn-sm" onclick="desvincularAtendimento(${prontId},${a.id})">Desvincular</button></td>
+      </tr>`).join("")+`</table>`
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum agendamento vinculado ainda.</p>`;
+
+  box.innerHTML=`<div class="areas-cab"><h3>Vínculos deste prontuário</h3></div>
+    <div class="area"><div class="area-cab"><b>Anamneses (${anam.length})</b></div>${linhasAnam}</div>
+    <div class="area">
+      <div class="area-cab"><b>Agendamentos (${atend.length})</b>
+        <button type="button" class="btn btn-navy btn-sm" onclick="escolherAtendimentoParaVincular(${prontId})">+ Vincular agendamento</button>
+      </div>${linhasAtend}</div>`;
+}
+async function abrirAnamneseDaPasta(id){
+  if(!await irParaModulo("anamneses")) return toast("Seu perfil não tem acesso às anamneses.",true);
+  abrirAnamnese(id);
+}
+async function desvincularAtendimento(prontId, atendId){
+  if(!confirm("Desvincular este agendamento do prontuário? O agendamento continua na agenda.")) return;
+  try{ await api(`prontuario/${prontId}/atendimentos/${atendId}`,"DELETE"); pintarVinculosPasta(prontId); toast("Agendamento desvinculado."); }
+  catch(e){ toast(e.message,true); }
+}
+/* Lista os agendamentos do paciente que não estão em pasta nenhuma. É o caminho
+   para o primeiro atendimento, marcado antes de a pasta existir. */
+async function escolherAtendimentoParaVincular(prontId){
+  let livres=[]; try{ livres=await api(`prontuario/${prontId}/disponiveis`); }catch(e){ return toast(e.message,true); }
+  const host=$("#modal-host2")||(()=>{const d=document.createElement("div");d.id="modal-host2";document.body.appendChild(d);return d;})();
+  const corpo = livres.length
+    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th style="width:100px">Hora</th><th>Procedimento</th><th style="width:150px">Profissional</th><th style="width:110px"></th></tr>`+
+      livres.map((a)=>`<tr>
+        <td>${escA(dataBR(a.data))}</td><td>${escA(a.hora||"")}</td>
+        <td>${escA(a.procedimento_nome||"—")}</td><td>${escA(a.profissional_nome||"—")}</td>
+        <td style="text-align:right"><button type="button" class="btn btn-navy btn-sm" onclick="vincularAtendimento(${prontId},${a.id})">Vincular</button></td>
+      </tr>`).join("")+`</table>`
+    : `<p class="hint" style="color:var(--dim)">Este paciente não tem agendamento fora de prontuário.</p>`;
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(820px,96vw)">
+    <h2>Vincular agendamento</h2>
+    <div class="modal-corpo">
+      <p class="hint" style="color:var(--dim);margin:0 0 .6rem">Agendamentos deste paciente que ainda não estão em nenhum prontuário.</p>
+      ${corpo}
+    </div>
+    <div class="acoes"><button class="btn btn-ghost" onclick="fecharLancamento()">Fechar</button></div>
+  </div></div>`;
+}
+async function vincularAtendimento(prontId, atendId){
+  try{
+    await api(`prontuario/${prontId}/atendimentos/${atendId}`,"POST",{});
+    fecharLancamento(); pintarVinculosPasta(prontId); toast("Agendamento vinculado ao prontuário.");
+  }catch(e){ toast(e.message,true); }
+}
+
+function pintarArea(tipo, itens, prontId){
+  const el=$("#area-"+tipo); if(!el) return;
+  if(!itens.length){ el.innerHTML=`<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum lançamento ainda.</p>`; return; }
+  el.innerHTML=`<table class="anam-m"><tr><th style="width:104px">Data</th><th>Registro</th><th style="width:150px">Profissional</th><th style="width:190px"></th></tr>`+
+    itens.map((r)=>`<tr${Number(r.arquivado)?' class="arquivado"':""}>
+      <td>${escA(dataBR(r.data))}${Number(r.arquivado)?'<br><span class="tag tag-nao" style="font-size:.66rem">arquivado</span>':""}</td>
+      <td>${escA((r.texto||"").slice(0,110))}${(r.texto||"").length>110?"…":""}</td>
+      <td>${escA(r.profissional||"—")}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="abrirLancamento(${r.id},${prontId})">Acessar</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="arquivarLancamento(${r.id},${Number(r.arquivado)?0:1},${prontId})">${Number(r.arquivado)?"Restaurar":"Arquivar"}</button>
+      </td></tr>`).join("")+`</table>`;
+}
+
+/* Editor de um lançamento (novo ou existente), em modal por cima. */
+function editorLancamento({ id, tipo, prontId, reg }){
+  const rot=(TIPOS_PRONT.find((t)=>t[0]===tipo)||["","Lançamento"])[1];
+  const host=$("#modal-host2")||(()=>{const d=document.createElement("div");d.id="modal-host2";document.body.appendChild(d);return d;})();
+  const arquivado=reg&&Number(reg.arquivado);
+  host.innerHTML=`<div class="modal-bg" style="z-index:70"><div class="modal" style="width:min(860px,96vw)">
+    <h2>${id?"":"Novo "}${escA(rot)}${PASTA?` · ${escA(PASTA.numero||"")}`:""}</h2>
+    <div class="modal-corpo">
+      ${arquivado?`<p class="aviso-hist">Este lançamento está arquivado. Restaure-o para voltar a editá-lo.</p>`:""}
+      <div class="formgrid">
+        <div><label>Data do registro</label><input type="date" id="lc-data" value="${escA((reg&&reg.data)||hojeISO())}"${arquivado?" disabled":""}></div>
+        <div><label>Profissional</label>
+          <div class="cbx" data-cbx data-tab="profissionais" data-valor="nome" data-id="lc-prof">
+            <input type="text" id="lc-prof-txt" class="cbx-inp" autocomplete="off" placeholder="Digite para buscar…"
+              value="${escA((reg&&reg.profissional)||(PASTA&&PASTA.profissional)||"")}"${arquivado?" disabled":""}
+              oninput="cbxFiltrar('lc-prof')" onfocus="cbxFiltrar('lc-prof')" onkeydown="cbxTecla(event,'lc-prof')" onblur="cbxBlur('lc-prof')">
+            <input type="hidden" id="lc-prof" value="${escA((reg&&reg.profissional)||(PASTA&&PASTA.profissional)||"")}">
+            <div class="cbx-list" id="lc-prof-list" hidden></div>
+          </div></div>
+      </div>
+      <label>${escA(rot)}</label>
+      <textarea id="lc-texto" class="lc-texto"${arquivado?" disabled":""}>${escA((reg&&reg.texto)||"")}</textarea>
+      ${reg&&reg.criado?`<p class="hint" style="color:var(--dim)">Registrado em ${escA(dataHoraBR(reg.criado))}${reg.arquivado_em?` · arquivado em ${escA(dataHoraBR(reg.arquivado_em))}`:""}</p>`:""}
+      <div id="lc-erro"></div>
+    </div>
+    <div class="acoes">
+      ${id&&!arquivado?`<button class="btn btn-ghost" onclick="arquivarLancamento(${id},1,${prontId},true)">Arquivar</button>`:""}
+      ${id&&arquivado?`<button class="btn btn-navy" onclick="arquivarLancamento(${id},0,${prontId},true)">Restaurar</button>`:""}
+      <button class="btn btn-ghost" onclick="fecharLancamento()">Fechar</button>
+      ${arquivado?"":`<button class="btn btn-navy" onclick="salvarLancamento(${id||0},'${tipo}',${prontId})">Salvar</button>`}
+    </div></div></div>`;
+}
+const fecharLancamento=()=>{ const h=$("#modal-host2"); if(h) h.innerHTML=""; };
+function novoLancamento(tipo, prontId){ editorLancamento({ id:0, tipo, prontId, reg:null }); }
+async function abrirLancamento(id, prontId){
+  try{ const reg=await api("prontuario_registros/"+id); editorLancamento({ id, tipo:reg.tipo, prontId, reg }); }
+  catch(e){ toast(e.message,true); }
+}
+async function salvarLancamento(id, tipo, prontId){
+  const texto=($("#lc-texto").value||"").trim();
+  if(!texto){ $("#lc-erro").innerHTML=`<div class="erros">Escreva o conteúdo do lançamento.</div>`; return; }
+  const body={ prontuario_id:prontId, tipo, texto, data:$("#lc-data").value, profissional:$("#lc-prof").value };
+  try{
+    if(id) await api("prontuario_registros/"+id,"PUT",body); else await api("prontuario_registros","POST",body);
+    fecharLancamento(); toast("Lançamento salvo."); montarAreasProntuario(prontId);
+  }catch(e){ $("#lc-erro").innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
+}
+async function arquivarLancamento(id, arquivar, prontId, fechar){
+  if(arquivar && !confirm("Arquivar este lançamento?\n\nEle sai da lista, mas NÃO é excluído — continua no prontuário e pode ser restaurado a qualquer momento.")) return;
+  try{
+    await api(`prontuario_registros/${id}/${arquivar?"arquivar":"restaurar"}`,"POST",{});
+    if(fechar) fecharLancamento();
+    toast(arquivar?"Lançamento arquivado.":"Lançamento restaurado.");
+    montarAreasProntuario(prontId);
+  }catch(e){ toast(e.message,true); }
+}
+
+/* Alta e reabertura da pasta. */
+async function darAlta(){
+  if(!PASTA) return;
+  const motivo=prompt(`Dar alta em ${PASTA.especialidade}?\n\nO paciente fica INATIVO nesta especialidade (os outros prontuários dele seguem normais).\nMotivo da alta (opcional):`,"");
+  if(motivo===null) return;
+  try{
+    await api(`prontuario/${PASTA.id}/alta`,"POST",{motivo});
+    PASTA=await api("prontuario/"+PASTA.id);
+    pintarTopoPasta(); toast("Alta registrada."); carregarLista();
+  }catch(e){ toast(e.message,true); }
+}
+async function reabrirPasta(){
+  if(!PASTA) return;
+  if(!confirm(`Reabrir o prontuário de ${PASTA.especialidade}?\n\nO paciente volta a ficar ativo nesta especialidade. Todo o histórico anterior é mantido.`)) return;
+  try{
+    await api(`prontuario/${PASTA.id}/reabrir`,"POST",{});
+    PASTA=await api("prontuario/"+PASTA.id);
+    pintarTopoPasta(); toast("Prontuário reaberto."); carregarLista();
+  }catch(e){ toast(e.message,true); }
+}
+
+/* Linha do tempo da pasta (ou do paciente). */
+async function verHistorico(entidade, id, titulo){
+  let h=[]; try{ h=await api(`historico/${entidade}/${id}`); }catch(e){ return toast(e.message,true); }
+  const host=$("#modal-host2")||(()=>{const d=document.createElement("div");d.id="modal-host2";document.body.appendChild(d);return d;})();
+  host.innerHTML=`<div class="modal-bg" style="z-index:70"><div class="modal" style="width:min(760px,96vw)">
+    <h2>Histórico${titulo?` · ${escA(titulo)}`:""}</h2>
+    <div class="modal-corpo">
+      ${h.length?`<table class="anam-m"><tr><th style="width:150px">Quando</th><th>Evento</th><th style="width:150px">Por</th></tr>`+
+        h.map((x)=>`<tr><td>${escA(dataHoraBR(x.criado))}</td>
+          <td><b>${escA(x.evento)}</b>${x.detalhe?`<br><span style="color:var(--muted);font-size:.85em">${escA(x.detalhe)}</span>`:""}</td>
+          <td>${escA(x.usuario_nome||"—")}</td></tr>`).join("")+`</table>`
+        :`<p class="hint" style="color:var(--dim)">Nenhum evento registrado ainda.</p>`}
+    </div>
+    <div class="acoes"><button class="btn btn-ghost" onclick="fecharLancamento()">Fechar</button></div>
+  </div></div>`;
+}
+const verHistoricoPasta=()=>PASTA&&verHistorico("prontuario",PASTA.id,`${PASTA.numero} · ${PASTA.especialidade}`);
+
 /* ==========================================================================
    BUSCA DE CEP — assim que os 8 dígitos são digitados, preenche o endereço.
    Passa pelo nosso servidor (/api/cep), não direto na internet: a CSP desta
@@ -1295,12 +1839,15 @@ const LOGO_SVG = `<svg viewBox="169 832 1636 293" role="img" aria-label="BemEsta
 /* Só a flor da marca (sem o texto), recortada no seu bounding box — usada como
    marca d'água no centro das páginas impressas. */
 const LOTUS_SVG = `<svg viewBox="196 852 268 210" xmlns="http://www.w3.org/2000/svg" role="presentation"><path fill="#5136d6" d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></svg>`;
+/* Cabeçalho do papel timbrado. O endereço saiu a pedido da clínica — ficam só
+   CNPJ, e-mail, WhatsApp e site. */
 const CLINICA = {
   nome: "BemEstarClinic",
   sub: "Psicanálise · Ozonioterapia · Terapias Integrativas",
   cnpj: "02.192.745/0001-25",
-  endereco: "Empresarial Nordeste Corporate, sala 707 — Universitário, Caruaru-PE",
-  contato: "faleconosco@bemestarclinic.com · (81) 97303-7762 · bemestarclinic.com",
+  email: "faleconosco@bemestarclinic.com",
+  whatsapp: "(81) 97303-7762",
+  site: "bemestarclinic.com",
 };
 function timbreHTML(titulo, corpo, opc){
   const o = opc || {};
@@ -1405,7 +1952,7 @@ function timbreHTML(titulo, corpo, opc){
       <div class="timbre">
         <span class="marca">${LOGO_SVG}</span>
         <div class="id"><div class="nome">${CLINICA.nome}</div><div class="sub">${CLINICA.sub}</div></div>
-        <div class="doc">CNPJ ${CLINICA.cnpj}<br>${CLINICA.endereco}<br>${CLINICA.contato}</div>
+        <div class="doc">CNPJ ${CLINICA.cnpj}<br>${CLINICA.email} · ${CLINICA.whatsapp}<br>${CLINICA.site}</div>
       </div>
       <div class="faixa"></div>
     </td></thead>
@@ -1447,29 +1994,58 @@ function abrirImpressao(titulo, corpo, opc){
    ========================================================================== */
 let ANAM_ID = 0, ANAM_TIPO = "", ANAM_PAC = null;
 
-async function abrirAnamnese(id, tipoSugerido){
+async function abrirAnamnese(id, tipoSugerido, pre){
   ANAM_ID = id || 0;
-  let reg = { tipo: tipoSugerido || filtroAnamTipo || "psicanalise", dados: "{}", data: hojeISO(), profissional: "" };
+  pre = pre || {};
+  /* Quem preenche a anamnese normalmente é o próprio profissional logado — a
+     tela já vem com o nome dele. Continua trocável (admin e recepção escolhem). */
+  const euProfissional = ME.perfil === "profissional" ? (ME.profissional_nome || ME.nome || "") : "";
+  let reg = { tipo: tipoSugerido || filtroAnamTipo || "psicanalise", dados: "{}", data: hojeISO(),
+              profissional: euProfissional,
+              status: "Rascunho", procedimento: pre.procedimento || "", paciente_id: pre.paciente_id || "" };
   if(id){ try{ reg = await api("anamneses/"+id); }catch(e){ return toast(e.message,true); } }
   ANAM_TIPO = reg.tipo;
   ANAM_PAC = reg.paciente_id ? await api("pacientes/"+reg.paciente_id).catch(()=>null) : null;
   let dados = {}; try{ dados = JSON.parse(reg.dados||"{}"); }catch{}
+  /* Finalizada = documento fechado: fica só de leitura até ser reaberta. Sem
+     isso, a faixa diria "reabra primeiro" e o formulário deixaria editar assim
+     mesmo — mensagem e comportamento em desacordo. */
+  const finalizada = reg.status === "Finalizada";
+  const pastaLigada = reg.prontuario_id ? achaPront(reg.prontuario_id) : null;
 
   const host=$("#modal-host");
   const opcoesTipo = Object.entries(MODELOS).map(([k,m])=>`<option value="${escA(k)}"${k===ANAM_TIPO?" selected":""}>${escA(m.rotulo||m.titulo)}</option>`).join("");
+  // procedimentos pelo NOME (sem o tipo): é o nome que identifica a pasta
+  const nomesProc=[...new Set((CACHE.procedimentos||[]).filter((x)=>Number(x.ativo)!==0).map((x)=>x.nome))].sort();
+  if(reg.procedimento && !nomesProc.includes(reg.procedimento)) nomesProc.push(reg.procedimento);
+  const opcoesProc = `<option value="">Selecione…</option>`+nomesProc.map((n)=>
+    `<option value="${escA(n)}"${reg.procedimento===n?" selected":""}>${escA(n)}</option>`).join("");
+
   host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(1000px,96vw)">
     <h2>${id?"Editar anamnese":"Nova anamnese"}</h2>
     <div class="modal-corpo">
+    ${finalizada?`<div class="faixa-final">
+      <b>Anamnese finalizada</b> — ela abriu o prontuário
+      ${pastaLigada?`<span class="num-pront">${escA(pastaLigada.numero||"")}</span> (${escA(pastaLigada.especialidade||"")})`:""}.
+      Para corrigir algo, reabra primeiro.
+      <button type="button" class="btn btn-ghost btn-sm" onclick="reabrirAnamnese(${id})">Reabrir para correção</button>
+    </div>`:`<p class="hint" style="margin:0 0 .6rem;color:var(--dim)">
+      Enquanto está sendo preenchida, a anamnese fica como <b>rascunho</b> e não cria prontuário.
+      Ao <b>finalizar</b>, o sistema abre a pasta do paciente naquele procedimento — ou usa a que já existir.</p>`}
     <div class="formgrid">
       <div><label>Modelo de anamnese <span style="color:var(--red)">*</span></label>
         <select id="an-tipo" onchange="trocarModeloAnamnese()">${opcoesTipo}</select></div>
       <div><label>Paciente <span style="color:var(--red)">*</span></label>
         <div class="cbx" data-cbx data-tab="pacientes" data-valor="id" data-id="an-paciente">
-          <input type="text" id="an-paciente-txt" class="cbx-inp" autocomplete="off" placeholder="Digite o nome ou CPF…" value="${ANAM_PAC?escA(ANAM_PAC.nome):""}"
+          <input type="text" id="an-paciente-txt" class="cbx-inp" autocomplete="off" placeholder="Nome, código ou CPF…" value="${ANAM_PAC?escA(ANAM_PAC.nome):""}"
             oninput="cbxFiltrar('an-paciente')" onfocus="cbxFiltrar('an-paciente')" onkeydown="cbxTecla(event,'an-paciente')" onblur="cbxBlur('an-paciente')">
           <input type="hidden" id="an-paciente" value="${escA(reg.paciente_id||"")}">
           <div class="cbx-list" id="an-paciente-list" hidden></div>
         </div></div>
+      <div><label>Procedimento <span style="color:var(--red)">*</span></label>
+        <select id="an-procedimento" ${finalizada?"disabled":""} onchange="avisoPastaAnamnese()">${opcoesProc}</select>
+        <p class="hint" style="margin:.25rem 0 0">É ele que define de qual prontuário esta anamnese faz parte.</p>
+        <div id="an-aviso-pasta"></div></div>
       <div><label>Data</label><input type="date" id="an-data" value="${escA(reg.data||hojeISO())}"></div>
       <div><label>Profissional responsável</label>
         <div class="cbx" data-cbx data-tab="profissionais" data-valor="nome" data-id="an-prof">
@@ -1485,24 +2061,86 @@ async function abrirAnamnese(id, tipoSugerido){
     </div>
     <div class="acoes">
       ${id?`<button class="btn btn-ghost" onclick="imprimirAnamnese(${id})">Imprimir</button>`:""}
-      ${id?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
-      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
-      <button class="btn btn-navy" onclick="salvarAnamnese()">Salvar</button>
+      ${id&&!finalizada?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
+      <button class="btn btn-ghost" onclick="fecharModal()">${finalizada?"Fechar":"Cancelar"}</button>
+      ${finalizada?"":`<button class="btn btn-navy" onclick="salvarAnamnese()">Salvar rascunho</button>
+      <button class="btn btn-ok" onclick="finalizarAnamnese()">Finalizar e abrir prontuário</button>`}
     </div></div></div>`;
 
   $("#an-paciente").addEventListener("change", async ()=>{
     const pid=$("#an-paciente").value;
     ANAM_PAC = pid ? await api("pacientes/"+pid).catch(()=>null) : null;
     pintarDadosPessoaisAnamnese();
+    avisoPastaAnamnese();
   });
   pintarDadosPessoaisAnamnese();
+  avisoPastaAnamnese();
   montarFormAnamnese(dados);
+  // documento fechado: trava tudo, inclusive as respostas do modelo
+  if(finalizada) host.querySelectorAll(".modal-corpo input, .modal-corpo select, .modal-corpo textarea")
+    .forEach((el)=>{ el.disabled=true; });
+}
+
+/* Diz, ANTES de finalizar, o que vai acontecer: abrir pasta nova ou entrar numa
+   que já existe. Evita a dúvida "criei prontuário repetido?". */
+function avisoPastaAnamnese(){
+  const box=$("#an-aviso-pasta"); if(!box) return;
+  const proc=$("#an-procedimento")?$("#an-procedimento").value:"";
+  const pid=$("#an-paciente")?$("#an-paciente").value:"";
+  if(!proc||!pid){ box.innerHTML=""; return; }
+  const pasta=prontDoPar(pid,proc);
+  box.innerHTML = pasta
+    ? `<p class="hint" style="margin:.35rem 0 0;color:var(--marinho)">Ao finalizar, entra no prontuário
+        <b class="num-pront">${escA(pasta.numero||"")}</b> que já existe para este procedimento.</p>`
+    : `<p class="hint" style="margin:.35rem 0 0;color:var(--dim)">Ao finalizar, abre um prontuário novo para este procedimento.</p>`;
+}
+
+async function finalizarAnamnese(){
+  const proc=$("#an-procedimento").value;
+  if(!$("#an-paciente").value) return toast("Escolha o paciente.",true);
+  if(!proc) return toast("Escolha o procedimento — é ele que define o prontuário.",true);
+  // salva o que está na tela antes de fechar a anamnese
+  const salvou=await salvarAnamnese({silencioso:true, manterAberto:true});
+  if(!salvou) return;
+  const pasta=prontDoPar($("#an-paciente").value,proc);
+  if(!confirm(pasta
+    ? `Finalizar a anamnese e vinculá-la ao prontuário ${pasta.numero} (${proc})?`
+    : `Finalizar a anamnese e ABRIR o prontuário de ${proc} para este paciente?`)) return;
+  try{
+    const r=await api("anamneses/"+ANAM_ID+"/finalizar","POST",{procedimento:proc});
+    await recarregarCache();
+    fecharModal();
+    await carregarLista();
+    const n=r.prontuario?r.prontuario.numero:"";
+    toast(`${r.criada?"Prontuário "+n+" aberto":"Anamnese vinculada ao prontuário "+n}`
+      + (r.atendimentosVinculados?` · ${r.atendimentosVinculados} agendamento(s) vinculado(s)`:""));
+  }catch(e){ toast(e.message,true); }
+}
+async function reabrirAnamnese(id){
+  if(!confirm("Reabrir esta anamnese para correção? O prontuário que ela abriu continua como está.")) return;
+  try{ await api("anamneses/"+id+"/reabrir","POST",{}); fecharModal(); await carregarLista(); toast("Anamnese reaberta."); }
+  catch(e){ toast(e.message,true); }
 }
 /* ==========================================================================
    BLOCO "DADOS DO PACIENTE" (só leitura) — usado na ANAMNESE e no PRONTUÁRIO.
    É o que o Dr. pediu: escolheu o paciente, a ficha dele já aparece preenchida,
    sem precisar sair da tela para consultar o cadastro.
    ========================================================================== */
+/* Prontuários do paciente, mostrados como "chips" com o número da pasta — é o
+   vínculo que o Dr. pediu: onde houver paciente, aparece o nº do prontuário. */
+async function chipsProntuarios(pacienteId, alvoId){
+  const el=$("#"+alvoId); if(!el||!pacienteId) return;
+  let ps=[]; try{ ps=await api(`pacientes/${pacienteId}/prontuarios`); }catch{ return; }
+  el.innerHTML = ps.length
+    ? `<div class="chips-pront"><span class="rot">Prontuários deste paciente:</span>`+
+      ps.map((x)=>{
+        const det=[x.status==="Alta"?"alta":"", (x.anamneses?`${x.anamneses} anamnese(s)`:""), (x.atendimentos?`${x.atendimentos} agend.`:"")]
+          .filter(Boolean).join(" · ");
+        return `<span class="chip-pront${x.status==="Alta"?" alta":""}" title="${escA((x.status==="Alta"?"Alta (inativo)":"Em tratamento")+(det?" — "+det:""))}">
+        <b>${escA(x.numero||"—")}</b> ${escA(x.especialidade)}${det?" · "+escA(det):""}</span>`;}).join("")+`</div>`
+    : `<p class="hint" style="color:var(--dim);margin:.3rem 0">Este paciente ainda não tem prontuário aberto.</p>`;
+}
+
 function blocoPacienteCard(p, titulo){
   if(!p) return `<p class="hint" style="color:var(--dim);margin:.8rem 0">Escolha o paciente — os dados do cadastro aparecem aqui automaticamente.</p>`;
   const idade=idadeAnos(p.nascimento);
@@ -1518,7 +2156,9 @@ function blocoPacienteCard(p, titulo){
       <button type="button" class="btn btn-ghost btn-sm" onclick="imprimirFicha(${p.id})">Imprimir ficha</button>
     </div>
     ${alertas.length?`<p style="margin:0 0 .6rem;font-size:.82rem;color:var(--ambar);font-weight:600">⚠ ${alertas.map(escA).join(" · ")}</p>`:""}
+    <div id="chips-pront-${p.id}"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem 1rem;font-size:.86rem">
+      ${item("Código",p.codigo)}
       ${item("Nome",p.nome)}
       ${item("Nascimento",p.nascimento?dataBR(p.nascimento)+(idade!==null?` (${idade}a)`:""):"")}
       ${item("CPF",p.cpf)}${item("RG",p.rg)}
@@ -1534,6 +2174,7 @@ function blocoPacienteCard(p, titulo){
 function pintarDadosPessoaisAnamnese(){
   const box=$("#an-dados-pessoais"); if(!box) return;
   box.innerHTML=blocoPacienteCard(ANAM_PAC);
+  if(ANAM_PAC) chipsProntuarios(ANAM_PAC.id, "chips-pront-"+ANAM_PAC.id);
 }
 
 /* Monta os campos do modelo escolhido. */
@@ -1623,16 +2264,23 @@ function coletarAnamnese(){
   });
   return { dados };
 }
-async function salvarAnamnese(){
+/* opc.manterAberto: usado pelo Finalizar, que precisa gravar o rascunho e
+   continuar na tela para então fechar a anamnese. Devolve true se gravou. */
+async function salvarAnamnese(opc){
+  opc = opc || {};
   const box=$("#form-erros");
   const paciente_id=$("#an-paciente").value;
-  if(!paciente_id){ box.innerHTML=`<div class="erros">Escolha o paciente.</div>`; return; }
+  if(!paciente_id){ box.innerHTML=`<div class="erros">Escolha o paciente.</div>`; return false; }
   const body={ paciente_id, tipo:$("#an-tipo").value, data:$("#an-data").value,
+    procedimento:($("#an-procedimento")?$("#an-procedimento").value:""),
     profissional:$("#an-prof").value, dados:JSON.stringify(coletarAnamnese().dados) };
   try{
-    if(ANAM_ID) await api("anamneses/"+ANAM_ID,"PUT",body); else await api("anamneses","POST",body);
-    fecharModal(); toast("Anamnese salva."); carregarLista();
-  }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
+    if(ANAM_ID) await api("anamneses/"+ANAM_ID,"PUT",body);
+    else { const r=await api("anamneses","POST",body); ANAM_ID=r.id; }   // guarda o id para o Finalizar
+    if(!opc.manterAberto){ fecharModal(); carregarLista(); }
+    if(!opc.silencioso) toast("Anamnese salva.");
+    return true;
+  }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; return false; }
 }
 async function excluirAnamnese(id){
   if(!confirm("Excluir esta anamnese? Esta ação não pode ser desfeita.")) return;
@@ -1655,6 +2303,7 @@ function blocoDadosPessoais(p, convNome){
     <div class="sec">Dados pessoais</div>
     <div class="grade">
       <table class="d">
+        ${L("Código", p.codigo)}
         ${L("Nome", p.nome)}
         ${L("Nascimento", p.nascimento ? dataBR(p.nascimento) + (idade!==null?` (${idade} anos)`:"") : "")}
         ${L("CPF", p.cpf)}${L("RG", p.rg)}${L("Sexo", sexo)}
@@ -1668,7 +2317,8 @@ function blocoDadosPessoais(p, convNome){
     </div>
     <table class="d">${L("Endereço", enderecoCompleto(p))}
       ${p.altura||p.peso?L("Altura / Peso",[p.altura?p.altura+" m":"",p.peso?p.peso+" kg":""].filter(Boolean).join(" · ")):""}
-      ${L("Código (prontuário)", p.codigo)}</table>
+      ${L("Cadastrado em", p.criado ? dataHoraBR(p.criado) : "")}
+      ${L("Reativado em", p.reativado_em ? dataHoraBR(p.reativado_em) : "")}</table>
     ${p.resp_nome?`<div class="sec">Responsável legal</div>
     <table class="d">${L("Nome",p.resp_nome)}${L("CPF",p.resp_cpf)}${L("RG",p.resp_rg)}${L("Nascimento",dataBR(p.resp_nascimento))}</table>`:""}`;
 }
@@ -1735,27 +2385,64 @@ async function imprimirAnamnese(id){
   abrirImpressao(modelo.titulo, corpo, { subtitulo: `${p.nome}${a.data?" · "+dataBR(a.data):""}` });
 }
 
-/* Impressão de UMA evolução do prontuário: ficha do paciente + o registro
-   clínico daquela sessão. É o que o profissional leva para o arquivo ou entrega
-   ao paciente quando ele pede o registro de um atendimento específico. */
-async function imprimirEvolucao(id){
-  let e; try{ e=await api("prontuario/"+id); }catch(err){ return toast(err.message,true); }
-  let p={}; try{ p=await api("pacientes/"+e.paciente_id); }catch{}
-  let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
-  const bloco=(rot,txt)=> txt?`<div class="sec">${escA(rot)}</div><p style="white-space:pre-wrap">${escA(txt)}</p>`:"";
-  const corpo = `${e.numero?`<div class="selo-num">Prontuário nº <b>${escA(e.numero)}</b></div>`:""}`
+/* Impressão de UMA pasta de prontuário: ficha do paciente + TODOS os
+   lançamentos daquela especialidade, em ordem. Um paciente com 2 anos de
+   terapia gera um documento longo — e é assim que deve ser. */
+function blocoLancamentos(registros, incluirArquivados){
+  let html="";
+  for(const [tipo,,titulo] of TIPOS_PRONT){
+    const itens=registros.filter((r)=>r.tipo===tipo && (incluirArquivados || !Number(r.arquivado)));
+    if(!itens.length) continue;
+    html+=`<div class="sec">${escA(titulo)} (${itens.length})</div>`;
+    itens.forEach((r,i)=>{
+      html+=`<div class="evo">
+        <div class="cab">${i+1}. ${escA(dataBR(r.data))}${Number(r.arquivado)?' <span class="num-inline">arquivado</span>':""}</div>
+        <div class="met">${escA(r.profissional||"—")}${r.criado?` · registrado em ${escA(dataHoraBR(r.criado))}`:""}</div>
+        <p style="white-space:pre-wrap">${escA(r.texto||"")}</p>
+      </div>`;
+    });
+  }
+  return html || `<p style="color:#9aa">Sem lançamentos registrados.</p>`;
+}
+/* Vínculos da pasta na impressão: as anamneses que a abriram e os agendamentos
+   daquele procedimento. É o que dá contexto a quem lê o prontuário depois. */
+function blocoVinculos(v){
+  if(!v) return "";
+  const anam=v.anamneses||[], atend=v.atendimentos||[];
+  const tAnam = anam.length ? `<div class="sec">Anamneses vinculadas (${anam.length})</div>
+    <table class="d"><tr><th>Data</th><th>Modelo</th><th>Situação</th><th>Profissional</th></tr>`+
+    anam.map((a)=>`<tr><td>${escA(dataBR(a.data))}</td><td>${escA(rotuloAnam(a.tipo))}</td>
+      <td>${escA(a.status||"Rascunho")}</td><td>${escA(a.profissional||"—")}</td></tr>`).join("")+`</table>` : "";
+  const tAt = atend.length ? `<div class="sec">Agendamentos vinculados (${atend.length})</div>
+    <table class="d"><tr><th>Data</th><th>Horário</th><th>Procedimento</th><th>Profissional</th><th>Sala</th><th>Situação</th></tr>`+
+    atend.map((a)=>`<tr><td>${escA(dataBR(a.data))}</td>
+      <td>${escA(a.hora||"")}${a.hora_fim?" – "+escA(a.hora_fim):""}</td>
+      <td>${escA(a.procedimento_nome||"—")}</td><td>${escA(a.profissional_nome||"—")}</td>
+      <td>${escA(a.sala_nome||"—")}</td><td>${escA(a.status||"—")}</td></tr>`).join("")+`</table>` : "";
+  return tAnam + tAt;
+}
+async function imprimirPasta(id, incluirArquivados){
+  let pr; try{ pr=await api("prontuario/"+id); }catch(e){ return toast(e.message,true); }
+  let p={}; try{ p=await api("pacientes/"+pr.paciente_id); }catch{}
+  let regs=[]; try{ regs=await api(`prontuario_registros?prontuario_id=${id}&arquivados=1`); }catch{}
+  let vinc=null; try{ vinc=await api(`prontuario/${id}/vinculos`); }catch{}
+  regs.sort((a,b)=>String(a.data||"").localeCompare(String(b.data||"")) || a.id-b.id);
+  const corpo = `<div class="selo-num">Prontuário nº <b>${escA(pr.numero||"")}</b></div>`
     + blocoDadosPessoais(p) + `
-    <div class="sec">Atendimento</div>
-    <table class="d">${L("Nº do prontuário",e.numero)}${L("Data",dataBR(e.data))}${L("Profissional",e.profissional)}
-      ${L("Procedimento",servs.join(", "))}</table>
-    ${bloco("Avaliação",e.avaliacao)}
-    ${bloco("Evolução da sessão",e.evolucao)}
-    ${bloco("Plano terapêutico",e.plano)}
-    ${bloco("Encaminhamentos",e.encaminhamentos)}
-    ${e.anexos?`<div class="sec">Anexo</div><p>Há arquivo anexado a este registro no sistema.</p>`:""}
-    ${assinatura(e.responsavel||e.profissional)}`;
-  abrirImpressao("Prontuário — registro de atendimento", corpo,
-    { subtitulo: `${e.numero?e.numero+" · ":""}${p.nome||""}${e.data?" · "+dataBR(e.data):""}` });
+    <div class="sec">Prontuário</div>
+    <table class="d">${L("Número",pr.numero)}${L("Procedimento",pr.especialidade)}
+      ${L("Código do paciente",p.codigo)}
+      ${L("Profissional responsável",pr.profissional)}${L("Aberto em",dataBR(pr.aberto_em))}
+      ${L("Situação",pr.status==="Alta"?"Alta (inativo)":"Em tratamento")}
+      ${pr.alta_em?L("Alta em",dataBR(pr.alta_em)):""}${pr.alta_motivo?L("Motivo da alta",pr.alta_motivo):""}
+      ${pr.reativado_em?L("Reaberto em",dataHoraBR(pr.reativado_em)):""}
+      ${L("Registro criado em",dataHoraBR(pr.criado))}</table>
+    ${pr.observacao?`<div class="sec">Observação</div><p style="white-space:pre-wrap">${escA(pr.observacao)}</p>`:""}
+    ${blocoVinculos(vinc)}
+    ${blocoLancamentos(regs, incluirArquivados)}
+    ${assinatura(pr.profissional)}`;
+  abrirImpressao("Prontuário", corpo,
+    { subtitulo: `${pr.numero||""} · ${p.nome||""} · ${pr.especialidade||""}` });
 }
 
 /* ==========================================================================
@@ -1766,19 +2453,30 @@ async function imprimirEvolucao(id){
 async function imprimirHistorico(pacienteId){
   let h; try{ h=await api("historico/"+pacienteId); }catch(e){ return toast(e.message,true); }
   const p=h.paciente;
-  const nAt=h.atendimentos.length, nEv=h.evolucoes.length, nAn=h.anamneses.length;
-  // período de tratamento
-  const datas=[...h.atendimentos.map((x)=>x.data),...h.evolucoes.map((x)=>x.data)].filter(Boolean).sort();
+  const pastas=h.prontuarios||[];
+  const nAt=h.atendimentos.length, nAn=h.anamneses.length;
+  const nLanc=pastas.reduce((s,x)=>s+(x.registros?x.registros.length:0),0);
+  // período: da abertura da 1ª pasta / 1º atendimento até o último registro
+  const datas=[...h.atendimentos.map((x)=>x.data), ...pastas.flatMap((x)=>(x.registros||[]).map((r)=>r.data))]
+    .filter(Boolean).sort();
   const periodo = datas.length ? `${dataBR(datas[0])} a ${dataBR(datas[datas.length-1])}` : "—";
 
   let corpo = blocoDadosPessoais(p, p.convenio_nome);
   corpo += `<div class="sec">Resumo do tratamento</div>
     <div class="cards">
+      <div class="kpi"><b>${pastas.length}</b><span>Prontuários</span></div>
+      <div class="kpi"><b>${nLanc}</b><span>Lançamentos</span></div>
       <div class="kpi"><b>${nAt}</b><span>Atendimentos</span></div>
-      <div class="kpi"><b>${nEv}</b><span>Evoluções</span></div>
       <div class="kpi"><b>${nAn}</b><span>Anamneses</span></div>
       <div class="kpi" style="min-width:190px"><b style="font-size:.95rem;padding-top:.3rem">${escA(periodo)}</b><span>Período</span></div>
     </div>`;
+  if(pastas.length){
+    corpo += `<table class="m" style="margin-top:.5rem"><tr><th>Nº</th><th>Procedimento</th><th>Profissional</th><th>Aberto em</th><th>Situação</th><th>Lanç.</th><th>Anam.</th><th>Agend.</th></tr>`+
+      pastas.map((x)=>`<tr><td>${escA(x.numero||"—")}</td><td>${escA(x.especialidade)}</td>
+        <td>${escA(x.profissional||"—")}</td><td>${escA(dataBR(x.aberto_em))}</td>
+        <td>${x.status==="Alta"?`Alta${x.alta_em?" em "+escA(dataBR(x.alta_em)):""}`:"Em tratamento"}</td>
+        <td>${(x.registros||[]).length}</td><td>${(x.anamneses||[]).length}</td><td>${(x.atendimentos||[]).length}</td></tr>`).join("")+`</table>`;
+  }
 
   // 1) anamneses, cada uma em página própria (documento completo)
   h.anamneses.forEach((a)=>{
@@ -1791,23 +2489,14 @@ async function imprimirHistorico(pacienteId){
     corpo += modeloSóRespostas;
   });
 
-  // 2) linha do tempo das evoluções (o miolo do prontuário)
-  if(nEv){
-    corpo += `<div class="quebra"></div><h1 style="margin-top:0">Evolução clínica</h1>
-      <p class="subtitulo">${escA(p.nome)} · ${nEv} registro(s) · ${escA(periodo)}</p>`;
-    h.evolucoes.forEach((e,i)=>{
-      let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
-      corpo += `<div class="evo">
-        <div class="cab">${i+1}. ${escA(e.data?dataBR(e.data):"(sem data)")}${e.numero?` <span class="num-inline">${escA(e.numero)}</span>`:""}</div>
-        <div class="met">${escA(e.profissional||"—")}${servs.length?" · "+escA(servs.join(", ")):""}</div>
-        ${e.avaliacao?`<p><b>Avaliação:</b> ${escA(e.avaliacao)}</p>`:""}
-        ${e.evolucao?`<p><b>Evolução:</b> ${escA(e.evolucao)}</p>`:""}
-        ${e.plano?`<p><b>Plano:</b> ${escA(e.plano)}</p>`:""}
-        ${e.encaminhamentos?`<p><b>Encaminhamentos:</b> ${escA(e.encaminhamentos)}</p>`:""}
-        ${e.responsavel?`<p style="color:#8a90a0;font-size:.75rem">Responsável técnico: ${escA(e.responsavel)}</p>`:""}
-      </div>`;
-    });
-  }
+  // 2) CADA PRONTUÁRIO em página própria, com todos os seus lançamentos
+  pastas.forEach((x)=>{
+    corpo += `<div class="quebra"></div><h1 style="margin-top:0">Prontuário ${escA(x.numero||"")}</h1>
+      <p class="subtitulo">${escA(x.especialidade)} · ${x.status==="Alta"?"Alta (inativo)":"Em tratamento"} · aberto em ${escA(dataBR(x.aberto_em))}</p>`;
+    if(x.observacao) corpo += `<div class="sec">Observação</div><p style="white-space:pre-wrap">${escA(x.observacao)}</p>`;
+    corpo += blocoVinculos(x);        // anamneses e agendamentos daquela pasta
+    corpo += blocoLancamentos((x.registros||[]).slice().sort((a,b)=>String(a.data||"").localeCompare(String(b.data||""))||a.id-b.id), true);
+  });
 
   // 3) histórico de atendimentos (agenda), em ordem
   if(nAt){
@@ -1820,6 +2509,15 @@ async function imprimirHistorico(pacienteId){
         <td>${escA(a.sala_nome||"—")}</td><td>${escA(a.convenio_nome||"—")}</td><td>${escA(a.status||"—")}</td></tr>`;
     });
     corpo += `</table>`;
+  }
+  // 4) linha do tempo do paciente — entrou, saiu, voltou
+  if((h.historico||[]).length){
+    corpo += `<div class="quebra"></div><h1 style="margin-top:0">Histórico do paciente</h1>
+      <p class="subtitulo">${escA(p.nome)} · ${h.historico.length} evento(s)</p>
+      <table class="m"><tr><th style="width:130px">Quando</th><th>Evento</th><th style="width:130px">Por</th></tr>`+
+      h.historico.map((x)=>`<tr><td>${escA(dataHoraBR(x.criado))}</td>
+        <td><b>${escA(x.evento)}</b>${x.detalhe?` — ${escA(x.detalhe)}`:""}</td>
+        <td>${escA(x.usuario_nome||"—")}</td></tr>`).join("")+`</table>`;
   }
   corpo += assinatura();
   abrirImpressao("Prontuário completo", corpo, { subtitulo: `${p.nome} · período ${periodo}` });

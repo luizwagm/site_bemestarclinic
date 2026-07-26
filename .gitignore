@@ -15,6 +15,11 @@ data/
 # Imagens enviadas pelo painel em produção — pertencem ao servidor, não ao repo.
 assets/img/uploads/
 
+# Anexos de prontuário e documentos enviados no /restrito.
+# São dado pessoal SENSÍVEL de paciente (LGPD): não podem entrar no repositório
+# em hipótese alguma — o git guardaria cópia permanente no histórico.
+restrito/arquivos/
+
 # Sistema / editor
 Thumbs.db
 .DS_Store

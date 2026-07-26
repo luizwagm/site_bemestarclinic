@@ -1,6 +1,6 @@
 /* ==========================================================================
    server.js — Gerenciador do site BemEstarClinic
-   Node puro + SQLite nativo (node:sqlite) — zero dependências.
+   Node puro + SQLite (driver escolhido em db.js).
    · Site:   http://localhost:5185/
    · Painel: http://localhost:5185/admin/   (senha inicial mostrada só no 1º boot)
    "Publicar" regenera o index.html (marcadores <!--#KEY-->) e o config.js.
@@ -9,7 +9,8 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { DatabaseSync } = require("node:sqlite");
+const { abrirBanco, DRIVER_NOME, DRIVER_AVISO } = require("./db");
+const { agendarBackups } = require("./backup");
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir uma cópia de teste
@@ -18,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.10.0";
+const APP_VERSION = "1.11.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -85,7 +86,7 @@ const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-const db = new DatabaseSync(path.join(ROOT, "data", "site.db"));
+const db = abrirBanco(path.join(ROOT, "data", "site.db"));
 db.exec(`
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS services (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, text TEXT, sort INTEGER DEFAULT 0);
@@ -1253,6 +1254,30 @@ if (process.argv.includes("--publicar")) {
   process.exit(0);
 }
 
+/* Configuração do backup — usada tanto pela rotina automática (no listen) quanto
+   pelo `node server.js --backup`, para que as duas gravem no mesmo lugar. */
+const BACKUP_CFG = {
+  destino: path.join(ROOT, "backups"),
+  bancos: [path.join(ROOT, "data", "site.db"), path.join(ROOT, "data", "gestao.db")],
+  intervaloHoras: Number(process.env.BACKUP_HORAS) || 24,
+  manter: Number(process.env.BACKUP_MANTER) || 30,
+};
+
+// `node server.js --backup` força uma cópia agora, sem subir o servidor. É o que
+// o deploy.sh chama antes de mexer em qualquer coisa.
+if (process.argv.includes("--backup")) {
+  const { rodarBackup } = require("./backup");
+  const feitos = rodarBackup(BACKUP_CFG, "manual");
+  process.exit(feitos.length ? 0 : 1);
+}
+
+// `node server.js --backup-status` lista a situação — usado pelo verificar.sh
+if (process.argv.includes("--backup-status")) {
+  const { statusBackup } = require("./backup");
+  console.log(JSON.stringify(statusBackup(BACKUP_CFG), null, 2));
+  process.exit(0);
+}
+
 http.createServer(async (req, res) => {
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
@@ -1501,6 +1526,12 @@ http.createServer(async (req, res) => {
   console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
   console.log(`  · Site:   http://localhost:${PORT}/`);
   console.log(`  · Painel: http://localhost:${PORT}/admin/`);
+  console.log(`  · Banco:  ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""}`);
+
+  /* Backup automático dos DOIS bancos: o do site e o da gestão (prontuários).
+     Roda aqui, no processo do site, porque é ele que sobe com o systemd — o
+     restrito.js não tem boot próprio. Diário, guardando 30 cópias (~1 mês). */
+  agendarBackups(BACKUP_CFG);
 
   // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
   // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.

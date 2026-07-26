@@ -10,8 +10,12 @@
 #  git pull e devolve depois: nem um pull mal resolvido nem um commit antigo
 #  que apaga o arquivo conseguem encostar nele.
 #
-#  Sequência: backup → inventário → parar → proteger → pull → devolver →
-#             subir → conferir inventário → testar. Falhou, restaura sozinho.
+#  Sequência: backup → inventário → parar → proteger → pull → dependências →
+#             devolver → subir → conferir inventário → testar.
+#             Falhou, restaura sozinho.
+#
+#  Este backup é o do DEPLOY (uma foto antes de mexer). O sistema também tira
+#  um backup DIÁRIO sozinho, na mesma pasta backups/ — ver backup.js.
 # ==========================================================================
 set -uo pipefail
 
@@ -33,9 +37,9 @@ vermelho(){ printf "\033[1;31m%s\033[0m\n" "$1"; }
 inventario() {
   [ -f data/site.db ] || { echo "SEM BANCO"; return; }
   node -e '
-    const { DatabaseSync } = require("node:sqlite");
+    const { abrirBanco } = require("./db");
     try {
-      const db = new DatabaseSync("data/site.db");
+      const db = abrirBanco("data/site.db");
       const n = (t) => db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c;
       console.log(`${n("services")} especialidades · ${n("team")} profissionais · ${n("posts")} matérias · ${n("portfolio")} fotos · ${n("testimonials")} depoimentos · ${n("settings")} textos · ${n("visits")} visitas`);
     } catch (e) { console.log("BANCO ILEGÍVEL: " + e.message); }
@@ -58,46 +62,42 @@ restaurar_e_sair() {
 }
 
 # ----------------------------------------------------------- 1. backup
-azul "1/7  Backup do banco"
+# Usa o próprio backup.js: VACUUM INTO (cópia consistente com o serviço no ar) e
+# integrity_check na cópia. Cobre site.db e gestao.db — este último guarda
+# prontuário e anamnese, dado pessoal SENSÍVEL (LGPD).
+azul "1/8  Backup dos bancos"
 mkdir -p "$BACKUP_DIR"
-BACKUP="$BACKUP_DIR/site.db.$(date +%Y-%m-%d_%H%M%S)"
-if [ -f data/site.db ]; then
-  if command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 data/site.db ".backup '$BACKUP'" || cp data/site.db "$BACKUP"
+if [ -f data/site.db ] || [ -f data/gestao.db ]; then
+  if node server.js --backup 2>&1 | sed 's/^/  /'; then
+    :
   else
-    cp data/site.db "$BACKUP"
+    amarelo "     backup pelo sistema falhou — caindo para cópia simples"
+    for b in site gestao; do
+      [ -f "data/$b.db" ] && cp "data/$b.db" "$BACKUP_DIR/$b.$(date +%Y-%m-%d_%H%M%S).db"
+    done
   fi
-  verde "     $BACKUP ($(du -h "$BACKUP" | cut -f1))"
-  ls -1t "$BACKUP_DIR"/site.db.* 2>/dev/null | tail -n +$((MANTER_BACKUPS + 1)) | xargs -r rm --
+  # o mais recente serve de âncora para o restaurar_e_sair
+  BACKUP=$(ls -1t "$BACKUP_DIR"/site.*.db 2>/dev/null | head -1)
+  for b in site gestao; do
+    ls -1t "$BACKUP_DIR/$b."*.db 2>/dev/null | tail -n +$((MANTER_BACKUPS + 1)) | xargs -r rm --
+  done
 else
-  amarelo "     ainda não existe banco (primeira instalação)"
-fi
-# Banco do sistema de gestão (/restrito) — prontuário e anamnese: dado pessoal
-# SENSÍVEL (LGPD). Mesmo tratamento do site.db, backup próprio.
-if [ -f data/gestao.db ]; then
-  BKG="$BACKUP_DIR/gestao.db.$(date +%Y-%m-%d_%H%M%S)"
-  if command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 data/gestao.db ".backup '$BKG'" || cp data/gestao.db "$BKG"
-  else
-    cp data/gestao.db "$BKG"
-  fi
-  verde "     $BKG ($(du -h "$BKG" | cut -f1))"
-  ls -1t "$BACKUP_DIR"/gestao.db.* 2>/dev/null | tail -n +$((MANTER_BACKUPS + 1)) | xargs -r rm --
+  amarelo "     ainda não existem bancos (primeira instalação)"
 fi
 
 # -------------------------------------------------------- 2. inventário
-azul "2/7  Conteúdo atual"
+azul "2/8  Conteúdo atual"
 ANTES=$(inventario)
 echo "     $ANTES"
 
 # ------------------------------------------------------------ 3. parar
-azul "3/7  Parando o serviço"
+azul "3/8  Parando o serviço"
 systemctl stop "$SERVICO" 2>/dev/null
 sleep 1
 verde "     parado (o SQLite solta o arquivo antes de mexermos nele)"
 
 # --------------------------------------------------------- 4. proteger
-azul "4/7  Tirando banco e fotos do caminho do git"
+azul "4/8  Tirando banco e fotos do caminho do git"
 mkdir -p "$COFRE"
 [ -f data/site.db ] && mv data/site.db "$COFRE/site.db"
 # gestao.db = prontuário/anamnese dos pacientes. Sai do caminho do git igual.
@@ -111,7 +111,7 @@ done
 verde "     guardados em $COFRE"
 
 # ------------------------------------------------------------- 5. pull
-azul "5/7  Baixando a versão nova"
+azul "5/8  Baixando a versão nova"
 DE=$(git rev-parse --short HEAD)
 if ! git pull --ff-only; then
   restaurar_e_sair "     git pull falhou — nada foi alterado."
@@ -124,8 +124,28 @@ else
   git log --oneline "$DE..$PARA" | sed 's/^/       /'
 fi
 
-# --------------------------------------------------------- 6. devolver
-azul "6/7  Devolvendo banco e fotos"
+# ---------------------------------------------------- 6. dependências
+# O projeto usa o better-sqlite3 (driver estável do SQLite). Se o pull trouxe
+# package.json novo, é aqui que ele é instalado — antes de o serviço subir.
+# Não é fatal: sem a pasta node_modules o db.js volta sozinho para o driver de
+# fábrica do Node e o sistema continua no ar, só com o aviso.
+azul "6/8  Dependências"
+if [ -f package.json ]; then
+  if command -v npm >/dev/null 2>&1; then
+    if npm ci --omit=dev --no-audit --no-fund 2>/dev/null || npm install --omit=dev --no-audit --no-fund; then
+      verde "     node_modules em dia"
+    else
+      amarelo "     npm install falhou — o sistema sobe com o driver de fábrica do Node"
+    fi
+  else
+    amarelo "     npm não encontrado — instale com: apt install -y npm"
+  fi
+else
+  amarelo "     sem package.json (versão antiga) — nada a instalar"
+fi
+
+# --------------------------------------------------------- 7. devolver
+azul "7/8  Devolvendo banco e fotos"
 mkdir -p data assets/img/uploads restrito/arquivos
 [ -f "$COFRE/site.db" ] && mv "$COFRE/site.db" data/site.db
 [ -f "$COFRE/gestao.db" ] && mv "$COFRE/gestao.db" data/gestao.db
@@ -152,7 +172,7 @@ systemctl start "$SERVICO"
 sleep 3
 
 # ----------------------------------------------------------- 7. testar
-azul "7/7  Conferindo"
+azul "8/8  Conferindo"
 DEPOIS=$(inventario)
 echo "     antes : $ANTES"
 echo "     depois: $DEPOIS"
@@ -177,14 +197,17 @@ if [ "$OK" = "1" ]; then
   VERSAO=$(curl -s "http://127.0.0.1:$PORTA/admin/" | grep -o 'v[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
   echo
   verde "Deploy concluído — site no ar, gerenciador $VERSAO"
-  echo "  Backup desta atualização: $BACKUP"
+  echo "  Backup desta atualização: ${BACKUP:-nenhum (primeira instalação)}"
   echo "  Se mudou texto ou foto, entre no painel e clique em Publicar."
+  echo
+  echo "  Backup automático (diário, dentro do serviço):"
+  node server.js --backup-status 2>/dev/null | sed 's/^/    /'
 else
   echo
   vermelho "O site não respondeu (HTTP $CODIGO). Últimas linhas do log:"
   journalctl -u "$SERVICO" -n 25 --no-pager | sed 's/^/  /'
   echo
   amarelo "O banco está intacto em data/site.db e no backup:"
-  amarelo "  $BACKUP"
+  amarelo "  ${BACKUP:-(sem backup — primeira instalação)}"
   exit 1
 fi

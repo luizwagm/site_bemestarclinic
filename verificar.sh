@@ -12,6 +12,7 @@ echo "===================== ESTADO DA PRODUÇÃO ====================="
 echo
 echo "Commit atual : $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
 echo "Node         : $(node -v)"
+echo "Driver SQLite: $(node -p 'require("./db").DRIVER_NOME + (require("./db").DRIVER_AVISO ? "  ⚠ " + require("./db").DRIVER_AVISO : "")' 2>/dev/null || echo '—')"
 echo "Serviço      : $(systemctl is-active "$SERVICO" 2>/dev/null)"
 printf "Site         : HTTP %s\n" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORTA/")"
 echo
@@ -44,9 +45,9 @@ echo "--- Conteúdo do banco ---"
 if [ -f data/site.db ]; then
   echo "  arquivo: $(du -h data/site.db | cut -f1)"
   node -e '
-    const { DatabaseSync } = require("node:sqlite");
+    const { abrirBanco } = require("./db");
     try {
-      const db = new DatabaseSync("data/site.db");
+      const db = abrirBanco("data/site.db");
       for (const t of ["services","team","posts","portfolio","testimonials","settings","visits"])
         console.log("  " + t.padEnd(14) + db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c);
       console.log("  integridade   " + db.prepare("PRAGMA integrity_check").get().integrity_check);
@@ -59,9 +60,31 @@ else
 fi
 echo
 
-echo "--- Backups guardados ---"
+echo "--- Banco da gestão (/restrito) ---"
+if [ -f data/gestao.db ]; then
+  echo "  arquivo: $(du -h data/gestao.db | cut -f1)"
+  node -e '
+    const { abrirBanco } = require("./db");
+    try {
+      const db = abrirBanco("data/gestao.db");
+      for (const t of ["pacientes","profissionais","atendimentos","prontuario","prontuario_registros","anamneses"])
+        console.log("  " + t.padEnd(22) + db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c);
+      console.log("  integridade           " + db.prepare("PRAGMA integrity_check").get().integrity_check);
+    } catch (e) { console.log("  ERRO ao ler: " + e.message); }
+  ' 2>/dev/null
+else
+  echo "  data/gestao.db NÃO EXISTE"
+fi
+echo
+
+echo "--- Backup automático ---"
+node server.js --backup-status 2>/dev/null | sed 's/^/  /' || echo "  não consegui consultar"
+echo
+echo "--- Últimos backups no disco ---"
 # o || não pega o caso vazio porque quem define o código de saída é o sed
-LISTA=$(ls -1t backups/site.db.* 2>/dev/null | head -5)
-if [ -n "$LISTA" ]; then echo "$LISTA" | sed 's/^/  /'; else echo "  nenhum ainda (o primeiro sai no próximo deploy)"; fi
+LISTA=$(ls -1t backups/*.db 2>/dev/null | head -8)
+if [ -n "$LISTA" ]; then echo "$LISTA" | sed 's/^/  /'; else echo "  nenhum ainda (o primeiro sai em até 24h ou no próximo deploy)"; fi
+echo "  restaurar:  sudo ./restaurar.sh          (lista)"
+echo "              sudo ./restaurar.sh gestao   (restaura o mais recente)"
 echo
 echo "=============================================================="

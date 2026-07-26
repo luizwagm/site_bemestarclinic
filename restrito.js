@@ -19,13 +19,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { DatabaseSync } = require("node:sqlite");
+const { abrirBanco } = require("./db");
 
 const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
 // Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
 // casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "1.6.0";
+const SISTEMA_VERSION = "2.2.1";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -34,7 +34,7 @@ const SISTEMA_VERSION = "1.6.0";
 const CSP_GESTAO = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; " +
   "form-action 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'";
-const db = new DatabaseSync(path.join(ROOT, "data", "gestao.db"));
+const db = abrirBanco(path.join(ROOT, "data", "gestao.db"));
 
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -51,7 +51,12 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS g_config (key TEXT PRIMARY KEY, value TEXT);
 
   -- Pacientes (clientes da clínica). Campos espelham a ficha de cadastro usada
-  -- hoje pela recepção. "codigo" é o nº de prontuário exibido na ficha.
+  -- hoje pela recepção.
+  -- "codigo" (PAC-AAAA-00000) é o identificador PRÓPRIO do paciente, gerado pelo
+  -- servidor no cadastro e NUNCA digitado. É por ele — além de nome e CPF — que
+  -- se localiza a pessoa no agendamento, prontuário, documentos e anamneses.
+  -- Não confundir com o número do PRONTUÁRIO (PR-AAAA-00000): o paciente tem um
+  -- código só, e um prontuário para cada procedimento que faz.
   CREATE TABLE IF NOT EXISTS pacientes (id INTEGER PRIMARY KEY AUTOINCREMENT,
     codigo TEXT, nome TEXT NOT NULL, nome_contato TEXT, foto TEXT,
     juridica INTEGER DEFAULT 0, estrangeiro INTEGER DEFAULT 0,
@@ -71,9 +76,16 @@ db.exec(`
 
   -- Procedimentos: cada linha é "o que se agenda". tipo = Consulta | Sessão |
   -- Procedimento (a agenda filtra por isso). cor identifica na agenda.
+  -- ATENÇÃO ao par nome/tipo: "Ozonioterapia" existe duas vezes, uma como
+  -- Consulta e outra como Sessão. O que identifica o TRATAMENTO é o "nome" —
+  -- é ele que vira a chave do prontuário, não o id da linha. Se a chave fosse o
+  -- id, a consulta e a sessão da mesma terapia abririam duas pastas.
+  -- anamnese_modelo diz qual formulário de anamnese este procedimento pede
+  -- (psicanalise | ozonio | integrativas | vazio = nenhum). É o que faz o
+  -- agendamento oferecer o atalho para a anamnese certa.
   CREATE TABLE IF NOT EXISTS procedimentos (id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL, tipo TEXT DEFAULT 'Consulta', valor TEXT, duracao INTEGER DEFAULT 40,
-    cor TEXT, ativo INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, criado TEXT);
+    cor TEXT, anamnese_modelo TEXT, ativo INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, criado TEXT);
 
   -- Salas / consultórios
   CREATE TABLE IF NOT EXISTS salas (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,31 +97,66 @@ db.exec(`
     nome TEXT NOT NULL, especialidade TEXT, registro TEXT, contato TEXT,
     cor TEXT, ativo INTEGER DEFAULT 1, criado TEXT);
 
-  -- Agenda de atendimentos
+  /* Agenda de atendimentos.
+     Só se agenda para paciente CADASTRADO (paciente_id obrigatório) — é o que
+     garante que todo atendimento tenha ficha, código e histórico.
+     prontuario_id: o agendamento NÃO cria prontuário. Ele só se liga a um que
+     JÁ exista para aquele paciente naquele procedimento. No primeiro
+     atendimento não há prontuário ainda; o vínculo acontece depois, quando a
+     anamnese é finalizada e a pasta nasce. */
   CREATE TABLE IF NOT EXISTS atendimentos (id INTEGER PRIMARY KEY AUTOINCREMENT,
     paciente_id INTEGER, profissional_id INTEGER, sala_id INTEGER, convenio_id INTEGER,
-    procedimento_id INTEGER, especialidade TEXT,
+    procedimento_id INTEGER, especialidade TEXT, prontuario_id INTEGER,
     nome_agenda TEXT, celular TEXT,
     data TEXT, hora TEXT, hora_fim TEXT, valor TEXT,
     primeira INTEGER DEFAULT 0, encaixe INTEGER DEFAULT 0,
     lembrete INTEGER DEFAULT 1, nps INTEGER DEFAULT 1,
     status TEXT DEFAULT 'Agendado', observacoes TEXT, criado TEXT);
 
-  -- Prontuário eletrônico (evolução por sessão). usuario_id = operador que criou
-  -- o registro; o perfil "profissional" só enxerga os seus.
-  -- numero = identificação sequencial e ÚNICA do registro (PR-AAAA-00000).
-  -- Gerado pelo servidor, nunca editável: é o que a clínica usa para localizar
-  -- e controlar o prontuário, e sai impresso no documento.
+  /* PRONTUÁRIO = a PASTA do paciente numa especialidade.
+     Regra da clínica: um prontuário por paciente + especialidade. Quem faz
+     psicanálise e ozonioterapia tem DOIS prontuários; criar um terceiro para a
+     mesma especialidade é impedido (índice único abaixo).
+     numero (PR-AAAA-00000) identifica a pasta — é o que aparece na anamnese, no
+     agendamento e nos documentos daquele paciente.
+     status: Ativo | Alta. A alta é DO PRONTUÁRIO: o paciente pode receber alta
+     da ozonioterapia e continuar na psicanálise. */
   CREATE TABLE IF NOT EXISTS prontuario (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    numero TEXT, paciente_id INTEGER, atendimento_id INTEGER, profissional TEXT, especialidade TEXT,
-    data TEXT, avaliacao TEXT, evolucao TEXT, plano TEXT, encaminhamentos TEXT,
-    anexos TEXT, responsavel TEXT, usuario_id INTEGER, criado TEXT);
+    numero TEXT, paciente_id INTEGER NOT NULL, especialidade TEXT NOT NULL,
+    profissional TEXT, status TEXT DEFAULT 'Ativo',
+    aberto_em TEXT, alta_em TEXT, alta_motivo TEXT,
+    observacao TEXT, usuario_id INTEGER, criado TEXT, reativado_em TEXT);
 
-  -- ANAMNESES. Uma linha por anamnese preenchida. "tipo" diz qual formulário
-  -- (psicanalise | ozonio | integrativas) e "dados" guarda as respostas em JSON,
-  -- então acrescentar pergunta no modelo NÃO exige mexer no banco.
+  /* LANÇAMENTOS do prontuário. Cada avaliação, evolução, plano ou
+     encaminhamento é uma linha datada — o prontuário de 2 anos de terapia vira
+     uma lista longa, e é assim que tem de ser.
+     arquivado: some das telas mas NUNCA é excluído (pode ser restaurado). */
+  CREATE TABLE IF NOT EXISTS prontuario_registros (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    prontuario_id INTEGER NOT NULL, tipo TEXT NOT NULL, texto TEXT,
+    data TEXT, profissional TEXT, anexo TEXT,
+    arquivado INTEGER DEFAULT 0, arquivado_em TEXT,
+    usuario_id INTEGER, criado TEXT);
+
+  /* HISTÓRICO — linha do tempo de cada paciente e de cada prontuário.
+     É o que sobrevive quando o paciente sai e volta: a data de cadastro é
+     atualizada na reativação, mas tudo o que aconteceu antes continua aqui. */
+  CREATE TABLE IF NOT EXISTS historico (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entidade TEXT NOT NULL, entidade_id INTEGER NOT NULL,
+    evento TEXT NOT NULL, detalhe TEXT,
+    usuario_id INTEGER, usuario_nome TEXT, criado TEXT);
+
+  /* ANAMNESES. Uma linha por anamnese preenchida. "tipo" diz qual formulário
+     (psicanalise | ozonio | integrativas) e "dados" guarda as respostas em JSON,
+     então acrescentar pergunta no modelo NÃO exige mexer no banco.
+
+     É a anamnese que ABRE o prontuário. Enquanto está sendo preenchida ela fica
+     como Rascunho e não cria nada; ao ser FINALIZADA, o sistema abre (ou
+     reaproveita) a pasta do par paciente + procedimento e guarda o vínculo aqui
+     em prontuario_id. Por isso "procedimento" é obrigatório para finalizar: sem
+     ele não há como saber de qual pasta a anamnese faz parte. */
   CREATE TABLE IF NOT EXISTS anamneses (id INTEGER PRIMARY KEY AUTOINCREMENT,
     paciente_id INTEGER NOT NULL, tipo TEXT NOT NULL, dados TEXT,
+    procedimento TEXT, status TEXT DEFAULT 'Rascunho', finalizada_em TEXT, prontuario_id INTEGER,
     profissional TEXT, data TEXT, usuario_id INTEGER, criado TEXT, atualizado TEXT);
 
   -- Documentos por paciente
@@ -120,6 +167,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_atend_pac ON atendimentos(paciente_id);
   CREATE INDEX IF NOT EXISTS idx_pront_pac ON prontuario(paciente_id);
   CREATE INDEX IF NOT EXISTS idx_anam_pac ON anamneses(paciente_id);
+  CREATE INDEX IF NOT EXISTS idx_preg_pront ON prontuario_registros(prontuario_id);
+  CREATE INDEX IF NOT EXISTS idx_hist_ent ON historico(entidade, entidade_id);
 `);
 
 
@@ -128,6 +177,13 @@ db.exec(`
 for (const alt of [
   "ALTER TABLE prontuario ADD COLUMN usuario_id INTEGER",
   "ALTER TABLE prontuario ADD COLUMN numero TEXT",
+  "ALTER TABLE prontuario ADD COLUMN status TEXT DEFAULT 'Ativo'",
+  "ALTER TABLE prontuario ADD COLUMN aberto_em TEXT",
+  "ALTER TABLE prontuario ADD COLUMN alta_em TEXT",
+  "ALTER TABLE prontuario ADD COLUMN alta_motivo TEXT",
+  "ALTER TABLE prontuario ADD COLUMN observacao TEXT",
+  "ALTER TABLE prontuario ADD COLUMN reativado_em TEXT",
+  "ALTER TABLE pacientes ADD COLUMN reativado_em TEXT",
   "ALTER TABLE g_usuarios ADD COLUMN profissional_id INTEGER",
   "ALTER TABLE profissionais ADD COLUMN cor TEXT",
   "ALTER TABLE profissionais ADD COLUMN criado TEXT",
@@ -141,6 +197,13 @@ for (const alt of [
   "ALTER TABLE atendimentos ADD COLUMN encaixe INTEGER DEFAULT 0",
   "ALTER TABLE atendimentos ADD COLUMN lembrete INTEGER DEFAULT 1",
   "ALTER TABLE atendimentos ADD COLUMN nps INTEGER DEFAULT 1",
+  // vínculo agendamento → prontuário e o fluxo anamnese → prontuário
+  "ALTER TABLE atendimentos ADD COLUMN prontuario_id INTEGER",
+  "ALTER TABLE anamneses ADD COLUMN procedimento TEXT",
+  "ALTER TABLE anamneses ADD COLUMN status TEXT DEFAULT 'Rascunho'",
+  "ALTER TABLE anamneses ADD COLUMN finalizada_em TEXT",
+  "ALTER TABLE anamneses ADD COLUMN prontuario_id INTEGER",
+  "ALTER TABLE procedimentos ADD COLUMN anamnese_modelo TEXT",
 ]) { try { db.exec(alt); } catch { /* já existe */ } }
 
 /* ------------------------- senha (scrypt) e config ------------------------ */
@@ -157,6 +220,17 @@ function confereSenha(senha, guardado) {
   const dk = crypto.scryptSync(String(senha), Buffer.from(saltHex, "hex"), dkHex.length / 2, { N: +N, r: +r, p: +p });
   return iguais(Buffer.from(dkHex, "hex"), dk);
 }
+/* ==========================================================================
+   HISTÓRICO — registra o que aconteceu com um paciente ou um prontuário.
+   É a memória que sobrevive à saída e ao retorno do paciente: a data de
+   cadastro é atualizada na reativação, mas a linha do tempo continua inteira.
+   ========================================================================== */
+function anotar(entidade, entidadeId, evento, detalhe, sessao) {
+  if (!entidadeId) return;
+  db.prepare("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)")
+    .run(entidade, entidadeId, evento, detalhe || "", sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
+}
+
 /* Hash descartável usado só para gastar o mesmo tempo quando o login digitado
    não existe — ver o comentário no /api/login. Nunca confere com senha alguma. */
 const HASH_ISCA = hashSenha(crypto.randomBytes(16).toString("hex"));
@@ -164,13 +238,13 @@ const getC = (k) => db.prepare("SELECT value FROM g_config WHERE key=?").get(k)?
 const setC = (k, v) => db.prepare("INSERT INTO g_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(k, String(v));
 
 /* ==========================================================================
-   NÚMERO DO PRONTUÁRIO — PR-AAAA-00001
-   Sequencial por ANO, único e NUNCA reaproveitado. É por ele que a clínica
-   localiza e controla o registro (busca, arquivo físico, encaminhamento).
+   NUMERAÇÃO SEQUENCIAL — PR-AAAA-00001 (prontuário) e PAC-AAAA-00001 (paciente)
+   Sequencial por ANO, único e NUNCA reaproveitado. É por esses números que a
+   clínica localiza e controla o registro (busca, arquivo físico, encaminhamento).
 
    Por que um contador guardado em g_config e não "o maior número da tabela":
-   se o último prontuário for excluído, o maior da tabela cai — e o próximo
-   registro herdaria um número que já circulou impresso. O contador só sobe.
+   se o último registro for excluído, o maior da tabela cai — e o próximo
+   herdaria um número que já circulou impresso. O contador só sobe.
    Ele é comparado com o maior do banco a cada emissão, então também se
    recupera sozinho se o g_config for perdido.
 
@@ -180,43 +254,87 @@ const setC = (k, v) => db.prepare("INSERT INTO g_config(key,value) VALUES(?,?) O
 try {
   // última linha de defesa: nem um backup restaurado por cima duplica número
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pront_numero ON prontuario(numero) WHERE numero IS NOT NULL");
-} catch (e) { console.error("  ✖ índice do número de prontuário:", e.message); }
+  /* A REGRA da clínica gravada no banco: um prontuário por paciente+procedimento.
+     Mesmo que a tela falhe, o banco recusa o segundo.
+     (a coluna se chama `especialidade` por herança; o que ela guarda é o NOME do
+     procedimento — ver o comentário da tabela procedimentos) */
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pront_pac_esp ON prontuario(paciente_id, especialidade)");
+  // o código do paciente também não pode repetir
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pac_codigo ON pacientes(codigo) WHERE codigo IS NOT NULL AND codigo <> ''");
+} catch (e) { console.error("  ✖ índices de numeração:", e.message); }
 
-const PRONT_PREFIXO = "PR";
-function proximoNumeroProntuario(ano) {
+/* O motor por trás dos dois números. `tabela`/`coluna` dizem onde procurar o
+   maior já emitido; `chave` é o contador em g_config. */
+function proximoSequencial(prefixo, chave, tabela, coluna, ano) {
   const y = ano || new Date().getFullYear();
-  const inicio = `${PRONT_PREFIXO}-${y}-`;
-  const chave = `pront_seq_${y}`;
-  const guardado = Number(getC(chave) || 0);
-  const r = db.prepare("SELECT MAX(CAST(substr(numero, ?) AS INTEGER)) m FROM prontuario WHERE numero LIKE ?")
+  const inicio = `${prefixo}-${y}-`;
+  const chaveAno = `${chave}_${y}`;
+  const guardado = Number(getC(chaveAno) || 0);
+  const r = db.prepare(`SELECT MAX(CAST(substr(${coluna}, ?) AS INTEGER)) m FROM ${tabela} WHERE ${coluna} LIKE ?`)
     .get(inicio.length + 1, inicio + "%");
   const noBanco = (r && r.m) ? Number(r.m) : 0;
   const seq = Math.max(guardado, noBanco) + 1;
-  setC(chave, seq);                        // marca como usado, mesmo se falhar depois
+  setC(chaveAno, seq);                     // marca como usado, mesmo se falhar depois
   return inicio + String(seq).padStart(5, "0");
 }
-/* Tenta de novo se colidir (backup restaurado por cima, por exemplo). */
-function emitirNumeroProntuario(id) {
+/* Grava o número, tentando de novo se colidir (backup restaurado por cima). */
+function emitirSequencial(prefixo, chave, tabela, coluna, id, ano) {
   for (let i = 0; i < 20; i++) {
-    const n = proximoNumeroProntuario();
-    try { db.prepare("UPDATE prontuario SET numero=? WHERE id=?").run(n, id); return n; }
+    const n = proximoSequencial(prefixo, chave, tabela, coluna, ano);
+    try { db.prepare(`UPDATE ${tabela} SET ${coluna}=? WHERE id=?`).run(n, id); return n; }
     catch (e) { if (!/UNIQUE/i.test(e.message)) throw e; }
   }
-  throw new Error("Não consegui gerar o número do prontuário.");
+  throw new Error(`Não consegui gerar o número em ${tabela}.`);
 }
+
+/* Os quatro tipos de lançamento que compõem o prontuário. Cada um vira uma
+   área própria na tela, com a sua lista de registros datados. */
+const TIPOS_REGISTRO = ["avaliacao", "evolucao", "plano", "encaminhamento"];
+const ROTULO_TIPO = { avaliacao: "Avaliação", evolucao: "Evolução", plano: "Plano terapêutico", encaminhamento: "Encaminhamento" };
+const rotuloTipo = (t) => ROTULO_TIPO[t] || t;
+
+const emitirNumeroProntuario = (id, ano) => emitirSequencial("PR", "pront_seq", "prontuario", "numero", id, ano);
+const emitirCodigoPaciente   = (id, ano) => emitirSequencial("PAC", "pac_seq", "pacientes", "codigo", id, ano);
 /* Registros anteriores a esta versão recebem número uma única vez, na ordem de
-   cadastro e respeitando o ano de cada um. */
-{
-  const antigos = db.prepare("SELECT id, data, criado FROM prontuario WHERE numero IS NULL OR numero='' ORDER BY id").all();
+   cadastro e respeitando o ano de cada um. Vale para os dois números. */
+for (const [tabela, coluna, emitir, rotulo] of [
+  ["prontuario", "numero", emitirNumeroProntuario, "prontuário(s) antigo(s) receberam número"],
+  ["pacientes", "codigo", emitirCodigoPaciente, "paciente(s) antigo(s) receberam código"],
+]) {
+  const antigos = db.prepare(`SELECT id, criado FROM ${tabela} WHERE ${coluna} IS NULL OR ${coluna}='' ORDER BY id`).all();
   for (const r of antigos) {
-    const ano = Number(String(r.data || r.criado || "").slice(0, 4)) || new Date().getFullYear();
-    for (let i = 0; i < 20; i++) {
-      const n = proximoNumeroProntuario(ano);
-      try { db.prepare("UPDATE prontuario SET numero=? WHERE id=?").run(n, r.id); break; }
-      catch (e) { if (!/UNIQUE/i.test(e.message)) throw e; }
-    }
+    const ano = Number(String(r.criado || "").slice(0, 4)) || new Date().getFullYear();
+    emitir(r.id, ano);
   }
-  if (antigos.length) console.log(`  · /restrito: ${antigos.length} prontuário(s) antigo(s) receberam número.`);
+  if (antigos.length) console.log(`  · /restrito: ${antigos.length} ${rotulo}.`);
+}
+
+/* ==========================================================================
+   QUAL ANAMNESE CADA PROCEDIMENTO PEDE
+   Semeado uma única vez a partir do mapa abaixo e depois EDITÁVEL no cadastro
+   de Procedimentos — procedimento novo não obriga a mexer no código.
+   É esse vínculo que faz o agendamento oferecer "Preencher anamnese" já no
+   formulário certo.
+   ========================================================================== */
+const ANAMNESE_POR_PROCEDIMENTO = {
+  "Psicanálise Individual": "psicanalise",
+  "Psicanálise Casal": "psicanalise",
+  "Protocolo Integrativo — Ozônio e Detox": "ozonio",
+  "Ozonioterapia": "ozonio",
+  "Detox Iônico": "ozonio",
+  "Acupuntura": "integrativas",
+  "Aromaterapia": "integrativas",
+  "Terapia Floral": "integrativas",
+  "Exame de Biorressonância": "integrativas",
+  "Ventosaterapia": "integrativas",
+  "Kinesioterapia": "integrativas",
+};
+if (getC("anamnese_modelo_seed") !== "1") {
+  const up = db.prepare("UPDATE procedimentos SET anamnese_modelo=? WHERE nome=? AND (anamnese_modelo IS NULL OR anamnese_modelo='')");
+  let n = 0;
+  for (const [nome, modelo] of Object.entries(ANAMNESE_POR_PROCEDIMENTO)) n += up.run(modelo, nome).changes;
+  setC("anamnese_modelo_seed", "1");
+  if (n) console.log(`  · /restrito: ${n} procedimento(s) ligados ao seu modelo de anamnese.`);
 }
 
 /* Semente: um usuário admin inicial. Senha padrão trocável na primeira entrada. */
@@ -355,6 +473,60 @@ function validarAgenda(profissionalId, data, hora, excluirId, horaFim, salaId) {
   if (salaId) { const e = choque(busca("sala_id", salaId), "esta sala"); if (e) return e; }
   return null;
 }
+/* ==========================================================================
+   VÍNCULO AGENDAMENTO → PRONTUÁRIO
+   O agendamento NUNCA cria pasta. Ele só se pendura numa que já exista para
+   aquele paciente naquele procedimento. No primeiro atendimento não há pasta
+   ainda e o campo fica vazio — é a anamnese finalizada que a abre, e nesse
+   momento os atendimentos soltos daquele par são recolhidos para dentro dela.
+   ========================================================================== */
+
+/* O NOME do procedimento é a chave da pasta — não o id da linha, porque
+   "Ozonioterapia (Consulta)" e "(Sessão)" são linhas diferentes do mesmo
+   tratamento e pertencem ao mesmo prontuário. */
+function nomeProcedimento(linha) {
+  if (linha && linha.procedimento_id) {
+    const p = db.prepare("SELECT nome FROM procedimentos WHERE id=?").get(linha.procedimento_id);
+    if (p && p.nome) return p.nome;
+  }
+  return (linha && linha.especialidade) || "";
+}
+function prontuarioDoPar(pacienteId, procedimento) {
+  if (!pacienteId || !procedimento) return null;
+  return db.prepare("SELECT id,numero,especialidade,status FROM prontuario WHERE paciente_id=? AND especialidade=?")
+    .get(pacienteId, procedimento) || null;
+}
+/* Acerta o vínculo de UM atendimento.
+   - sem vínculo  → pendura na pasta do procedimento, se existir;
+   - com vínculo  → só refaz se o procedimento MUDOU nesta edição (senão um
+     vínculo feito à mão dentro do prontuário seria desfeito sem querer). */
+function sincronizarProntuarioDoAtendimento(id, antes) {
+  const a = db.prepare("SELECT id,paciente_id,procedimento_id,especialidade,prontuario_id FROM atendimentos WHERE id=?").get(id);
+  if (!a) return null;
+  const nome = nomeProcedimento(a);
+  if (a.prontuario_id) {
+    const mudou = antes && nomeProcedimento(antes) !== nome;
+    if (!mudou) return db.prepare("SELECT id,numero,especialidade FROM prontuario WHERE id=?").get(a.prontuario_id) || null;
+  }
+  const pasta = prontuarioDoPar(a.paciente_id, nome);
+  const novo = pasta ? pasta.id : null;
+  if (String(a.prontuario_id || "") !== String(novo || ""))
+    db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(novo, id);
+  return pasta;
+}
+/* Recolhe para a pasta recém-aberta os atendimentos daquele par que ainda
+   estavam sem vínculo — tipicamente o primeiro atendimento, marcado antes de a
+   anamnese existir. Devolve quantos entraram. */
+function recolherAtendimentosSoltos(prontuarioId, pacienteId, procedimento) {
+  const soltos = db.prepare(
+    `SELECT a.id FROM atendimentos a
+       LEFT JOIN procedimentos p ON p.id = a.procedimento_id
+      WHERE a.paciente_id = ? AND a.prontuario_id IS NULL
+        AND COALESCE(NULLIF(p.nome,''), a.especialidade) = ?`).all(pacienteId, procedimento);
+  for (const s of soltos) db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(prontuarioId, s.id);
+  return soltos.length;
+}
+
 const clientIp = (req) => String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "";
 const agora = () => new Date().toISOString();
 function readBody(req) {
@@ -371,20 +543,25 @@ function json(res, code, obj) {
 
 /* Tabelas expostas via CRUD genérico e suas colunas graváveis */
 const TAB = {
-  pacientes: ["codigo", "nome", "nome_contato", "foto", "juridica", "estrangeiro", "cpf", "rg", "sexo",
+  // "codigo" NÃO entra: é gerado pelo servidor no cadastro e não se digita
+  pacientes: ["nome", "nome_contato", "foto", "juridica", "estrangeiro", "cpf", "rg", "sexo",
     "nascimento", "naturalidade", "estado_civil", "convenio_id", "religiao", "profissao", "escolaridade",
     "altura", "peso", "cor_pele", "prioridade", "sangue", "cep", "endereco", "numero", "bairro", "cidade",
     "complemento", "celular", "telefone", "email", "canal", "mae", "pai", "tag", "indicacao", "avisos",
     "resp_nome", "resp_cpf", "resp_rg", "resp_nascimento", "consentimento", "observacao"],
   convenios: ["nome", "registro", "contato", "observacao", "ativo", "sort"],
-  procedimentos: ["nome", "tipo", "valor", "duracao", "cor", "ativo", "sort"],
+  procedimentos: ["nome", "tipo", "valor", "duracao", "cor", "anamnese_modelo", "ativo", "sort"],
   salas: ["nome", "ativo", "sort"],
   profissionais: ["nome", "especialidade", "registro", "contato", "cor", "ativo"],
+  // "prontuario_id" NÃO entra: quem liga o agendamento à pasta é o servidor
   atendimentos: ["paciente_id", "profissional_id", "sala_id", "convenio_id", "procedimento_id", "especialidade",
     "nome_agenda", "celular", "data", "hora", "hora_fim", "valor", "primeira", "encaixe", "lembrete", "nps",
     "status", "observacoes"],
-  prontuario: ["paciente_id", "atendimento_id", "profissional", "especialidade", "data", "avaliacao", "evolucao", "plano", "encaminhamentos", "anexos", "responsavel", "usuario_id"],
-  anamneses: ["paciente_id", "tipo", "dados", "profissional", "data", "usuario_id"],
+  // "numero", "status", "alta_*" NÃO entram: são do servidor, nunca do cliente
+  prontuario: ["paciente_id", "especialidade", "profissional", "aberto_em", "observacao", "usuario_id"],
+  prontuario_registros: ["prontuario_id", "tipo", "texto", "data", "profissional", "anexo", "usuario_id"],
+  // "status"/"finalizada_em"/"prontuario_id" são do fluxo de finalizar, no servidor
+  anamneses: ["paciente_id", "tipo", "dados", "procedimento", "profissional", "data", "usuario_id"],
   documentos_gestao: ["paciente_id", "tipo", "titulo", "arquivo", "data"],
 };
 
@@ -405,7 +582,7 @@ const PERM = {
     "convenios", "procedimentos", "salas", "relatorios"]),
   // profissional: sua agenda, seus prontuários e as anamneses dos pacientes.
   // Lê pacientes/profissionais/procedimentos só como apoio (nomes e seletores).
-  profissional: new Set(["atendimentos", "prontuario", "anamneses"]),
+  profissional: new Set(["atendimentos", "prontuario", "prontuario_registros", "anamneses", "historico"]),
 };
 const PERM_LEITURA = { profissional: new Set(["pacientes", "profissionais", "procedimentos", "convenios", "salas"]) };
 const pode = (perfil, modulo) => perfil === "admin" || (PERM[perfil] ? PERM[perfil].has(modulo) : false);
@@ -675,6 +852,7 @@ const MODELOS_ANAMNESE = {
     ],
   },
 };
+const rotuloModelo = (t) => (MODELOS_ANAMNESE[t] && MODELOS_ANAMNESE[t].rotulo) || t || "Anamnese";
 
 /* ==========================================================================
    Handler — o server.js chama isto para tudo que casa /restrito
@@ -745,7 +923,18 @@ async function rotaApi(req, res, p) {
   const s = sessao(req);
   if (!s) return json(res, 401, { error: "Não autenticado" });
 
-  if (p === "me") return json(res, 200, { nome: s.nome, perfil: s.perfil });
+  /* Quem está logado. Devolve também o PROFISSIONAL vinculado (id e nome como
+     está no cadastro) — é com ele que a tela pré-preenche "Profissional
+     responsável" na anamnese. O nome do login pode ser diferente do nome no
+     cadastro de profissionais, por isso vai o do cadastro. */
+  if (p === "me") {
+    let profissional_nome = "";
+    if (s.profissionalId) {
+      const pf = db.prepare("SELECT nome FROM profissionais WHERE id=?").get(s.profissionalId);
+      if (pf) profissional_nome = pf.nome;
+    }
+    return json(res, 200, { nome: s.nome, perfil: s.perfil, profissional_id: s.profissionalId || null, profissional_nome });
+  }
 
   if (p === "logout" && req.method === "POST") {
     sessoes.delete(s.rid);
@@ -890,12 +1079,30 @@ async function rotaApi(req, res, p) {
     const paciente = db.prepare("SELECT * FROM pacientes WHERE id=?").get(pid);
     if (!paciente) return json(res, 404, { error: "Paciente não encontrado." });
     const conv = paciente.convenio_id ? db.prepare("SELECT nome FROM convenios WHERE id=?").get(paciente.convenio_id) : null;
-    // o profissional só vê as evoluções que ele mesmo escreveu
-    const sóMinhas = s.perfil === "profissional" ? " AND usuario_id=" + Number(s.userId) : "";
+    // o profissional só vê os lançamentos que ele mesmo escreveu
+    const sóMeus = s.perfil === "profissional" ? " AND r.usuario_id=" + Number(s.userId) : "";
+    // as pastas do paciente e, dentro de cada uma, os lançamentos em ordem
+    const pastas = db.prepare("SELECT * FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade, id").all(pid);
+    for (const pasta of pastas) {
+      pasta.registros = db.prepare(
+        `SELECT r.* FROM prontuario_registros r WHERE r.prontuario_id=?${sóMeus}
+         ORDER BY COALESCE(NULLIF(r.data,''),r.criado), r.id`).all(pasta.id);
+      // os vínculos da pasta, para sair na tela e na impressão
+      pasta.anamneses = db.prepare(
+        "SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id").all(pasta.id);
+      pasta.atendimentos = db.prepare(
+        `SELECT a.id,a.data,a.hora,a.hora_fim,a.status,a.valor, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
+           FROM atendimentos a
+           LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
+           LEFT JOIN profissionais pf ON pf.id=a.profissional_id
+           LEFT JOIN salas sa ON sa.id=a.sala_id
+          WHERE a.prontuario_id=? ORDER BY a.data, a.hora, a.id`).all(pasta.id);
+    }
     return json(res, 200, {
       paciente: { ...paciente, convenio_nome: conv ? conv.nome : "" },
+      prontuarios: pastas,
+      historico: db.prepare("SELECT * FROM historico WHERE entidade='paciente' AND entidade_id=? ORDER BY criado, id").all(pid),
       anamneses: db.prepare("SELECT * FROM anamneses WHERE paciente_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id").all(pid),
-      evolucoes: db.prepare(`SELECT * FROM prontuario WHERE paciente_id=?${sóMinhas} ORDER BY COALESCE(NULLIF(data,''),criado), id`).all(pid),
       atendimentos: db.prepare(`SELECT a.*, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome, cv.nome convenio_nome
         FROM atendimentos a
         LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
@@ -903,6 +1110,182 @@ async function rotaApi(req, res, p) {
         LEFT JOIN salas sa ON sa.id=a.sala_id
         LEFT JOIN convenios cv ON cv.id=a.convenio_id
         WHERE a.paciente_id=? ORDER BY a.data, a.hora, a.id`).all(pid),
+    });
+  }
+
+  /* ---------------- Alta e reabertura do prontuário --------------------
+     A alta é DO PRONTUÁRIO: o paciente pode receber alta da ozonioterapia e
+     seguir na psicanálise. Nada é apagado — muda o status e fica no histórico. */
+  const am = p.match(/^prontuario\/(\d+)\/(alta|reabrir)$/);
+  if (am && req.method === "POST") {
+    if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const id = am[1], acao = am[2];
+    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(id);
+    if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    const b = await readBody(req);
+    if (acao === "alta") {
+      const quando = b.data || new Date().toISOString().slice(0, 10);
+      db.prepare("UPDATE prontuario SET status='Alta', alta_em=?, alta_motivo=? WHERE id=?").run(quando, b.motivo || "", id);
+      anotar("prontuario", id, "Alta", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      anotar("paciente", pr.paciente_id, "Alta em " + pr.especialidade, pr.numero || "", s);
+    } else {
+      // reabrir: o paciente voltou. Data de reativação atualizada, histórico intacto.
+      const quando = agora();
+      db.prepare("UPDATE prontuario SET status='Ativo', alta_em=NULL, alta_motivo=NULL, reativado_em=? WHERE id=?").run(quando, id);
+      db.prepare("UPDATE pacientes SET reativado_em=? WHERE id=?").run(quando, pr.paciente_id);
+      anotar("prontuario", id, "Prontuário reaberto", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  /* ============ FINALIZAR A ANAMNESE — é ela que abre o prontuário ========
+     Enquanto está sendo preenchida a anamnese é um Rascunho e não cria nada.
+     Ao FINALIZAR:
+       1. abre a pasta do par paciente + procedimento (ou reaproveita a que já
+          existir — a regra é uma só por par);
+       2. guarda o vínculo dos dois lados;
+       3. recolhe para dentro dela os atendimentos daquele par que ainda estavam
+          soltos — na prática, o primeiro agendamento, marcado antes de a pasta
+          existir.
+     Finalizar de novo não duplica: reaproveita a pasta e devolve o mesmo nº. */
+  const fm = p.match(/^anamneses\/(\d+)\/finalizar$/);
+  if (fm && req.method === "POST") {
+    if (!pode(s.perfil, "anamneses")) return json(res, 403, { error: "Sem permissão." });
+    const id = fm[1];
+    const an = db.prepare("SELECT * FROM anamneses WHERE id=?").get(id);
+    if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
+    const b = await readBody(req);
+    const procedimento = String(b.procedimento || an.procedimento || "").trim();
+    if (!an.paciente_id) return json(res, 400, { error: "Anamnese sem paciente." });
+    if (!procedimento) return json(res, 400, { error: "Escolha o procedimento antes de finalizar — é ele que define de qual prontuário esta anamnese faz parte." });
+
+    let pasta = prontuarioDoPar(an.paciente_id, procedimento);
+    let criada = false;
+    if (!pasta) {
+      const prof = an.profissional || (s.perfil === "profissional" ? s.nome : "");
+      const info = db.prepare(
+        "INSERT INTO prontuario(paciente_id,especialidade,profissional,status,aberto_em,usuario_id,criado) VALUES(?,?,?,'Ativo',?,?,?)"
+      ).run(an.paciente_id, procedimento, prof, (an.data || new Date().toISOString().slice(0, 10)), s.userId, agora());
+      const novoId = Number(info.lastInsertRowid);
+      const numero = emitirNumeroProntuario(novoId);
+      pasta = { id: novoId, numero, especialidade: procedimento, status: "Ativo" };
+      criada = true;
+      anotar("prontuario", novoId, "Prontuário aberto pela anamnese", `${numero} · ${procedimento}`, s);
+      anotar("paciente", an.paciente_id, "Prontuário aberto", `${numero} · ${procedimento}`, s);
+    }
+    db.prepare("UPDATE anamneses SET status='Finalizada', finalizada_em=?, prontuario_id=?, procedimento=?, atualizado=? WHERE id=?")
+      .run(agora(), pasta.id, procedimento, agora(), id);
+    const recolhidos = recolherAtendimentosSoltos(pasta.id, an.paciente_id, procedimento);
+    anotar("prontuario", pasta.id, "Anamnese finalizada", rotuloModelo(an.tipo) + (recolhidos ? ` · ${recolhidos} agendamento(s) vinculado(s)` : ""), s);
+    anotar("paciente", an.paciente_id, "Anamnese finalizada", `${rotuloModelo(an.tipo)} · ${pasta.numero}`, s);
+    return json(res, 200, { ok: true, prontuario: pasta, criada, atendimentosVinculados: recolhidos });
+  }
+
+  /* Reabrir a anamnese para correção. O prontuário criado NÃO é desfeito: ele
+     já pode ter lançamentos e agendamentos pendurados. */
+  const rvm = p.match(/^anamneses\/(\d+)\/reabrir$/);
+  if (rvm && req.method === "POST") {
+    if (!pode(s.perfil, "anamneses")) return json(res, 403, { error: "Sem permissão." });
+    const an = db.prepare("SELECT * FROM anamneses WHERE id=?").get(rvm[1]);
+    if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
+    db.prepare("UPDATE anamneses SET status='Rascunho', atualizado=? WHERE id=?").run(agora(), rvm[1]);
+    if (an.prontuario_id) anotar("prontuario", an.prontuario_id, "Anamnese reaberta para correção", rotuloModelo(an.tipo), s);
+    return json(res, 200, { ok: true });
+  }
+
+  /* ---- Vincular / desvincular um agendamento à pasta, pela tela do prontuário
+     É o caminho para o PRIMEIRO atendimento, marcado antes de a pasta existir,
+     e para corrigir um vínculo à mão. -------------------------------------- */
+  const vm = p.match(/^prontuario\/(\d+)\/atendimentos\/(\d+)$/);
+  if (vm && (req.method === "POST" || req.method === "DELETE")) {
+    if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(vm[1]);
+    const at = db.prepare("SELECT * FROM atendimentos WHERE id=?").get(vm[2]);
+    if (!pr || !at) return json(res, 404, { error: "Prontuário ou agendamento não encontrado." });
+    if (req.method === "POST") {
+      // a pasta é do paciente: não se pendura o atendimento de outra pessoa
+      if (String(at.paciente_id) !== String(pr.paciente_id))
+        return json(res, 400, { error: "Este agendamento é de outro paciente." });
+      db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(pr.id, at.id);
+      anotar("prontuario", pr.id, "Agendamento vinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
+    } else {
+      db.prepare("UPDATE atendimentos SET prontuario_id=NULL WHERE id=?").run(at.id);
+      anotar("prontuario", pr.id, "Agendamento desvinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  /* Agendamentos do paciente que ainda não estão em pasta nenhuma — é a lista
+     que a tela do prontuário oferece para vincular. */
+  const dm = p.match(/^prontuario\/(\d+)\/disponiveis$/);
+  if (dm && req.method === "GET") {
+    if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(dm[1]);
+    if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    return json(res, 200, db.prepare(
+      `SELECT a.*, p.nome procedimento_nome, pf.nome profissional_nome
+         FROM atendimentos a
+         LEFT JOIN procedimentos p ON p.id = a.procedimento_id
+         LEFT JOIN profissionais pf ON pf.id = a.profissional_id
+        WHERE a.paciente_id = ? AND a.prontuario_id IS NULL
+        ORDER BY a.data DESC, a.hora DESC, a.id DESC`).all(pr.paciente_id));
+  }
+
+  /* -------- Arquivar / restaurar lançamento (nunca excluir) ------------- */
+  const rm = p.match(/^prontuario_registros\/(\d+)\/(arquivar|restaurar)$/);
+  if (rm && req.method === "POST") {
+    if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const id = rm[1], arq = rm[2] === "arquivar";
+    const reg = db.prepare("SELECT * FROM prontuario_registros WHERE id=?").get(id);
+    if (!reg) return json(res, 404, { error: "Lançamento não encontrado." });
+    if (s.perfil === "profissional" && String(reg.usuario_id) !== String(s.userId))
+      return json(res, 403, { error: "Lançamento de outro profissional." });
+    db.prepare("UPDATE prontuario_registros SET arquivado=?, arquivado_em=? WHERE id=?")
+      .run(arq ? 1 : 0, arq ? agora() : null, id);
+    anotar("prontuario", reg.prontuario_id, (arq ? "Lançamento arquivado: " : "Lançamento restaurado: ") + rotuloTipo(reg.tipo), "", s);
+    return json(res, 200, { ok: true });
+  }
+
+  /* --------- Linha do tempo de um paciente ou de um prontuário ---------- */
+  const hm2 = p.match(/^historico\/(paciente|prontuario)\/(\d+)$/);
+  if (hm2 && req.method === "GET") {
+    if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    return json(res, 200, db.prepare(
+      "SELECT * FROM historico WHERE entidade=? AND entidade_id=? ORDER BY criado DESC, id DESC"
+    ).all(hm2[1], hm2[2]));
+  }
+
+  /* ------- Prontuários de um paciente, com a contagem dos seus vínculos ---
+     As contagens alimentam os "chips" que aparecem na anamnese, no agendamento
+     e no prontuário — é assim que a tela mostra a que a pasta está ligada. */
+  const pm2 = p.match(/^pacientes\/(\d+)\/prontuarios$/);
+  if (pm2 && req.method === "GET") {
+    if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    return json(res, 200, db.prepare(`SELECT pr.*,
+        (SELECT COUNT(*) FROM prontuario_registros r WHERE r.prontuario_id=pr.id AND r.arquivado=0) lancamentos,
+        (SELECT COUNT(*) FROM anamneses an WHERE an.prontuario_id=pr.id) anamneses,
+        (SELECT COUNT(*) FROM atendimentos at WHERE at.prontuario_id=pr.id) atendimentos
+      FROM prontuario pr WHERE pr.paciente_id=? ORDER BY pr.status, pr.especialidade`).all(pm2[1]));
+  }
+
+  /* ------- O que está pendurado numa pasta (tela do prontuário) --------- */
+  const vlm = p.match(/^prontuario\/(\d+)\/vinculos$/);
+  if (vlm && req.method === "GET") {
+    if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(vlm[1]);
+    if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    return json(res, 200, {
+      prontuario: pr,
+      anamneses: db.prepare(
+        "SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado) DESC, id DESC").all(pr.id),
+      atendimentos: db.prepare(
+        `SELECT a.*, pr2.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
+           FROM atendimentos a
+           LEFT JOIN procedimentos pr2 ON pr2.id=a.procedimento_id
+           LEFT JOIN profissionais pf ON pf.id=a.profissional_id
+           LEFT JOIN salas sa ON sa.id=a.sala_id
+          WHERE a.prontuario_id=? ORDER BY a.data DESC, a.hora DESC, a.id DESC`).all(pr.id),
     });
   }
 
@@ -918,9 +1301,12 @@ async function rotaApi(req, res, p) {
     /* Recorte do profissional: só os SEUS registros. No prontuário "seu" = quem
        criou (usuario_id); na agenda "seu" = para quem o atendimento é marcado
        (profissional_id, ligado ao usuário). Fora esses dois casos, sem recorte. */
+    /* Recorte do profissional. A PASTA do prontuário é visível a todos (ele
+       precisa achar o paciente), mas os LANÇAMENTOS só o autor lê — é ali que
+       está a anotação clínica. Na agenda, só os atendimentos dele. */
     let donoCol = null, donoVal = null;
     if (s.perfil === "profissional") {
-      if (tabela === "prontuario") { donoCol = "usuario_id"; donoVal = s.userId; }
+      if (tabela === "prontuario_registros") { donoCol = "usuario_id"; donoVal = s.userId; }
       else if (tabela === "atendimentos") { donoCol = "profissional_id"; donoVal = s.profissionalId; }
     }
 
@@ -930,17 +1316,52 @@ async function rotaApi(req, res, p) {
       const pacFiltro = (q.get("paciente_id") || "").trim();
       let sql = `SELECT * FROM ${tabela}`;
       const cond = [], args = [];
-      // busca por nome/CPF nos pacientes; nas demais tabelas, pelo nome
-      if (busca && tabela === "pacientes") { cond.push("(nome LIKE ? OR cpf LIKE ? OR codigo LIKE ?)"); args.push("%" + busca + "%", "%" + busca + "%", "%" + busca + "%"); }
-      // prontuário se acha pelo NÚMERO de controle ou pelo nome do profissional
-      else if (busca && tabela === "prontuario") { cond.push("(numero LIKE ? OR profissional LIKE ?)"); args.push("%" + busca + "%", "%" + busca + "%"); }
+      /* Paciente se acha por NOME, CÓDIGO ou CPF — e o CPF casa digitado com ou
+         sem máscara, dos dois lados: tira a pontuação do que foi digitado e
+         também da coluna, então "123.456.789-00" acha "12345678900".
+         Mínimo de 3 dígitos (mesma regra do combobox): com um só, qualquer CPF
+         casaria e a busca devolveria a clínica inteira. */
+      const digitos = busca.replace(/\D+/g, "");
+      const buscaPorDigitos = digitos.length >= 3;
+      const CPF_LIMPO = "REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),' ','')";
+      if (busca && tabela === "pacientes") {
+        const ors = ["nome LIKE ?", "codigo LIKE ?", "cpf LIKE ?"];
+        args.push("%" + busca + "%", "%" + busca + "%", "%" + busca + "%");
+        if (buscaPorDigitos) { ors.push(`${CPF_LIMPO} LIKE ?`); args.push("%" + digitos + "%"); }
+        cond.push("(" + ors.join(" OR ") + ")");
+      }
+      /* Prontuário se acha pelo NÚMERO da pasta, pelo procedimento, pelo
+         profissional — e também pelo PACIENTE (nome, código ou CPF), que é como
+         a recepção procura na prática. */
+      else if (busca && tabela === "prontuario") {
+        const ors = ["numero LIKE ?", "especialidade LIKE ?", "profissional LIKE ?",
+          "paciente_id IN (SELECT id FROM pacientes WHERE nome LIKE ? OR codigo LIKE ? OR cpf LIKE ?)"];
+        for (let i = 0; i < 6; i++) args.push("%" + busca + "%");
+        if (buscaPorDigitos) { ors.push(`paciente_id IN (SELECT id FROM pacientes WHERE ${CPF_LIMPO} LIKE ?)`); args.push("%" + digitos + "%"); }
+        cond.push("(" + ors.join(" OR ") + ")");
+      }
       else if (busca && COLS[tabela].has("nome")) { cond.push("nome LIKE ?"); args.push("%" + busca + "%"); }
       // anamneses/prontuário/documentos podem ser filtrados por paciente
       if (pacFiltro && COLS[tabela].has("paciente_id")) { cond.push("paciente_id=?"); args.push(pacFiltro); }
+      // lançamentos são sempre lidos dentro de um prontuário
+      const prFiltro = (q.get("prontuario_id") || "").trim();
+      if (prFiltro && COLS[tabela].has("prontuario_id")) { cond.push("prontuario_id=?"); args.push(prFiltro); }
+      // por padrão os arquivados ficam fora; ?arquivados=1 mostra também
+      if (tabela === "prontuario_registros" && q.get("arquivados") !== "1") cond.push("arquivado=0");
+      // relação de ativos / inativos (com alta)
+      const st = (q.get("status") || "").trim();
+      if (st && COLS[tabela].has("status")) { cond.push("status=?"); args.push(st); }
       if (donoCol) { cond.push(donoCol + "=?"); args.push(donoVal); }
       if (cond.length) sql += " WHERE " + cond.join(" AND ");
-      // listas de apoio saem na ordem de exibição; o resto, mais novo primeiro
-      sql += ["convenios", "procedimentos", "salas"].includes(tabela) ? " ORDER BY sort, id" : " ORDER BY id DESC";
+      /* Ordem de cada lista:
+         · listas de apoio, na ordem de exibição escolhida pela clínica;
+         · AGENDA, por dia e horário — é assim que a recepção lê o dia;
+         · o resto, mais novo primeiro. */
+      sql += ["convenios", "procedimentos", "salas"].includes(tabela) ? " ORDER BY sort, id"
+           : tabela === "atendimentos" ? " ORDER BY data, hora, id"
+           : tabela === "prontuario" ? " ORDER BY status, especialidade, id"
+           : tabela === "prontuario_registros" ? " ORDER BY data DESC, id DESC"
+           : " ORDER BY id DESC";
       const linhas = db.prepare(sql).all(...args);
       if (tabela === "profissionais") linhas.forEach(anexarAcesso);
       return json(res, 200, linhas);
@@ -957,9 +1378,27 @@ async function rotaApi(req, res, p) {
     }
     if (req.method === "POST" && !id) {
       const b = await readBody(req);
-      if (tabela === "prontuario" || tabela === "anamneses") b.usuario_id = s.userId;   // carimba o dono
+      if (tabela === "prontuario" || tabela === "anamneses" || tabela === "prontuario_registros") b.usuario_id = s.userId;
+      /* Um prontuário por paciente + especialidade. A checagem aqui devolve uma
+         mensagem que o recepcionista entende; o índice único no banco é a rede
+         de segurança caso duas telas salvem ao mesmo tempo. */
+      if (tabela === "prontuario") {
+        if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente." });
+        if (!b.especialidade) return json(res, 400, { error: "Selecione o procedimento deste prontuário." });
+        const ja = db.prepare("SELECT numero FROM prontuario WHERE paciente_id=? AND especialidade=?")
+          .get(b.paciente_id, b.especialidade);
+        if (ja) return json(res, 409, { error: `Este paciente já tem prontuário de ${b.especialidade} (nº ${ja.numero}). Abra o existente — cada procedimento tem um único prontuário.` });
+        if (!b.aberto_em) b.aberto_em = new Date().toISOString().slice(0, 10);
+      }
+      if (tabela === "prontuario_registros") {
+        if (!b.prontuario_id) return json(res, 400, { error: "Lançamento sem prontuário." });
+        if (!TIPOS_REGISTRO.includes(b.tipo)) return json(res, 400, { error: "Tipo de lançamento inválido." });
+        if (!b.data) b.data = new Date().toISOString().slice(0, 10);
+      }
       if (tabela === "atendimentos" && s.perfil === "profissional") b.profissional_id = s.profissionalId; // marca na própria agenda
       if (tabela === "atendimentos") {
+        // só se agenda para quem tem ficha: é o que garante código e histórico
+        if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente. Só é possível agendar para paciente cadastrado." });
         const e = validarAgenda(b.profissional_id, b.data, b.hora, null, b.hora_fim, b.sala_id);
         if (e) return json(res, 400, { error: e });
       }
@@ -974,11 +1413,28 @@ async function rotaApi(req, res, p) {
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
       const info = db.prepare(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`).run(...valores);
       const novoId = Number(info.lastInsertRowid);
-      // todo prontuário nasce com o seu número de controle (o cliente não envia
-      // "numero": não está em TAB.prontuario, então o CRUD nunca o grava)
+      // toda pasta de prontuário nasce com o seu número de controle
       if (tabela === "prontuario") {
         const numero = emitirNumeroProntuario(novoId);
+        anotar("prontuario", novoId, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
+        anotar("paciente", b.paciente_id, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
         return json(res, 200, { ok: true, id: novoId, numero });
+      }
+      if (tabela === "prontuario_registros") {
+        const pr = db.prepare("SELECT paciente_id,numero FROM prontuario WHERE id=?").get(b.prontuario_id) || {};
+        anotar("prontuario", b.prontuario_id, "Lançamento: " + rotuloTipo(b.tipo), (b.texto || "").slice(0, 120), s);
+        if (pr.paciente_id) anotar("paciente", pr.paciente_id, "Lançamento no prontuário " + (pr.numero || ""), rotuloTipo(b.tipo), s);
+      }
+      // todo paciente nasce com o seu código próprio, gerado aqui
+      if (tabela === "pacientes") {
+        const codigo = emitirCodigoPaciente(novoId);
+        anotar("paciente", novoId, "Cadastro criado", `${codigo} · ${b.nome || ""}`, s);
+        return json(res, 200, { ok: true, id: novoId, codigo });
+      }
+      // o agendamento se pendura na pasta do procedimento, se ela já existir
+      if (tabela === "atendimentos") {
+        const pasta = sincronizarProntuarioDoAtendimento(novoId);
+        return json(res, 200, { ok: true, id: novoId, prontuario: pasta || null });
       }
       // cadastrar profissional já cria o acesso dele ao sistema
       if (tabela === "profissionais") {
@@ -992,16 +1448,24 @@ async function rotaApi(req, res, p) {
       const b = await readBody(req);
       delete b.usuario_id;                                            // não se troca o dono por aqui
       if (donoCol === "profissional_id") delete b.profissional_id;    // o profissional não reatribui o atendimento
+      // guardado ANTES do update: é como sabemos se o procedimento mudou nesta
+      // edição — e só nesse caso o vínculo com o prontuário é refeito
+      let antesAtend = null;
       if (tabela === "atendimentos") {
-        const at = db.prepare("SELECT profissional_id,data,hora,hora_fim,sala_id FROM atendimentos WHERE id=?").get(id) || {};
-        const e = validarAgenda(b.profissional_id ?? at.profissional_id, b.data ?? at.data, b.hora ?? at.hora, id,
-          b.hora_fim ?? at.hora_fim, b.sala_id ?? at.sala_id);
+        antesAtend = db.prepare("SELECT profissional_id,data,hora,hora_fim,sala_id,procedimento_id,especialidade FROM atendimentos WHERE id=?").get(id) || {};
+        if ("paciente_id" in b && !b.paciente_id) return json(res, 400, { error: "Selecione o paciente. Só é possível agendar para paciente cadastrado." });
+        const e = validarAgenda(b.profissional_id ?? antesAtend.profissional_id, b.data ?? antesAtend.data, b.hora ?? antesAtend.hora, id,
+          b.hora_fim ?? antesAtend.hora_fim, b.sala_id ?? antesAtend.sala_id);
         if (e) return json(res, 400, { error: e });
       }
       if (tabela === "anamneses" && b.dados !== undefined && typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
       if (use.length) db.prepare(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`).run(...use.map((c) => b[c]), id);
       if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) db.prepare("UPDATE anamneses SET atualizado=? WHERE id=?").run(agora(), id);
+      if (tabela === "atendimentos") {
+        const pasta = sincronizarProntuarioDoAtendimento(id, antesAtend);
+        return json(res, 200, { ok: true, prontuario: pasta || null });
+      }
       // editar profissional também mantém o acesso dele em dia (login/senha/bloqueio)
       if (tabela === "profissionais") {
         const e = salvarAcessoProfissional(id, b, s.perfil);
