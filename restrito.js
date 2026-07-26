@@ -25,7 +25,7 @@ const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
 // Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
 // casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "1.5.0";
+const SISTEMA_VERSION = "1.6.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -97,8 +97,11 @@ db.exec(`
 
   -- Prontuário eletrônico (evolução por sessão). usuario_id = operador que criou
   -- o registro; o perfil "profissional" só enxerga os seus.
+  -- numero = identificação sequencial e ÚNICA do registro (PR-AAAA-00000).
+  -- Gerado pelo servidor, nunca editável: é o que a clínica usa para localizar
+  -- e controlar o prontuário, e sai impresso no documento.
   CREATE TABLE IF NOT EXISTS prontuario (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    paciente_id INTEGER, atendimento_id INTEGER, profissional TEXT, especialidade TEXT,
+    numero TEXT, paciente_id INTEGER, atendimento_id INTEGER, profissional TEXT, especialidade TEXT,
     data TEXT, avaliacao TEXT, evolucao TEXT, plano TEXT, encaminhamentos TEXT,
     anexos TEXT, responsavel TEXT, usuario_id INTEGER, criado TEXT);
 
@@ -119,10 +122,12 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_anam_pac ON anamneses(paciente_id);
 `);
 
+
 // Migração leve para bancos criados antes destas colunas (o CREATE IF NOT EXISTS
 // não altera tabela existente). Ignora o erro se a coluna já existir.
 for (const alt of [
   "ALTER TABLE prontuario ADD COLUMN usuario_id INTEGER",
+  "ALTER TABLE prontuario ADD COLUMN numero TEXT",
   "ALTER TABLE g_usuarios ADD COLUMN profissional_id INTEGER",
   "ALTER TABLE profissionais ADD COLUMN cor TEXT",
   "ALTER TABLE profissionais ADD COLUMN criado TEXT",
@@ -157,6 +162,62 @@ function confereSenha(senha, guardado) {
 const HASH_ISCA = hashSenha(crypto.randomBytes(16).toString("hex"));
 const getC = (k) => db.prepare("SELECT value FROM g_config WHERE key=?").get(k)?.value;
 const setC = (k, v) => db.prepare("INSERT INTO g_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(k, String(v));
+
+/* ==========================================================================
+   NÚMERO DO PRONTUÁRIO — PR-AAAA-00001
+   Sequencial por ANO, único e NUNCA reaproveitado. É por ele que a clínica
+   localiza e controla o registro (busca, arquivo físico, encaminhamento).
+
+   Por que um contador guardado em g_config e não "o maior número da tabela":
+   se o último prontuário for excluído, o maior da tabela cai — e o próximo
+   registro herdaria um número que já circulou impresso. O contador só sobe.
+   Ele é comparado com o maior do banco a cada emissão, então também se
+   recupera sozinho se o g_config for perdido.
+
+   Roda AQUI, depois das migrações (a coluna precisa existir) e depois de
+   getC/setC (o contador depende deles).
+   ========================================================================== */
+try {
+  // última linha de defesa: nem um backup restaurado por cima duplica número
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pront_numero ON prontuario(numero) WHERE numero IS NOT NULL");
+} catch (e) { console.error("  ✖ índice do número de prontuário:", e.message); }
+
+const PRONT_PREFIXO = "PR";
+function proximoNumeroProntuario(ano) {
+  const y = ano || new Date().getFullYear();
+  const inicio = `${PRONT_PREFIXO}-${y}-`;
+  const chave = `pront_seq_${y}`;
+  const guardado = Number(getC(chave) || 0);
+  const r = db.prepare("SELECT MAX(CAST(substr(numero, ?) AS INTEGER)) m FROM prontuario WHERE numero LIKE ?")
+    .get(inicio.length + 1, inicio + "%");
+  const noBanco = (r && r.m) ? Number(r.m) : 0;
+  const seq = Math.max(guardado, noBanco) + 1;
+  setC(chave, seq);                        // marca como usado, mesmo se falhar depois
+  return inicio + String(seq).padStart(5, "0");
+}
+/* Tenta de novo se colidir (backup restaurado por cima, por exemplo). */
+function emitirNumeroProntuario(id) {
+  for (let i = 0; i < 20; i++) {
+    const n = proximoNumeroProntuario();
+    try { db.prepare("UPDATE prontuario SET numero=? WHERE id=?").run(n, id); return n; }
+    catch (e) { if (!/UNIQUE/i.test(e.message)) throw e; }
+  }
+  throw new Error("Não consegui gerar o número do prontuário.");
+}
+/* Registros anteriores a esta versão recebem número uma única vez, na ordem de
+   cadastro e respeitando o ano de cada um. */
+{
+  const antigos = db.prepare("SELECT id, data, criado FROM prontuario WHERE numero IS NULL OR numero='' ORDER BY id").all();
+  for (const r of antigos) {
+    const ano = Number(String(r.data || r.criado || "").slice(0, 4)) || new Date().getFullYear();
+    for (let i = 0; i < 20; i++) {
+      const n = proximoNumeroProntuario(ano);
+      try { db.prepare("UPDATE prontuario SET numero=? WHERE id=?").run(n, r.id); break; }
+      catch (e) { if (!/UNIQUE/i.test(e.message)) throw e; }
+    }
+  }
+  if (antigos.length) console.log(`  · /restrito: ${antigos.length} prontuário(s) antigo(s) receberam número.`);
+}
 
 /* Semente: um usuário admin inicial. Senha padrão trocável na primeira entrada. */
 if (db.prepare("SELECT COUNT(*) c FROM g_usuarios").get().c === 0) {
@@ -871,6 +932,8 @@ async function rotaApi(req, res, p) {
       const cond = [], args = [];
       // busca por nome/CPF nos pacientes; nas demais tabelas, pelo nome
       if (busca && tabela === "pacientes") { cond.push("(nome LIKE ? OR cpf LIKE ? OR codigo LIKE ?)"); args.push("%" + busca + "%", "%" + busca + "%", "%" + busca + "%"); }
+      // prontuário se acha pelo NÚMERO de controle ou pelo nome do profissional
+      else if (busca && tabela === "prontuario") { cond.push("(numero LIKE ? OR profissional LIKE ?)"); args.push("%" + busca + "%", "%" + busca + "%"); }
       else if (busca && COLS[tabela].has("nome")) { cond.push("nome LIKE ?"); args.push("%" + busca + "%"); }
       // anamneses/prontuário/documentos podem ser filtrados por paciente
       if (pacFiltro && COLS[tabela].has("paciente_id")) { cond.push("paciente_id=?"); args.push(pacFiltro); }
@@ -911,6 +974,12 @@ async function rotaApi(req, res, p) {
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
       const info = db.prepare(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`).run(...valores);
       const novoId = Number(info.lastInsertRowid);
+      // todo prontuário nasce com o seu número de controle (o cliente não envia
+      // "numero": não está em TAB.prontuario, então o CRUD nunca o grava)
+      if (tabela === "prontuario") {
+        const numero = emitirNumeroProntuario(novoId);
+        return json(res, 200, { ok: true, id: novoId, numero });
+      }
       // cadastrar profissional já cria o acesso dele ao sistema
       if (tabela === "profissionais") {
         const e = salvarAcessoProfissional(novoId, b, s.perfil);

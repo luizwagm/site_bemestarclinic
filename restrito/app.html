@@ -129,6 +129,11 @@
     .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.35rem .8rem;border:1px solid var(--line2);border-radius:9px;padding:.7rem .8rem;max-height:200px;overflow:auto}
     .chk{display:flex;align-items:center;gap:.45rem;font-weight:500;font-size:.88rem;color:var(--text);cursor:pointer}
     .chk input{width:auto}
+    /* número de controle do prontuário */
+    .num-pront{font-family:ui-monospace,"Consolas","Courier New",monospace;font-weight:700;
+      color:var(--marinho);background:#f0edfa;border:1px solid #ddd7f0;border-radius:6px;
+      padding:.1rem .45rem;font-size:.84rem;letter-spacing:.03em;white-space:nowrap}
+    .num-pront--grande{display:inline-block;font-size:1.05rem;padding:.4rem .8rem}
     /* aviso de cadastro com histórico (não pode ser excluído) */
     .aviso-hist{background:#fdf4e6;border:1px solid #f0dcc0;color:#8a5a15;border-radius:9px;
       padding:.55rem .75rem;font-size:.84rem;margin:0 0 .9rem}
@@ -496,8 +501,9 @@ const MODULOS = {
     colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],["profissional","Profissional"]],
     campos:[] },   // formulário próprio, montado pelo modelo — ver abrirAnamnese()
   prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true, fichaPaciente:true, imprimirEvolucao:true,
-    colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
+    colunas:[["numero","Nº do prontuário","numero"],["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
     campos:[
+      ["numero","Nº do prontuário","somenteleitura",{full:1,dica:"Gerado pelo sistema — único e sequencial. Use-o para localizar e controlar este registro."}],
       ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1}],
       ["profissional","Profissional responsável","busca",{tabela:"profissionais",valor:"nome",filtraServicos:1}],
       ["data","Data do atendimento","date",{req:1}],
@@ -634,7 +640,10 @@ function mostrarModulo(){
   // "+ Novo" da anamnese abre o formulário próprio, já no modelo do submenu
   $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0, filtroAnamTipo)) : (()=>abrirForm());
   $("#mod-busca").hidden=!m.busca; $("#mod-busca").value="";
-  $("#mod-busca").placeholder = MOD==="pacientes" ? "Buscar por nome, CPF ou código…" : "Buscar por nome…";
+  $("#mod-busca").placeholder =
+    MOD==="pacientes"  ? "Buscar por nome, CPF ou código…" :
+    MOD==="prontuario" ? "Buscar pelo nº do prontuário ou profissional…" :
+    MOD==="anamneses"  ? "Buscar pelo nome do paciente…" : "Buscar por nome…";
   $("#mod-thead").innerHTML="<tr>"+m.colunas.map(([,lab])=>`<th>${lab}</th>`).join("")+"<th></th></tr>";
   const ehAgenda = MOD==="atendimentos";
   $("#mod-vistas").hidden=!ehAgenda;
@@ -671,6 +680,7 @@ function celula(row,[chave,,tipo]){
   if(tipo==="conv") return escA(nomeConv(v));
   if(tipo==="sala") return escA(nomeSala(v));
   if(tipo==="anam") return escA(rotuloAnam(v));
+  if(tipo==="numero") return v?`<span class="num-pront">${escA(v)}</span>`:'<span style="color:var(--dim)">—</span>';
   if(tipo==="proc"){ const p=acha("procedimentos",v);
     if(!p) return "—";
     return `<span class="proc-tag">${bolinha(p.cor)}${escA(rotuloProc(p))}</span>`; }
@@ -870,6 +880,9 @@ function campoHTML(campo, val){
          <div class="chk-grid" id="${id}-grid">${grade}</div>`
       : `<p class="hint" style="color:var(--dim)">Nenhum procedimento cadastrado ainda. Cadastre em <b>Cadastros → Procedimentos</b>.</p>`;
   }
+  else if(tipo==="somenteleitura") ctrl = val
+    ? `<div class="num-pront num-pront--grande">${escA(val)}</div>`
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0">Será gerado automaticamente ao salvar.</p>`;
   else if(tipo==="cor") ctrl=`<div style="display:flex;gap:.6rem;align-items:center">
       <input type="color" id="${id}" value="${escA(val||"#5B4FD8")}" style="width:56px;height:38px;padding:2px">
       <span class="hint" style="color:var(--dim)">Cor de identificação na agenda</span></div>`;
@@ -1195,6 +1208,7 @@ function coletar(){
   const menor = MOD==="pacientes" && ehMenor(($("#f-nascimento")||{}).value);
   for(const [k,lab,tipo,op={}] of camposDoPerfil(m)){
     if(tipo==="titulo") continue;          // apenas rótulo de seção
+    if(tipo==="somenteleitura") continue;  // gerado pelo servidor (ex.: nº do prontuário)
     if(op.menor && !menor){ out[k]=""; continue; }  // limpa dados do responsável quando não é menor
     if(tipo==="servicos_check"){ const g=$("#f-"+k+"-grid"); out[k]=JSON.stringify(g?[...g.querySelectorAll("input:checked")].map((c)=>c.value):[]); continue; }
     const el=$("#f-"+k); if(!el) continue;
@@ -1230,7 +1244,10 @@ async function salvarReg(id){
       box.innerHTML=`<div class="erros">Cadastro salvo, mas o acesso não foi criado: ${escA(r.aviso)}</div>`;
       carregarLista(); return;
     }
-    fecharModal(); toast("Registro salvo."); carregarLista();
+    fecharModal();
+    // no prontuário novo, mostra o número gerado — é o controle da clínica
+    toast(r && r.numero ? `Prontuário salvo — nº ${r.numero}` : "Registro salvo.");
+    carregarLista();
   }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
 }
 // tabelas que alimentam seletores: mudou uma, o CACHE precisa ser refeito
@@ -1368,6 +1385,12 @@ function timbreHTML(titulo, corpo, opc){
    .evo{page-break-inside:avoid;border-left:3px solid #5B4FD8;padding:.1rem 0 .1rem .7rem;margin:.7rem 0}
    .evo .cab{font-weight:700;color:#5136d6;font-size:.82rem}
    .evo .met{color:#8a90a0;font-size:.72rem;margin-bottom:.2rem}
+   /* número de controle do prontuário */
+   .selo-num{float:right;border:1.5px solid #5B4FD8;border-radius:8px;padding:.35rem .7rem;
+     font-size:.78rem;color:#5136d6;background:#f7f5fd;margin:0 0 .5rem .8rem}
+   .selo-num b{font-family:ui-monospace,"Consolas","Courier New",monospace;font-size:.95rem;letter-spacing:.04em}
+   .num-inline{font-family:ui-monospace,"Consolas","Courier New",monospace;font-weight:700;
+     background:#f0edfa;border:1px solid #ddd7f0;border-radius:5px;padding:0 .3rem;font-size:.76rem;color:#5136d6}
   </style></head><body>
   <div class="barra-imp">
     <b>Orientação:</b>
@@ -1720,9 +1743,10 @@ async function imprimirEvolucao(id){
   let p={}; try{ p=await api("pacientes/"+e.paciente_id); }catch{}
   let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
   const bloco=(rot,txt)=> txt?`<div class="sec">${escA(rot)}</div><p style="white-space:pre-wrap">${escA(txt)}</p>`:"";
-  const corpo = blocoDadosPessoais(p) + `
+  const corpo = `${e.numero?`<div class="selo-num">Prontuário nº <b>${escA(e.numero)}</b></div>`:""}`
+    + blocoDadosPessoais(p) + `
     <div class="sec">Atendimento</div>
-    <table class="d">${L("Data",dataBR(e.data))}${L("Profissional",e.profissional)}
+    <table class="d">${L("Nº do prontuário",e.numero)}${L("Data",dataBR(e.data))}${L("Profissional",e.profissional)}
       ${L("Procedimento",servs.join(", "))}</table>
     ${bloco("Avaliação",e.avaliacao)}
     ${bloco("Evolução da sessão",e.evolucao)}
@@ -1731,7 +1755,7 @@ async function imprimirEvolucao(id){
     ${e.anexos?`<div class="sec">Anexo</div><p>Há arquivo anexado a este registro no sistema.</p>`:""}
     ${assinatura(e.responsavel||e.profissional)}`;
   abrirImpressao("Prontuário — registro de atendimento", corpo,
-    { subtitulo: `${p.nome||""}${e.data?" · "+dataBR(e.data):""}` });
+    { subtitulo: `${e.numero?e.numero+" · ":""}${p.nome||""}${e.data?" · "+dataBR(e.data):""}` });
 }
 
 /* ==========================================================================
@@ -1774,7 +1798,7 @@ async function imprimirHistorico(pacienteId){
     h.evolucoes.forEach((e,i)=>{
       let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
       corpo += `<div class="evo">
-        <div class="cab">${i+1}. ${escA(e.data?dataBR(e.data):"(sem data)")}</div>
+        <div class="cab">${i+1}. ${escA(e.data?dataBR(e.data):"(sem data)")}${e.numero?` <span class="num-inline">${escA(e.numero)}</span>`:""}</div>
         <div class="met">${escA(e.profissional||"—")}${servs.length?" · "+escA(servs.join(", ")):""}</div>
         ${e.avaliacao?`<p><b>Avaliação:</b> ${escA(e.avaliacao)}</p>`:""}
         ${e.evolucao?`<p><b>Evolução:</b> ${escA(e.evolucao)}</p>`:""}
