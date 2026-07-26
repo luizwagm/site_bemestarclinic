@@ -129,6 +129,9 @@
     .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.35rem .8rem;border:1px solid var(--line2);border-radius:9px;padding:.7rem .8rem;max-height:200px;overflow:auto}
     .chk{display:flex;align-items:center;gap:.45rem;font-weight:500;font-size:.88rem;color:var(--text);cursor:pointer}
     .chk input{width:auto}
+    /* aviso de cadastro com histórico (não pode ser excluído) */
+    .aviso-hist{background:#fdf4e6;border:1px solid #f0dcc0;color:#8a5a15;border-radius:9px;
+      padding:.55rem .75rem;font-size:.84rem;margin:0 0 .9rem}
     /* cabeçalho de tipo dentro da grade de procedimentos */
     .chk-grupo{grid-column:1/-1;font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;
       color:var(--marinho);background:#f3f0fb;border-radius:6px;padding:.22rem .5rem;margin:.35rem 0 .1rem}
@@ -455,15 +458,18 @@ const MODULOS = {
       ["ativo","Ativa","select",{bool:1,padrao:"1"}],
       ["sort","Ordem (menor aparece primeiro)","number"],
     ]},
-  profissionais: { titulo:"Profissionais", novo:"Novo profissional",
-    colunas:[["nome","Nome"],["especialidade","Procedimentos","servicos"],["registro","Registro"],["ativo","Ativo","bool"]],
+  profissionais: { titulo:"Profissionais", novo:"Novo profissional", busca:true,
+    colunas:[["nome","Nome"],["especialidade","Procedimentos","servicos"],["registro","Registro"],["acesso_login","Login"],["ativo","Situação","situacao"]],
     campos:[
       ["nome","Nome completo","text",{req:1}],
       ["especialidade","Procedimentos que realiza","servicos_check",{full:1}],
       ["registro","Registro profissional (CRP/CRM…)","text"],
       ["contato","Contato","tel"],
       ["cor","Cor na agenda","cor"],
-      ["ativo","Ativo","select",{bool:1,padrao:"1"}],
+      ["_acesso","Acesso ao sistema","titulo",{full:1}],
+      ["acesso_login","Usuário (login)","text",{dica:"É com isto que ele entra em /restrito"}],
+      ["acesso_senha","Senha (mín. 8 — em branco mantém a atual)","password"],
+      ["ativo","Situação","select",{opcoes:[["1","Ativo"],["0","Bloqueado (não entra no sistema)"]],padrao:"1",full:1}],
     ]},
   atendimentos: { titulo:"Agendamento", novo:"Novo agendamento",
     colunas:[["data","Data","data"],["hora","Início"],["hora_fim","Fim"],["paciente_id","Paciente","pac"],["profissional_id","Profissional","prof"],["procedimento_id","Procedimento","proc"],["sala_id","Sala","sala"],["status","Status","tag"]],
@@ -656,6 +662,9 @@ function celula(row,[chave,,tipo]){
   const v=row[chave];
   if(tipo==="data") return dataBR(v);
   if(tipo==="bool") return Number(v)?'<span class="tag tag-sim">Sim</span>':'<span class="tag tag-nao">Não</span>';
+  if(tipo==="situacao") return Number(v)!==0
+    ? '<span class="tag tag-Ativo">Ativo</span>'
+    : '<span class="tag tag-Faltou">Bloqueado</span>';
   if(tipo==="tag"&&v) return `<span class="tag tag-${escA(v)}">${escA(v)}</span>`;
   if(tipo==="pac") return escA(nomePac(v));
   if(tipo==="prof") return escA(nomeProf(v));
@@ -730,6 +739,7 @@ function renderTabela(){
       anam ? `<button class="btn btn-ghost btn-sm" onclick="imprimirAnamnese(${row.id})">Imprimir</button> `
            : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
     }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
+    }${MOD==="profissionais"?`<button class="btn btn-ghost btn-sm" onclick="alternarBloqueio(${row.id},${Number(row.ativo)!==0?1:0})">${Number(row.ativo)!==0?"Bloquear":"Desbloquear"}</button> `:""
     }<button class="btn btn-ghost btn-sm" onclick="${anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`}">Abrir</button></td></tr>`).join("");
 }
 
@@ -879,7 +889,8 @@ function campoHTML(campo, val){
     const md=MASCARA[tipo]?` data-mask="${tipo}" inputmode="numeric"`:"";
     const iv=MASCARA[tipo]?aplicarMascara(tipo,val||""):(val||"");
     ctrl=`<input id="${id}" type="${t}"${md} value="${escA(iv)}">`; }
-  return wrap(`<label>${lab}${req}</label>${ctrl}`,op.full);
+  const dica = op.dica?`<span class="hint" style="display:block;color:var(--dim);font-size:.75rem;margin-top:.2rem">${escA(op.dica)}</span>`:"";
+  return wrap(`<label>${lab}${req}</label>${ctrl}${dica}`,op.full);
 }
 
 async function abrirForm(id){
@@ -889,17 +900,21 @@ async function abrirForm(id){
   if(id){ try{ dados=await api(MOD+"/"+id); }catch(e){ return toast(e.message,true); } }
   const host=$("#modal-host");
   const campos=camposDoPerfil(m);
+  // cadastro já usado em atendimento/prontuário: some o botão Excluir e explica
+  const temHistorico = Array.isArray(dados._vinculos) && dados._vinculos.length > 0;
+  const temAtivo = m.campos.some((c)=>c[0]==="ativo");
   host.innerHTML=`<div class="modal-bg"><div class="modal">
     <h2>${id?"Editar":m.novo||"Novo"}</h2>
     <div class="modal-corpo">
       ${m.fichaPaciente?`<div id="ficha-paciente"></div>`:""}
+      ${temHistorico?`<p class="aviso-hist">🔒 Este cadastro já tem histórico (${escA(dados._vinculos.join(", "))}) e por isso <b>não pode ser excluído</b>${temAtivo?" — para tirá-lo de uso, mude a Situação para <b>Bloqueado</b>":""}.</p>`:""}
       <div class="formgrid">${campos.map((c)=>campoHTML(c,dados[c[0]])).join("")}</div>
       <div id="form-erros"></div>
     </div>
     <div class="acoes">
       ${m.imprimir&&id?`<button class="btn btn-ghost" onclick="imprimirFicha(${id})">Imprimir ficha</button>`:""}
       ${m.historico&&id?`<button class="btn btn-ghost" onclick="imprimirHistorico(${id})">Imprimir prontuário completo</button>`:""}
-      ${id?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
+      ${id&&!temHistorico?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
       <button class="btn btn-navy" onclick="salvarReg(${id||0})">Salvar</button>
     </div></div></div>`;
@@ -1165,17 +1180,48 @@ async function salvarReg(id){
     let r;
     if(id) r=await api(MOD+"/"+id,"PUT",out); else r=await api(MOD,"POST",out);
     if(RECARREGA_CACHE.includes(MOD)) await recarregarCache();
+    /* O cadastro foi salvo, mas o ACESSO não (login repetido, senha curta…).
+       Mantém a modal aberta explicando, senão o usuário sai achando que criou
+       o login do profissional e ele não consegue entrar. */
+    if(r && r.aviso){
+      box.innerHTML=`<div class="erros">Cadastro salvo, mas o acesso não foi criado: ${escA(r.aviso)}</div>`;
+      carregarLista(); return;
+    }
     fecharModal(); toast("Registro salvo."); carregarLista();
   }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
 }
 // tabelas que alimentam seletores: mudou uma, o CACHE precisa ser refeito
 const RECARREGA_CACHE=["pacientes","profissionais","convenios","procedimentos","salas"];
+
+/* Bloquear / desbloquear profissional direto na lista (a secretaria pode).
+   Bloquear derruba o acesso dele ao sistema e o tira dos seletores — mas o
+   histórico de atendimentos, prontuários e anamneses fica intacto. */
+async function alternarBloqueio(id, estaAtivo){
+  const p=acha("profissionais",id);
+  const nome=p?p.nome:"este profissional";
+  const msg = estaAtivo
+    ? `Bloquear ${nome}?\n\nEle deixa de entrar no sistema e some das telas de agendamento.\nO histórico dele continua guardado.`
+    : `Desbloquear ${nome}?\n\nEle volta a entrar no sistema e a aparecer nos agendamentos.`;
+  if(!confirm(msg)) return;
+  try{
+    await api("profissionais/"+id,"PUT",{ativo: estaAtivo?0:1});
+    await recarregarCache();
+    toast(estaAtivo?"Profissional bloqueado.":"Profissional desbloqueado.");
+    carregarLista();
+  }catch(e){ toast(e.message,true); }
+}
 async function excluirReg(id){
   if(!confirm("Excluir este registro? Esta ação não pode ser desfeita.")) return;
   try{ await api(MOD+"/"+id,"DELETE");
     if(RECARREGA_CACHE.includes(MOD)) await recarregarCache();
     fecharModal(); toast("Registro excluído."); carregarLista();
-  }catch(e){ toast(e.message,true); }
+  }catch(e){
+    /* O servidor recusa apagar cadastro com histórico (409). A mensagem é longa
+       e importante — vai na caixa de erros do formulário, não num toast que some. */
+    const box=$("#form-erros");
+    if(box) box.innerHTML=`<div class="erros">${escA(e.message)}</div>`;
+    else toast(e.message,true);
+  }
 }
 
 /* ==========================================================================

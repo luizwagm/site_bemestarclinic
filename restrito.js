@@ -25,7 +25,7 @@ const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
 // Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
 // casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "1.2.0";
+const SISTEMA_VERSION = "1.3.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -350,6 +350,92 @@ const PERM_LEITURA = { profissional: new Set(["pacientes", "profissionais", "pro
 const pode = (perfil, modulo) => perfil === "admin" || (PERM[perfil] ? PERM[perfil].has(modulo) : false);
 const podeLer = (perfil, modulo) => pode(perfil, modulo) || (PERM_LEITURA[perfil] && PERM_LEITURA[perfil].has(modulo));
 const adminsAtivos = () => db.prepare("SELECT COUNT(*) c FROM g_usuarios WHERE perfil='admin' AND ativo=1").get().c;
+
+/* ==========================================================================
+   VÍNCULOS E HISTÓRICO
+   Cadastro que já foi usado em atendimento/prontuário/anamnese NÃO pode ser
+   apagado — apagar reescreveria o passado (a agenda antiga ficaria sem
+   profissional, o prontuário impresso sem procedimento). O caminho certo é
+   BLOQUEAR: some dos seletores, mas o histórico continua íntegro.
+   ========================================================================== */
+const conta = (sql, ...args) => db.prepare(sql).get(...args).c;
+function vinculosDe(tabela, id) {
+  const v = [];
+  const somar = (n, rotulo) => { if (n > 0) v.push(`${n} ${rotulo}${n > 1 ? "s" : ""}`); };
+  if (tabela === "profissionais") {
+    const p = db.prepare("SELECT nome FROM profissionais WHERE id=?").get(id);
+    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=?", id), "atendimento");
+    if (p) {
+      somar(conta("SELECT COUNT(*) c FROM prontuario WHERE profissional=?", p.nome), "evolução de prontuário");
+      somar(conta("SELECT COUNT(*) c FROM anamneses WHERE profissional=?", p.nome), "anamnese");
+    }
+    somar(conta("SELECT COUNT(*) c FROM g_usuarios WHERE profissional_id=?", id), "acesso ao sistema");
+  }
+  if (tabela === "pacientes") {
+    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE paciente_id=?", id), "atendimento");
+    somar(conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=?", id), "evolução de prontuário");
+    somar(conta("SELECT COUNT(*) c FROM anamneses WHERE paciente_id=?", id), "anamnese");
+    somar(conta("SELECT COUNT(*) c FROM documentos_gestao WHERE paciente_id=?", id), "documento");
+  }
+  if (tabela === "procedimentos") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE procedimento_id=?", id), "atendimento");
+  if (tabela === "convenios") {
+    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE convenio_id=?", id), "atendimento");
+    somar(conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
+  }
+  if (tabela === "salas") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
+  return v;
+}
+
+/* --------------- Acesso do profissional ao sistema ----------------------
+   Cadastrar profissional JÁ cria o login dele (pedido da clínica) — e a
+   secretaria pode fazer isso. Mas por aqui só nasce conta de perfil
+   "profissional": promover alguém a admin continua sendo exclusividade do
+   módulo Usuários do Sistema, que só o admin abre. */
+function salvarAcessoProfissional(profId, b, quemPerfil) {
+  const login = String(b.acesso_login || "").trim().toLowerCase();
+  const senha = String(b.acesso_senha || "");
+  const jaTem = db.prepare("SELECT * FROM g_usuarios WHERE profissional_id=?").get(profId);
+  const prof = db.prepare("SELECT nome,ativo FROM profissionais WHERE id=?").get(profId);
+  if (!prof) return null;
+  const ativo = Number(prof.ativo) === 0 ? 0 : 1;   // bloquear o profissional bloqueia o login
+
+  if (!login) {                                     // sem login informado: só espelha o bloqueio
+    if (jaTem && jaTem.ativo !== ativo) {
+      db.prepare("UPDATE g_usuarios SET ativo=? WHERE id=?").run(ativo, jaTem.id);
+      if (!ativo) derrubarSessoesDoUsuario(jaTem.id);
+    }
+    return null;
+  }
+  // login não pode colidir com outro usuário
+  const colide = db.prepare("SELECT id FROM g_usuarios WHERE email=? AND profissional_id IS NOT ?").get(login, profId);
+  if (colide && (!jaTem || colide.id !== jaTem.id)) return "Este login já está em uso por outro usuário.";
+
+  if (jaTem) {
+    db.prepare("UPDATE g_usuarios SET nome=?, email=?, ativo=? WHERE id=?").run(prof.nome, login, ativo, jaTem.id);
+    if (senha) {
+      if (senha.length < 8) return "A senha do profissional precisa ter ao menos 8 caracteres.";
+      db.prepare("UPDATE g_usuarios SET senha_hash=? WHERE id=?").run(hashSenha(senha), jaTem.id);
+    }
+    if (!ativo) derrubarSessoesDoUsuario(jaTem.id);
+  } else {
+    if (!senha) return "Defina uma senha para o acesso do profissional.";
+    if (senha.length < 8) return "A senha do profissional precisa ter ao menos 8 caracteres.";
+    db.prepare("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,'profissional',?,?,?)")
+      .run(prof.nome, login, hashSenha(senha), ativo, profId, agora());
+  }
+  return null;
+}
+function derrubarSessoesDoUsuario(userId) {
+  for (const [k, v] of sessoes) if (v.userId === userId) sessoes.delete(k);
+}
+/* Junta ao profissional o login dele (nunca a senha) para a tela mostrar
+   se ele já tem acesso e qual é o usuário. */
+function anexarAcesso(prof) {
+  const u = db.prepare("SELECT email, ativo FROM g_usuarios WHERE profissional_id=?").get(prof.id);
+  prof.acesso_login = u ? u.email : "";
+  prof.acesso_ativo = u ? u.ativo : null;
+  return prof;
+}
 
 // Colunas reais de cada tabela (do próprio banco). Serve para o CRUD só gravar
 // o que existe — e para saber se a tabela tem "criado" antes de carimbá-lo.
@@ -792,12 +878,18 @@ async function rotaApi(req, res, p) {
       if (cond.length) sql += " WHERE " + cond.join(" AND ");
       // listas de apoio saem na ordem de exibição; o resto, mais novo primeiro
       sql += ["convenios", "procedimentos", "salas"].includes(tabela) ? " ORDER BY sort, id" : " ORDER BY id DESC";
-      return json(res, 200, db.prepare(sql).all(...args));
+      const linhas = db.prepare(sql).all(...args);
+      if (tabela === "profissionais") linhas.forEach(anexarAcesso);
+      return json(res, 200, linhas);
     }
     if (req.method === "GET" && id) {
       const row = db.prepare(`SELECT * FROM ${tabela} WHERE id=?`).get(id);
       if (!row) return json(res, 404, { error: "Registro não encontrado." });
       if (donoCol && String(row[donoCol]) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." });
+      if (tabela === "profissionais") anexarAcesso(row);
+      // a tela avisa quando o registro tem histórico e por isso não pode ser excluído
+      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas"].includes(tabela))
+        row._vinculos = vinculosDe(tabela, id);
       return json(res, 200, row);
     }
     if (req.method === "POST" && !id) {
@@ -818,7 +910,13 @@ async function rotaApi(req, res, p) {
       const campos = temCriado ? use.concat("criado") : use;
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
       const info = db.prepare(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`).run(...valores);
-      return json(res, 200, { ok: true, id: Number(info.lastInsertRowid) });
+      const novoId = Number(info.lastInsertRowid);
+      // cadastrar profissional já cria o acesso dele ao sistema
+      if (tabela === "profissionais") {
+        const e = salvarAcessoProfissional(novoId, b, s.perfil);
+        if (e) return json(res, 200, { ok: true, id: novoId, aviso: e });
+      }
+      return json(res, 200, { ok: true, id: novoId });
     }
     if (req.method === "PUT" && id) {
       if (donoCol) { const dono = db.prepare(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`).get(id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
@@ -835,10 +933,28 @@ async function rotaApi(req, res, p) {
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
       if (use.length) db.prepare(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`).run(...use.map((c) => b[c]), id);
       if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) db.prepare("UPDATE anamneses SET atualizado=? WHERE id=?").run(agora(), id);
+      // editar profissional também mantém o acesso dele em dia (login/senha/bloqueio)
+      if (tabela === "profissionais") {
+        const e = salvarAcessoProfissional(id, b, s.perfil);
+        if (e) return json(res, 200, { ok: true, aviso: e });
+      }
       return json(res, 200, { ok: true });
     }
     if (req.method === "DELETE" && id) {
       if (donoCol) { const dono = db.prepare(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`).get(id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
+      /* Cadastro com histórico não se apaga — bloqueia-se. Apagar deixaria a
+         agenda antiga sem profissional e o prontuário impresso sem procedimento. */
+      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas"].includes(tabela)) {
+        const v = vinculosDe(tabela, id);
+        if (v.length) {
+          const podeBloquear = COLS[tabela].has("ativo");
+          return json(res, 409, { error: `Não dá para excluir: este registro já tem histórico (${v.join(", ")}). `
+            + (podeBloquear ? "Use Bloquear — ele some das telas de escolha, mas o histórico continua intacto."
+                            : "Excluir apagaria parte do histórico do paciente."), vinculos: v });
+        }
+      }
+      // profissional sem histórico: o acesso dele vai junto
+      if (tabela === "profissionais") db.prepare("DELETE FROM g_usuarios WHERE profissional_id=?").run(id);
       db.prepare(`DELETE FROM ${tabela} WHERE id=?`).run(id);
       return json(res, 200, { ok: true });
     }
