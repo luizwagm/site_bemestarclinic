@@ -1,0 +1,1704 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Gestão — BemEstarClinic</title>
+  <link rel="icon" href="/assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap">
+  <style>
+    :root{--bg:#F4F2FB;--surface:#fff;--line:#dde5ee;--line2:#c7d3e0;--text:#1c2540;--muted:#5a6480;--dim:#8a94ac;
+      --marinho:#3B2E9E;--celeste:#5B4FD8;--dourado:#C9A86A;--verde:#1c7a45;--ambar:#b3792a;--red:#d63a5e;--r:12px}
+    *{box-sizing:border-box;margin:0}
+    [hidden]{display:none!important}
+    body{font:15px/1.55 Outfit,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    h1,h2,h3{color:var(--marinho)}
+    button{font:inherit;cursor:pointer;color:inherit}
+    input,select,textarea{width:100%;padding:.6rem .75rem;font:inherit;color:var(--text);background:#fff;border:1.5px solid var(--line2);border-radius:9px}
+    input:focus,select:focus,textarea:focus{outline:none;border-color:var(--celeste);box-shadow:0 0 0 3px rgba(91,79,216,.18)}
+    input:disabled,select:disabled,textarea:disabled{background:#f2f5f9;color:var(--dim);cursor:not-allowed}
+    input.erro,select.erro{border-color:var(--red);box-shadow:0 0 0 3px rgba(214,58,94,.14)}
+    textarea{resize:vertical;min-height:70px}
+    label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin:.7rem 0 .25rem}
+    .btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1.1rem;border-radius:999px;border:2px solid transparent;font-weight:700}
+    .btn-navy{background:var(--marinho);color:#fff}
+    .btn-cel{background:var(--celeste);color:#fff}
+    .btn-ghost{background:#fff;border-color:var(--line2);color:var(--marinho)}
+    .btn-danger{background:#fceef2;color:var(--red);border-color:#f4c9d5}
+    .btn-sm{padding:.35rem .7rem;font-size:.82rem}
+    #login{position:fixed;inset:0;display:grid;place-items:center;background:linear-gradient(135deg,#253282,#1EA1E4);padding:1.5rem;z-index:50}
+    #login .card{width:min(370px,92vw);background:#fff;border-radius:18px;padding:2rem;text-align:center;box-shadow:0 30px 70px rgba(20,30,80,.3)}
+    #login img{width:58px;margin:0 auto .8rem;display:block}
+    .app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+    /* barra lateral vertical (menu principal, fonte branca) */
+    aside{background:var(--marinho);color:#eaf1fb;padding:1rem .8rem;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:auto}
+    aside .marca{display:flex;align-items:center;gap:.55rem;color:#fff;font-weight:700;margin:.1rem .1rem 1rem}
+    aside .marca img{height:32px}
+    .navbtn{display:block;width:100%;text-align:left;padding:.55rem .75rem;border-radius:9px;border:0;background:none;color:#eaf1fb;font-weight:600;margin-bottom:.12rem;text-decoration:none}
+    .navbtn:hover{background:rgba(255,255,255,.1);color:#fff}
+    .navbtn.on{background:var(--celeste);color:#fff}
+    /* seção Cadastros — accordion na lateral */
+    .side-sec{margin-bottom:.12rem}
+    .side-head{display:flex;align-items:center;justify-content:space-between;width:100%;padding:.55rem .75rem;border-radius:9px;border:0;background:none;color:#eaf1fb;font-weight:600}
+    .side-head:hover{background:rgba(255,255,255,.1);color:#fff}
+    .side-head.on{background:rgba(255,255,255,.14);color:#fff}
+    .side-head .tn-caret{transition:transform .2s}
+    .side-sec.open .side-head .tn-caret{transform:rotate(180deg)}
+    .side-sub{display:none;margin:.1rem 0 .3rem .35rem;padding-left:.5rem;border-left:1px solid rgba(255,255,255,.2)}
+    .side-sec.open .side-sub{display:block}
+    .side-sub .navbtn{font-size:.9rem;font-weight:500;padding:.44rem .7rem}
+    /* submenu de 2º nível (Anamneses dentro de Cadastros) */
+    .side-sec--sub .side-head{font-size:.9rem;font-weight:500;padding:.44rem .7rem}
+    .side-sec--sub .side-sub{margin-left:.3rem;padding-left:.45rem;border-left:1px solid rgba(255,255,255,.18)}
+    .side-sec--sub .side-sub .navbtn{font-size:.85rem;padding:.38rem .6rem}
+    .side-credito{margin-top:auto;padding-top:.85rem;text-align:center;font-size:.72rem;font-weight:600;color:rgba(197,214,234,.7);border-top:1px solid rgba(255,255,255,.14)}
+    /* barra superior — só o menu da conta, no canto direito */
+    .conteudo{display:flex;flex-direction:column;min-height:100vh;min-width:0}
+    .appbar{display:flex;justify-content:flex-end;align-items:center;padding:.5rem 1.3rem;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:25}
+    .tn-drop{position:relative}
+    .tn-trigger{border:1.5px solid var(--line2);background:#fff;color:var(--marinho);font-weight:700;padding:.45rem .85rem;border-radius:999px;display:inline-flex;align-items:center;gap:.5rem}
+    .tn-trigger:hover{background:#f2f6fb}
+    .tn-caret{font-size:.6rem;opacity:.85}
+    .tn-panel{position:absolute;top:calc(100% + 6px);right:0;min-width:236px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 44px rgba(20,30,80,.24);padding:.4rem;display:none;z-index:40}
+    .tn-drop.open>.tn-panel,.tn-drop:hover>.tn-panel{display:block}
+    .tn-panel .navbtn{color:var(--text)}
+    .tn-panel .navbtn:hover{background:#eef4fb;color:var(--marinho)}
+    .tn-panel .navbtn.on{background:var(--celeste);color:#fff}
+    .tn-sep{border:0;border-top:1px solid var(--line);margin:.35rem .2rem}
+    .tn-versao{font-size:.7rem;color:var(--dim);text-align:center;margin:.45rem 0 .1rem}
+    .tn-quem{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+    /* combobox com busca */
+    .cbx{position:relative}
+    .cbx-list{position:absolute;top:calc(100% + 2px);left:0;right:0;max-height:236px;overflow:auto;background:#fff;border:1.5px solid var(--line2);border-radius:9px;box-shadow:0 14px 32px rgba(20,30,80,.2);z-index:45}
+    .cbx-op{padding:.5rem .7rem;cursor:pointer;font-size:.9rem;border-bottom:1px solid #f0f4f9}
+    .cbx-op:last-child{border-bottom:0}
+    .cbx-op:hover,.cbx-op.hi{background:#eef4fb}
+    .cbx-vazio{padding:.6rem .7rem;color:var(--dim);font-size:.85rem}
+    main{padding:1.6rem 2rem;width:100%;max-width:100%;min-width:0}
+    .panel{display:none}.panel.on{display:block}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.3rem}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:1.1rem 1.2rem;margin-bottom:1rem;box-shadow:0 2px 8px rgba(37,50,130,.05)}
+    .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.9rem;margin-bottom:1.5rem}
+    .stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:1rem 1.1rem}
+    .stat b{display:block;font-size:2rem;line-height:1.1;color:var(--marinho)}
+    .stat span{font-size:.76rem;color:var(--dim);font-weight:600}
+    table{width:100%;border-collapse:collapse;font-size:.9rem}
+    th{text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);padding:.5rem .6rem;border-bottom:2px solid var(--line)}
+    td{padding:.55rem .6rem;border-bottom:1px solid var(--line);vertical-align:middle}
+    tr:hover td{background:#f6f9fc}
+    .busca{max-width:320px}
+    .tag{display:inline-block;padding:.15rem .55rem;border-radius:999px;font-size:.72rem;font-weight:700}
+    .tag-sim{background:#fdecef;color:var(--red)}.tag-nao{background:#eef1f6;color:var(--muted)}
+    .tag-Agendado{background:#eaf1fb;color:#2a5bbd}.tag-Confirmado{background:#e7f6ee;color:var(--verde)}
+    .tag-Atendido{background:#e7f6ee;color:var(--verde)}.tag-Faltou{background:#fdecef;color:var(--red)}
+    .tag-Remarcado{background:#fdf4e6;color:var(--ambar)}.tag-Ativo{background:#e7f6ee;color:var(--verde)}.tag-Inativo{background:#eef1f6;color:var(--muted)}
+    .vazio{color:var(--dim);padding:1.5rem;text-align:center}
+    /* seletor de vista da agenda */
+    .vista-toggle{display:inline-flex;gap:.25rem;background:#e3eaf3;border-radius:999px;padding:.25rem;margin-bottom:1rem}
+    .vbtn{border:0;background:none;padding:.4rem .95rem;border-radius:999px;font-weight:600;font-size:.85rem;color:var(--muted)}
+    .vbtn.on{background:#fff;color:var(--marinho);box-shadow:0 1px 4px rgba(37,50,130,.12)}
+    /* vista Agenda (calendário) */
+    .cal-cab{display:flex;align-items:center;justify-content:center;gap:1rem;margin-bottom:.9rem}
+    .cal-cab h3{min-width:190px;text-align:center;text-transform:capitalize}
+    .cal-cab button{width:34px;height:34px;border-radius:50%;border:1.5px solid var(--line2);background:#fff;color:var(--marinho);font-weight:700}
+    .cal-cab button:disabled{opacity:.35;cursor:not-allowed}
+    .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+    .cal .dow{text-align:center;font-size:.72rem;font-weight:700;color:var(--dim);text-transform:uppercase;padding:.3rem 0}
+    .cal .dia{min-height:92px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:.3rem;font-size:.8rem;cursor:pointer;overflow:hidden}
+    .cal .dia:hover{border-color:var(--celeste)}
+    .cal .dia.vazio-cel{background:transparent;border:0;cursor:default}
+    .cal .dia .num{font-weight:700;color:var(--muted);font-size:.75rem}
+    .cal .dia.hoje .num{background:var(--celeste);color:#fff;border-radius:50%;padding:0 .35rem}
+    .cal .ev{display:block;margin-top:2px;padding:1px 4px;border-radius:4px;font-size:.72rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:3px solid #999}
+    .ev-Agendado{background:#eaf1fb;border-color:#2a5bbd;color:#274f97}.ev-Confirmado,.ev-Atendido{background:#e7f6ee;border-color:var(--verde);color:#1c7a45}
+    .ev-Faltou{background:#fdecef;border-color:var(--red);color:#a3243f}.ev-Remarcado{background:#fdf4e6;border-color:var(--ambar);color:#8a5a15}
+    /* vista Kanban */
+    .kanban{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,1fr);gap:.9rem;overflow-x:auto;padding-bottom:.5rem}
+    .kcol{background:#eef2f7;border-radius:12px;padding:.7rem;min-height:120px}
+    .kcol h4{font-size:.8rem;color:var(--muted);display:flex;justify-content:space-between;margin-bottom:.6rem}
+    .kcol h4 span{background:#fff;border-radius:999px;padding:0 .5rem;color:var(--marinho)}
+    .kcol.drag{outline:2px dashed var(--celeste);outline-offset:-4px}
+    .kcard{background:#fff;border:1px solid var(--line);border-radius:9px;padding:.55rem .65rem;margin-bottom:.5rem;cursor:grab;box-shadow:0 1px 3px rgba(37,50,130,.06)}
+    .kcard b{display:block;font-size:.85rem;color:var(--marinho)}
+    .kcard small{color:var(--muted);font-size:.75rem}
+    .kvazio{color:var(--dim);font-size:.8rem;text-align:center;padding:.6rem 0}
+    /* checkboxes de serviços na agenda */
+    .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.35rem .8rem;border:1px solid var(--line2);border-radius:9px;padding:.7rem .8rem;max-height:200px;overflow:auto}
+    .chk{display:flex;align-items:center;gap:.45rem;font-weight:500;font-size:.88rem;color:var(--text);cursor:pointer}
+    .chk input{width:auto}
+    /* tabelas das anamneses (matrizes e listas) */
+    .anam-m{width:100%;border-collapse:collapse;font-size:.86rem;margin:.2rem 0}
+    .anam-m th,.anam-m td{border:1px solid var(--line);padding:.32rem .5rem;text-align:left}
+    .anam-m th{background:#f7f5fd;color:var(--muted);font-weight:600;font-size:.78rem}
+    .anam-m td input[type=text],.anam-m td input:not([type]){width:100%}
+    /* barra do relatório clicável */
+    .barra.clik{cursor:pointer;border-radius:6px;padding:.1rem .2rem}
+    .barra.clik:hover{background:#eef4fb}
+    .filtro-chip{display:inline-flex;align-items:center;gap:.5rem;background:#eaf1fb;color:#2a5bbd;font-weight:600;font-size:.85rem;padding:.35rem .8rem;border-radius:999px;margin-bottom:1rem}
+    .filtro-chip button{border:0;background:#2a5bbd;color:#fff;width:18px;height:18px;border-radius:50%;font-size:.7rem;line-height:1;cursor:pointer}
+    .modal-bg{position:fixed;inset:0;background:rgba(20,28,60,.45);display:grid;place-items:start center;padding:2rem 1rem;overflow:auto;z-index:40}
+    /* a modal é uma coluna: cabeçalho + corpo rolável + rodapé fixo com as ações */
+    .modal{width:min(760px,96vw);background:#fff;border-radius:16px;padding:1.4rem 1.5rem .9rem;box-shadow:0 30px 70px rgba(20,30,80,.3);
+      display:flex;flex-direction:column;max-height:calc(100vh - 4rem)}
+    .modal-corpo{overflow:auto;flex:1;min-height:0;padding-right:.3rem;margin-right:-.3rem}
+    .modal h2{margin-bottom:1rem}
+    .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.1rem}
+    .formgrid .full{grid-column:1/-1}
+    .modal .acoes{display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;flex:0 0 auto;
+      margin-top:auto;padding:.9rem 0 .5rem;border-top:1px solid var(--line);background:#fff}
+    .erros{background:#fdecef;color:#a3243f;border-radius:9px;padding:.6rem .8rem;font-size:.85rem;margin-top:.8rem}
+    .foto-prev{width:84px;height:84px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f0f3f8}
+    .fotos-lista{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
+    .fotos-lista figure{position:relative}
+    .fotos-lista img{width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+    .fotos-lista button{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--red);color:#fff;border:0;font-size:.7rem;line-height:1}
+    .arq-link{display:inline-flex;align-items:center;gap:.4rem;font-size:.85rem;color:var(--celeste);font-weight:600}
+    .rel-cols{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    .barra{display:flex;align-items:center;gap:.6rem;margin:.35rem 0;font-size:.85rem}
+    .barra .b{flex:1;height:10px;background:#e9eef5;border-radius:6px;overflow:hidden}
+    .barra .b i{display:block;height:100%;background:var(--celeste)}
+    .barra .n{width:34px;text-align:right;font-weight:700;color:var(--marinho)}
+    .toast{position:fixed;bottom:1.2rem;left:50%;transform:translate(-50%,150%);background:var(--marinho);color:#fff;padding:.7rem 1.2rem;border-radius:999px;font-weight:600;transition:transform .3s;z-index:60}
+    .toast.on{transform:translate(-50%,0)}.toast.err{background:var(--red)}
+    @media(max-width:820px){.app{grid-template-columns:1fr}aside{position:static;height:auto}main{padding:1.1rem}.formgrid,.rel-cols{grid-template-columns:1fr}}
+    @media print{aside,.appbar,.topbar .btn,.navbtn{display:none}.app{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card">
+    <img src="/assets/img/favicon.svg" alt="">
+    <h2 style="margin-bottom:.2rem">Sistema de Gestão</h2>
+    <p style="color:var(--muted);font-size:.85rem;margin-bottom:1.2rem">BemEstarClinic</p>
+    <input id="lg-user" placeholder="Usuário" autocomplete="username" style="margin-bottom:.6rem">
+    <input id="lg-pass" type="password" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')entrar()">
+    <button class="btn btn-cel" style="width:100%;justify-content:center;margin-top:.9rem" onclick="entrar()">Entrar</button>
+    <p id="lg-erro" style="color:var(--red);font-size:.82rem;margin-top:.7rem"></p>
+  </div>
+</div>
+
+<div class="app" id="app" hidden>
+  <aside>
+    <span class="marca"><img src="/assets/img/favicon.svg" alt=""> Gestão</span>
+    <button class="navbtn on" data-nav="painel">Painel</button>
+    <div class="side-sec">
+      <button class="side-head" type="button">Cadastros <span class="tn-caret">▼</span></button>
+      <div class="side-sub">
+        <button class="navbtn" data-nav="pacientes">Pacientes</button>
+        <button class="navbtn" data-nav="profissionais">Profissionais</button>
+        <button class="navbtn" data-nav="convenios">Convênios</button>
+        <button class="navbtn" data-nav="procedimentos">Procedimentos</button>
+        <button class="navbtn" data-nav="salas">Salas</button>
+        <!-- Anamneses: submenu dentro de Cadastros -->
+        <div class="side-sec side-sec--sub">
+          <button class="side-head" type="button">Anamneses <span class="tn-caret">▼</span></button>
+          <div class="side-sub">
+            <button class="navbtn" data-nav="anamneses" data-tipo="">Todas</button>
+            <button class="navbtn" data-nav="anamneses" data-tipo="psicanalise">Psicanálise</button>
+            <button class="navbtn" data-nav="anamneses" data-tipo="ozonio">Ozonioterapia</button>
+            <button class="navbtn" data-nav="anamneses" data-tipo="integrativas">Terapias Integrativas</button>
+          </div>
+        </div>
+        <button class="navbtn" data-nav="prontuario">Prontuário</button>
+      </div>
+    </div>
+    <button class="navbtn" data-nav="atendimentos">Agendamento</button>
+    <button class="navbtn" data-nav="documentos_gestao">Documentos</button>
+    <button class="navbtn" data-nav="relatorios">Relatórios</button>
+    <div class="side-credito">Produzido por<br>LA Software House.</div>
+  </aside>
+
+  <div class="conteudo">
+    <header class="appbar">
+      <div class="tn-drop">
+        <button class="tn-trigger" type="button"><span class="tn-quem" id="quem"></span> <span class="tn-caret">▼</span></button>
+        <div class="tn-panel">
+          <button class="navbtn" data-nav="conta">Minha conta</button>
+          <button class="navbtn" data-nav="usuarios">Usuários do Sistema</button>
+          <hr class="tn-sep">
+          <a class="navbtn" href="/" target="_blank">↗ Ver o site</a>
+          <hr class="tn-sep">
+          <button class="navbtn" onclick="sair()">Sair</button>
+          <p class="tn-versao">Versão do Sistema v{{VERSAO}}</p>
+        </div>
+      </div>
+    </header>
+
+  <main>
+    <section class="panel on" id="pane-painel">
+      <div class="topbar"><h1>Painel</h1></div>
+      <div class="stat-grid" id="painel-stats"></div>
+      <div class="card"><p style="color:var(--muted)">Bem-vindo ao sistema de gestão da BemEstarClinic. Selecione um módulo no menu à esquerda.</p></div>
+    </section>
+
+    <section class="panel" id="pane-mod">
+      <div class="topbar">
+        <h1 id="mod-titulo"></h1>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-ghost btn-sm" id="mod-imprimir" onclick="imprimirAgenda()" hidden>🖨 Imprimir</button>
+          <button class="btn btn-ghost btn-sm" onclick="exportarCSV()">Exportar CSV</button>
+          <button class="btn btn-navy" id="mod-novo" onclick="abrirForm()">+ Novo</button>
+        </div>
+      </div>
+      <input class="busca" id="mod-busca" placeholder="Buscar por nome ou CPF…" oninput="carregarLista()" style="margin-bottom:1rem" hidden>
+      <div id="mod-vistas" class="vista-toggle" hidden>
+        <button class="vbtn on" data-v="tabela" onclick="trocarVista('tabela')">☰ Tabela</button>
+        <button class="vbtn" data-v="agenda" onclick="trocarVista('agenda')">▦ Agenda</button>
+        <button class="vbtn" data-v="kanban" onclick="trocarVista('kanban')">▤ Kanban</button>
+      </div>
+      <div id="mod-filtro"></div>
+      <div class="card" id="mod-tabela" style="padding:0;overflow:auto">
+        <table>
+          <thead id="mod-thead"></thead>
+          <tbody id="mod-tbody"><tr><td class="vazio">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+      <div id="mod-agenda" hidden></div>
+      <div id="mod-kanban" hidden></div>
+    </section>
+
+    <section class="panel" id="pane-relatorios">
+      <div class="topbar"><h1>Relatórios</h1><button class="btn btn-ghost btn-sm" onclick="imprimirRelatorio()">Imprimir / PDF</button></div>
+      <div class="stat-grid" id="rel-stats"></div>
+      <div class="rel-cols">
+        <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por procedimento</h3><div id="rel-esp"></div></div>
+        <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por situação</h3><div id="rel-status"></div></div>
+      </div>
+      <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por mês</h3><div id="rel-mes"></div></div>
+    </section>
+
+    <section class="panel" id="pane-conta">
+      <div class="topbar"><h1>Minha conta</h1></div>
+      <div class="card" style="max-width:420px">
+        <h3 style="margin-bottom:.6rem">Trocar senha</h3>
+        <label>Senha atual</label><input id="ct-atual" type="password">
+        <label>Nova senha (mín. 8 caracteres)</label><input id="ct-nova" type="password">
+        <div style="margin-top:1rem"><button class="btn btn-navy" onclick="trocarSenha()">Salvar</button></div>
+      </div>
+    </section>
+  </main>
+  </div>
+</div>
+
+
+<div id="modal-host"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, c = document) => c.querySelector(s);
+const escA = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+/* Cor usada dentro de style="": escA não neutraliza ";" nem "(", então um valor
+   forjado via API poderia injetar outras declarações CSS. Só passa hexadecimal. */
+const corSegura = (c, padrao) => /^#[0-9a-fA-F]{3,8}$/.test(String(c || "")) ? c : (padrao || "#5B4FD8");
+const soDig = (s) => String(s ?? "").replace(/\D/g, "");
+let toastT;
+function toast(m, err) { const t = $("#toast"); t.textContent = m; t.classList.toggle("err", !!err); t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3000); }
+
+async function api(url, method = "GET", body) {
+  const r = await fetch("/restrito/api/" + url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+/* ===================== máscaras e validações ========================== */
+function mCPF(v){ v=soDig(v).slice(0,11); return v.replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{3})(\d{1,2})$/,"$1-$2"); }
+function mTel(v){ v=soDig(v).slice(0,11);
+  if(v.length<=10) return v.replace(/(\d{2})(\d)/,"($1) $2").replace(/(\d{4})(\d)/,"$1-$2");
+  return v.replace(/(\d{2})(\d)/,"($1) $2").replace(/(\d{5})(\d)/,"$1-$2"); }        /* (00) 90000-0000 */
+function mNIS(v){ v=soDig(v).slice(0,11); return v.replace(/(\d{3})(\d)/,"$1.$2").replace(/(\d{5})(\d)/,"$1.$2").replace(/(\d{2})(\d)$/,"$1-$2"); } /* 000.00000.00-0 */
+function mSUS(v){ v=soDig(v).slice(0,15); return v.replace(/(\d{3})(\d)/,"$1 $2").replace(/(\d{4})(\d)/,"$1 $2").replace(/(\d{4})(\d)/,"$1 $2"); }   /* 000 0000 0000 0000 */
+function mMoney(v){ let n=soDig(v); if(!n) return ""; n=(parseInt(n,10)/100).toFixed(2); return "R$ "+n.replace(".",",").replace(/\B(?=(\d{3})+(?!\d))/g,"."); }
+function mCEP(v){ v=soDig(v).slice(0,8); return v.replace(/(\d{5})(\d)/,"$1-$2"); }                              /* 00000-000 */
+const MASCARA = { cpf:mCPF, tel:mTel, nis:mNIS, sus:mSUS, money:mMoney, cep:mCEP };
+function aplicarMascara(tipo, v){ return MASCARA[tipo] ? MASCARA[tipo](v) : v; }
+
+function cpfValido(cpf){ cpf=soDig(cpf); if(cpf.length!==11||/^(\d)\1{10}$/.test(cpf)) return false;
+  let s=0; for(let i=0;i<9;i++) s+=+cpf[i]*(10-i); let d=(s*10)%11; if(d===10)d=0; if(d!==+cpf[9]) return false;
+  s=0; for(let i=0;i<10;i++) s+=+cpf[i]*(11-i); d=(s*10)%11; if(d===10)d=0; return d===+cpf[10]; }
+const emailValido = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
+
+const dataBR = (iso) => { if(!iso) return "—"; const [a,m,d]=String(iso).split("-"); return d?`${d}/${m}/${a}`:iso; };
+const idadeAnos = (iso) => { if(!iso) return null; const [a,m,d]=String(iso).split("-").map(Number); if(!a||!m||!d) return null; const h=new Date(); let x=h.getFullYear()-a; if(h.getMonth()+1<m||(h.getMonth()+1===m&&h.getDate()<d)) x--; return x; };
+const ehMenor = (iso) => { const x=idadeAnos(iso); return x!==null && x<18; };
+const mesBR = (ym) => { if(!ym) return "—"; const [a,m]=ym.split("-"); const nomes=["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"]; return `${nomes[+m]}/${a}`; };
+
+/* ============================ dados de apoio ========================== */
+const ESCOLARIDADE = ["Não alfabetizado","Ensino Fundamental incompleto","Ensino Fundamental completo",
+  "Ensino Médio incompleto","Ensino Médio completo","Ensino Superior incompleto","Ensino Superior completo","Pós-graduação"];
+const ESTADO_CIVIL = ["Solteiro(a)","Casado(a)","União estável","Divorciado(a)","Separado(a)","Viúvo(a)"];
+const CACHE = { pacientes: [], profissionais: [], convenios: [], procedimentos: [], salas: [] };
+let MODELOS = {};    // modelos de anamnese, vindos do servidor (fonte única)
+async function recarregarCache(){
+  try { CACHE.pacientes = await api("pacientes"); } catch {}
+  try { CACHE.profissionais = await api("profissionais"); } catch {}
+  try { CACHE.convenios = await api("convenios"); } catch {}
+  try { CACHE.procedimentos = await api("procedimentos"); } catch {}
+  try { CACHE.salas = await api("salas"); } catch {}
+  try { MODELOS = await api("modelos"); } catch {}
+}
+// rótulo de um procedimento inclui o tipo: "Acupuntura (Sessão)"
+const rotuloProc = (r) => r.nome + (r.tipo ? ` (${r.tipo})` : "");
+const rotuloRef = (r) => (r.tipo && r.duracao !== undefined) ? rotuloProc(r) : (r.nome ?? r.title ?? ("#"+r.id));
+const acha = (lista, id) => (CACHE[lista]||[]).find((x)=>String(x.id)===String(id));
+const nomePac  = (id) => { const r=acha("pacientes",id); return r?r.nome:"—"; };
+const nomeProf = (id) => { const r=acha("profissionais",id); return r?r.nome:"—"; };
+const nomeConv = (id) => { const r=acha("convenios",id); return r?r.nome:"—"; };
+const nomeSala = (id) => { const r=acha("salas",id); return r?r.nome:"—"; };
+const nomeProc = (id) => { const r=acha("procedimentos",id); return r?rotuloProc(r):"—"; };
+const rotuloAnam = (t) => (MODELOS[t] && MODELOS[t].rotulo) || t || "—";
+
+/* ========================= definição dos módulos ===================== */
+const MODULOS = {
+  pacientes: { titulo:"Pacientes", novo:"Cadastrar Paciente", busca:true, imprimir:true, historico:true,
+    colunas:[["nome","Nome"],["nascimento","Nascimento","data"],["cpf","CPF"],["celular","Celular"],["convenio_id","Convênio","conv"]],
+    campos:[
+      ["foto","Foto do paciente","foto",{full:1}],
+      ["_ident","Identificação","titulo",{full:1}],
+      ["nome","Nome completo","text",{req:1}],
+      ["nome_contato","Nome de contato (como prefere ser chamado)","text"],
+      ["codigo","Código (nº do prontuário)","text"],
+      ["cpf","CPF","cpf"],
+      ["rg","RG","text"],
+      ["sexo","Sexo","select",{opcoes:[["M","Masculino"],["F","Feminino"],["O","Outro"]],placeholder:"Selecione…"}],
+      ["nascimento","Data de nascimento","date"],
+      ["naturalidade","Naturalidade","text"],
+      ["estado_civil","Estado civil","select",{opcoes:ESTADO_CIVIL,placeholder:"Selecione…"}],
+      ["convenio_id","Convênio","ref",{tabela:"convenios"}],
+      ["profissao","Profissão","text"],
+      ["escolaridade","Escolaridade","select",{opcoes:ESCOLARIDADE,placeholder:"Selecione…"}],
+      ["religiao","Religião","text"],
+      ["juridica","Pessoa jurídica","checkbox"],
+      ["estrangeiro","Estrangeiro","checkbox"],
+      ["_resp","Responsável legal (paciente menor de 18 anos)","titulo",{full:1,menor:1}],
+      ["resp_nome","Nome do responsável","text",{menor:1}],
+      ["resp_cpf","CPF do responsável","cpf",{menor:1}],
+      ["resp_rg","RG do responsável","text",{menor:1}],
+      ["resp_nascimento","Data de nascimento do responsável","date",{menor:1}],
+      ["_contato","Contato","titulo",{full:1}],
+      ["celular","Celular / WhatsApp","tel"],
+      ["telefone","Telefone","tel"],
+      ["email","E-mail","email"],
+      ["canal","Canal de contato","select",{opcoes:["WhatsApp","Telefone","E-mail","Presencial"],placeholder:"Selecione…"}],
+      ["_end","Endereço","titulo",{full:1}],
+      ["cep","CEP","cep"],
+      ["endereco","Logradouro","text"],
+      ["numero","Número","text"],
+      ["bairro","Bairro","text"],
+      ["cidade","Cidade / UF","text"],
+      ["complemento","Complemento","text"],
+      ["_clin","Dados clínicos e filiação","titulo",{full:1}],
+      ["altura","Altura (m)","text"],
+      ["peso","Peso (kg)","text"],
+      ["sangue","Tipo sanguíneo","select",{opcoes:["A+","A-","B+","B-","AB+","AB-","O+","O-"],placeholder:"Selecione…"}],
+      ["cor_pele","Cor de pele","select",{opcoes:["Branca","Preta","Parda","Amarela","Indígena"],placeholder:"Selecione…"}],
+      ["prioridade","Prioridade","select",{opcoes:["Nenhuma","Idoso","Gestante","PCD","Criança de colo"],padrao:"Nenhuma"}],
+      ["mae","Nome da mãe","text"],
+      ["pai","Nome do pai","text"],
+      ["_outros","Outros","titulo",{full:1}],
+      ["tag","TAG","text"],
+      ["indicacao","Indicação (quem indicou)","text"],
+      ["avisos","Recebe avisos e lembretes","checkbox"],
+      ["observacao","Observação","textarea",{full:1}],
+      ["consentimento","Termo de consentimento assinado / aceito","checkbox",{full:1}],
+    ]},
+  convenios: { titulo:"Convênios", novo:"Novo convênio", busca:true,
+    colunas:[["nome","Convênio"],["registro","Registro/ANS"],["contato","Contato"],["ativo","Ativo","bool"]],
+    campos:[
+      ["nome","Nome do convênio","text",{req:1}],
+      ["registro","Registro / ANS","text"],
+      ["contato","Contato","tel"],
+      ["observacao","Observações","textarea",{full:1}],
+      ["ativo","Ativo","select",{bool:1,padrao:"1"}],
+      ["sort","Ordem (menor aparece primeiro)","number"],
+    ]},
+  procedimentos: { titulo:"Procedimentos", novo:"Novo procedimento", busca:true,
+    colunas:[["nome","Procedimento"],["tipo","Tipo","tag"],["valor","Valor"],["duracao","Duração (min)"],["ativo","Ativo","bool"]],
+    campos:[
+      ["nome","Nome do procedimento","text",{req:1}],
+      ["tipo","Tipo","select",{opcoes:["Consulta","Sessão","Procedimento"],padrao:"Consulta"}],
+      ["valor","Valor (R$)","money"],
+      ["duracao","Duração em minutos","number",{padrao:40}],
+      ["cor","Cor na agenda","cor"],
+      ["ativo","Ativo","select",{bool:1,padrao:"1"}],
+      ["sort","Ordem (menor aparece primeiro)","number"],
+    ]},
+  salas: { titulo:"Salas / Consultórios", novo:"Nova sala",
+    colunas:[["nome","Sala"],["ativo","Ativa","bool"]],
+    campos:[
+      ["nome","Nome da sala","text",{req:1}],
+      ["ativo","Ativa","select",{bool:1,padrao:"1"}],
+      ["sort","Ordem (menor aparece primeiro)","number"],
+    ]},
+  profissionais: { titulo:"Profissionais", novo:"Novo profissional",
+    colunas:[["nome","Nome"],["especialidade","Procedimentos","servicos"],["registro","Registro"],["ativo","Ativo","bool"]],
+    campos:[
+      ["nome","Nome completo","text",{req:1}],
+      ["especialidade","Procedimentos que realiza","servicos_check",{full:1}],
+      ["registro","Registro profissional (CRP/CRM…)","text"],
+      ["contato","Contato","tel"],
+      ["cor","Cor na agenda","cor"],
+      ["ativo","Ativo","select",{bool:1,padrao:"1"}],
+    ]},
+  atendimentos: { titulo:"Agendamento", novo:"Novo agendamento",
+    colunas:[["data","Data","data"],["hora","Início"],["hora_fim","Fim"],["paciente_id","Paciente","pac"],["profissional_id","Profissional","prof"],["procedimento_id","Procedimento","proc"],["sala_id","Sala","sala"],["status","Status","tag"]],
+    campos:[
+      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1,preenche:"paciente"}],
+      ["nome_agenda","Nome na agenda","text"],
+      ["celular","Celular","tel"],
+      ["convenio_id","Convênio","ref",{tabela:"convenios"}],
+      ["profissional_id","Profissional","busca",{tabela:"profissionais",ocultarPara:"profissional",filtraServicos:1}],
+      ["procedimento_id","Procedimento","busca",{tabela:"procedimentos",filtradoPorProf:1,preenche:"procedimento"}],
+      ["sala_id","Sala / Consultório","ref",{tabela:"salas"}],
+      ["valor","Valor (R$)","money"],
+      ["data","Data","date",{req:1}],
+      ["hora","Início","time"],
+      ["hora_fim","Fim","time"],
+      ["status","Situação","select",{opcoes:["Agendado","Confirmado","Atendido","Faltou","Remarcado","Cancelado"],padrao:"Agendado"}],
+      ["primeira","1º atendimento","checkbox"],
+      ["encaixe","Encaixe","checkbox"],
+      ["lembrete","Enviar lembrete","checkbox"],
+      ["nps","Pesquisa de satisfação (NPS)","checkbox"],
+      ["observacoes","Observação","textarea",{full:1}],
+    ]},
+  anamneses: { titulo:"Anamneses", novo:"Nova anamnese", busca:true, anamnese:true,
+    colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],["profissional","Profissional"]],
+    campos:[] },   // formulário próprio, montado pelo modelo — ver abrirAnamnese()
+  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true,
+    colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
+    campos:[
+      ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1}],
+      ["profissional","Profissional responsável","busca",{tabela:"profissionais",valor:"nome",filtraServicos:1}],
+      ["data","Data do atendimento","date",{req:1}],
+      ["especialidade","Procedimento","servicos_check",{full:1}],
+      ["avaliacao","Avaliação","textarea",{full:1}],
+      ["evolucao","Evolução da sessão","textarea",{full:1}],
+      ["plano","Plano terapêutico","textarea",{full:1}],
+      ["encaminhamentos","Encaminhamentos","textarea",{full:1}],
+      ["anexos","Anexo (foto/PDF)","arquivo",{full:1}],
+      ["responsavel","Assinatura / responsável técnico","text"],
+    ]},
+  documentos_gestao: { titulo:"Documentos", novo:"Novo documento", busca:true,
+    colunas:[["data","Data","data"],["tipo","Tipo"],["titulo","Título"],["paciente_id","Paciente","pac"],["arquivo","Arquivo","arq"]],
+    campos:[
+      ["tipo","Tipo de documento","select",{opcoes:["Termo de consentimento","Receita/Prescrição","Atestado","Encaminhamento","Laudo","Exame","Outro"],placeholder:"Selecione…"}],
+      ["titulo","Título/descrição","text",{req:1}],
+      ["paciente_id","Paciente (se aplicável)","busca",{tabela:"pacientes"}],
+      ["data","Data","date"],
+      ["arquivo","Arquivo (foto/PDF)","arquivo",{full:1}],
+    ]},
+  usuarios: { titulo:"Usuários do Sistema", novo:"Novo usuário",
+    colunas:[["nome","Nome"],["email","Login"],["perfil","Perfil","perfil"],["ativo","Ativo","bool"]],
+    campos:[
+      ["nome","Nome completo","text",{req:1}],
+      ["email","Usuário / login","text",{req:1}],
+      ["senha","Senha (mín. 8 — em branco mantém a atual)","password"],
+      ["perfil","Perfil de acesso","select",{opcoes:[["admin","Administrador Geral (acesso total)"],["secretaria","Secretaria / Atendente (cadastros, agenda, relatórios)"],["profissional","Profissional de Saúde/Terapias (sua agenda e prontuários)"]],padrao:"secretaria"}],
+      ["profissional_id","Profissional vinculado (só para o perfil Profissional — define de quem é a agenda)","ref",{tabela:"profissionais"}],
+      ["ativo","Situação","select",{bool:1,padrao:"1"}],
+    ]},
+};
+const PERFIL_ROTULO = { admin:"Administrador", secretaria:"Secretaria", profissional:"Profissional" };
+
+/* Perfis: quais módulos cada um enxerga (o servidor faz a checagem de verdade;
+   aqui é só para esconder o que não interessa). admin vê tudo. */
+const PERM_CLIENTE = {
+  admin: null,
+  // recepção: cadastros, agenda e relatórios — sem prontuário nem anamnese
+  secretaria: new Set(["painel","pacientes","profissionais","convenios","procedimentos","salas","atendimentos","documentos_gestao","relatorios","conta"]),
+  // profissional: sua agenda, seus prontuários e as anamneses
+  profissional: new Set(["atendimentos","prontuario","anamneses","conta"]),
+};
+function aplicarPermissoes(perfil){
+  const allow = PERM_CLIENTE[perfil];
+  document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>{
+    const nav=b.dataset.nav;
+    let vis;
+    if(perfil==="admin") vis=true;
+    else if(nav==="usuarios") vis=false;               // gestão de usuários é só do admin
+    else vis = !allow || nav==="conta" || allow.has(nav);
+    b.style.display = vis ? "" : "none";
+  });
+  // esconde a seção/dropdown inteiro se nenhum dos seus itens está visível
+  document.querySelectorAll(".tn-drop,.side-sec").forEach((d)=>{
+    const kids=[...d.querySelectorAll(".navbtn[data-nav]")];
+    if(!kids.length) return;
+    d.style.display = kids.some((k)=>k.style.display!=="none") ? "" : "none";
+  });
+}
+
+let MOD = null, LISTA = [], FORM_ID = 0, ME = {};   // módulo, lista, id em edição e usuário logado
+
+/* ------------------------------ login ---------------------------------- */
+async function entrar(){ $("#lg-erro").textContent="";
+  try { const j=await api("login","POST",{usuario:$("#lg-user").value,senha:$("#lg-pass").value}); iniciarApp(j); }
+  catch(e){ $("#lg-erro").textContent=e.message; } }
+async function sair(){ try{ await api("logout","POST"); }catch{} location.reload(); }
+
+async function iniciarApp(me){
+  ME=me;
+  $("#login").hidden=true; $("#app").hidden=false;
+  $("#quem").textContent=me.nome+" · "+(PERFIL_ROTULO[me.perfil]||me.perfil);
+  aplicarPermissoes(me.perfil);
+  await recarregarCache();
+  // abre o Painel se o perfil o vê; senão, vai ao primeiro módulo visível
+  const bp=document.querySelector('.navbtn[data-nav="painel"]');
+  if(bp && bp.style.display!=="none") carregarPainel();
+  else { const primeiro=[...document.querySelectorAll(".navbtn[data-nav]")].find((b)=>b.style.display!=="none" && b.dataset.nav!=="conta"); if(primeiro) primeiro.click(); }
+}
+
+/* ---------------------------- navegação -------------------------------- */
+// filtro do submenu Anamneses (vazio = todas)
+let filtroAnamTipo = "";
+document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".navbtn[data-nav]").forEach((x)=>x.classList.remove("on"));
+  b.classList.add("on");
+  const nav=b.dataset.nav;
+  filtroAnamTipo = nav==="anamneses" ? (b.dataset.tipo||"") : "";
+  document.querySelectorAll(".panel").forEach((x)=>x.classList.remove("on"));
+  if(nav==="painel"){ $("#pane-painel").classList.add("on"); carregarPainel(); }
+  else if(nav==="conta"){ $("#pane-conta").classList.add("on"); }
+  else if(nav==="relatorios"){ $("#pane-relatorios").classList.add("on"); carregarRelatorios(); }
+  else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }
+  fecharDropdowns(); marcarTriggers();
+}));
+/* dropdown da conta (topo direito): abre no clique além do hover */
+function fecharDropdowns(){ document.querySelectorAll(".tn-drop.open").forEach((d)=>d.classList.remove("open")); }
+// marca a seção/aba ativa e mantém aberta a seção lateral do item selecionado
+function marcarTriggers(){
+  document.querySelectorAll(".tn-drop").forEach((d)=>{
+    const trig=d.querySelector(".tn-trigger"); if(trig) trig.classList.toggle("on",!!d.querySelector(".navbtn.on")); });
+  document.querySelectorAll(".side-sec").forEach((d)=>{
+    const ativo=!!d.querySelector(".navbtn.on");
+    d.querySelector(".side-head")?.classList.toggle("on",ativo);
+    if(ativo) d.classList.add("open");
+  });
+}
+document.querySelectorAll(".tn-trigger").forEach((t)=>t.addEventListener("click",(e)=>{
+  e.stopPropagation();
+  const d=t.closest(".tn-drop"), aberto=d.classList.contains("open");
+  fecharDropdowns(); if(!aberto) d.classList.add("open");
+}));
+document.addEventListener("click",()=>fecharDropdowns());
+// accordion da lateral (Cadastros)
+document.querySelectorAll(".side-head").forEach((h)=>h.addEventListener("click",()=>h.closest(".side-sec").classList.toggle("open")));
+
+/* ------------------------------ painel --------------------------------- */
+async function carregarPainel(){
+  try { const d=await api("painel");
+    const cards = d.profissional
+      ? [["Atendimentos hoje",d.agendaHoje],["Total na minha agenda",d.agendaTotal],["Meus prontuários",d.prontuarios]]
+      : [["Pacientes",d.pacientes],["Atendimentos hoje",d.atendimentosHoje],["Confirmados hoje",d.confirmadosHoje],["Anamneses",d.anamneses],["Evoluções",d.prontuarios]];
+    $("#painel-stats").innerHTML=cards.map(([r,n])=>`<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
+  } catch(e){ toast(e.message,true); }
+}
+
+/* ==================== lista genérica de um módulo ===================== */
+let vistaAgenda = "tabela", agendaYM = null;
+function mostrarModulo(){
+  const m=MODULOS[MOD];
+  // no submenu de anamneses o título mostra o modelo escolhido
+  $("#mod-titulo").textContent = (MOD==="anamneses" && filtroAnamTipo) ? `Anamneses — ${rotuloAnam(filtroAnamTipo)}` : m.titulo;
+  $("#mod-novo").textContent="+ "+(m.novo||"Novo");
+  // "+ Novo" da anamnese abre o formulário próprio, já no modelo do submenu
+  $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0, filtroAnamTipo)) : (()=>abrirForm());
+  $("#mod-busca").hidden=!m.busca; $("#mod-busca").value="";
+  $("#mod-busca").placeholder = MOD==="pacientes" ? "Buscar por nome, CPF ou código…" : "Buscar por nome…";
+  $("#mod-thead").innerHTML="<tr>"+m.colunas.map(([,lab])=>`<th>${lab}</th>`).join("")+"<th></th></tr>";
+  const ehAgenda = MOD==="atendimentos";
+  $("#mod-vistas").hidden=!ehAgenda;
+  $("#mod-imprimir").hidden=!ehAgenda;
+  if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
+  else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; }
+  carregarLista();
+}
+function trocarVista(v){ vistaAgenda=v; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===v)); pintarAtendimentos(); }
+function pintarAtendimentos(){
+  // chip do filtro ativo (vindo do relatório)
+  $("#mod-filtro").innerHTML = filtroAgenda
+    ? `<span class="filtro-chip">Filtrando por ${escA(rotuloFiltro())} <button onclick="limparFiltroAgenda()" title="Limpar filtro">✕</button></span>`
+    : "";
+  $("#mod-tabela").hidden = vistaAgenda!=="tabela";
+  $("#mod-agenda").hidden = vistaAgenda!=="agenda";
+  $("#mod-kanban").hidden = vistaAgenda!=="kanban";
+  if(vistaAgenda==="tabela") renderTabela();
+  else if(vistaAgenda==="agenda") renderAgenda();
+  else renderKanban();
+}
+function celula(row,[chave,,tipo]){
+  const v=row[chave];
+  if(tipo==="data") return dataBR(v);
+  if(tipo==="bool") return Number(v)?'<span class="tag tag-sim">Sim</span>':'<span class="tag tag-nao">Não</span>';
+  if(tipo==="tag"&&v) return `<span class="tag tag-${escA(v)}">${escA(v)}</span>`;
+  if(tipo==="pac") return escA(nomePac(v));
+  if(tipo==="prof") return escA(nomeProf(v));
+  if(tipo==="conv") return escA(nomeConv(v));
+  if(tipo==="sala") return escA(nomeSala(v));
+  if(tipo==="anam") return escA(rotuloAnam(v));
+  if(tipo==="proc"){ const p=acha("procedimentos",v);
+    if(!p) return "—"; const c=corSegura(p.cor,"#5a6480");
+    return `<span class="tag" style="background:${c}22;color:${c};border:1px solid ${c}55">${escA(rotuloProc(p))}</span>`; }
+  if(tipo==="servicos"){ let a=[]; try{a=JSON.parse(v||"[]");}catch{a=v?[v]:[];} return a.length?a.map(escA).join(", "):"—"; }
+  if(tipo==="perfil") return escA(PERFIL_ROTULO[v]||v||"—");
+  if(tipo==="arq") return v?`<a class="arq-link" href="${escA(v)}" target="_blank">abrir</a>`:"—";
+  return escA(v||"—");
+}
+async function carregarLista(){
+  const m=MODULOS[MOD];
+  try {
+    const q=m.busca?$("#mod-busca").value.trim():"";
+    LISTA=await api(MOD+(q?"?q="+encodeURIComponent(q):""));
+  } catch(e){ $("#mod-tbody").innerHTML=`<tr><td colspan="${m.colunas.length+1}" class="vazio">${escA(e.message)}</td></tr>`; return; }
+  if(MOD==="atendimentos") pintarAtendimentos();
+  else renderTabela();
+}
+// na agenda, aplica o filtro do relatório; nas anamneses, o tipo do submenu
+function dadosVisiveis(){
+  if(MOD==="atendimentos") return aplicarFiltroAgenda(LISTA);
+  if(MOD==="anamneses"){
+    // filtra pelo modelo do submenu e pelo NOME DO PACIENTE digitado na busca
+    // (o servidor não busca aqui porque a tabela não guarda o nome, só o id)
+    let l = filtroAnamTipo ? LISTA.filter((a)=>a.tipo===filtroAnamTipo) : LISTA;
+    const q=(($("#mod-busca")||{}).value||"").trim().toLowerCase();
+    if(q) l = l.filter((a)=>nomePac(a.paciente_id).toLowerCase().includes(q));
+    return l;
+  }
+  return LISTA;
+}
+function renderTabela(){
+  const m=MODULOS[MOD], tb=$("#mod-tbody"), nc=m.colunas.length+1;
+  const dados=dadosVisiveis();
+  const q=m.busca?$("#mod-busca").value.trim():"";
+  if(!dados.length){ tb.innerHTML=`<tr><td colspan="${nc}" class="vazio">Nenhum registro ${q||filtroAgenda||filtroAnamTipo?"encontrado":"cadastrado ainda"}.</td></tr>`; return; }
+  const anam=!!m.anamnese;
+  tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
+    <td style="text-align:right;white-space:nowrap">${
+      anam ? `<button class="btn btn-ghost btn-sm" onclick="imprimirAnamnese(${row.id})">Imprimir</button> `
+           : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
+    }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
+    }<button class="btn btn-ghost btn-sm" onclick="${anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`}">Abrir</button></td></tr>`).join("");
+}
+
+/* -------------------- vista Agenda (calendário do mês) ------------------ */
+const MESES_PT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const DOW_PT=["dom","seg","ter","qua","qui","sex","sáb"];
+const addMesYM=(ym,d)=>{ let [a,m]=ym.split("-").map(Number); m=m-1+d; a+=Math.floor(m/12); m=((m%12)+12)%12; return `${a}-${String(m+1).padStart(2,"0")}`; };
+const clampYM=(ym,lo,hi)=> ym<lo?lo:(ym>hi?hi:ym);
+function navAgenda(d){ agendaYM=addMesYM(agendaYM,d); renderAgenda(); }
+async function novoNaData(dstr){ await abrirForm(0); const el=$("#f-data"); if(el) el.value=dstr; }
+
+function renderAgenda(){
+  const cont=$("#mod-agenda");
+  const comData=dadosVisiveis().filter((a)=>a.data);
+  const meses=[...new Set(comData.map((a)=>a.data.slice(0,7)))].sort();
+  const hojeISO=new Date().toISOString().slice(0,10), hojeYM=hojeISO.slice(0,7);
+  const minYM=meses.length?meses[0]:hojeYM, maxYM=meses.length?meses[meses.length-1]:hojeYM;
+  if(!agendaYM) agendaYM=clampYM(hojeYM,minYM,maxYM); else agendaYM=clampYM(agendaYM,minYM,maxYM);
+  const [ano,mes]=agendaYM.split("-").map(Number);
+  const primeiroDow=new Date(ano,mes-1,1).getDay();
+  const diasNoMes=new Date(ano,mes,0).getDate();
+  const porDia={}; comData.filter((a)=>a.data.slice(0,7)===agendaYM).forEach((a)=>{ (porDia[a.data]=porDia[a.data]||[]).push(a); });
+  Object.values(porDia).forEach((l)=>l.sort((x,y)=>String(x.hora).localeCompare(String(y.hora))));
+
+  let cel="";
+  DOW_PT.forEach((d)=>cel+=`<div class="dow">${d}</div>`);
+  for(let i=0;i<primeiroDow;i++) cel+=`<div class="dia vazio-cel"></div>`;
+  for(let d=1;d<=diasNoMes;d++){
+    const iso=`${ano}-${String(mes).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    const evs=(porDia[iso]||[]).map((a)=>`<span class="ev ev-${escA(a.status||"Agendado")}" title="${escA((a.hora||"")+" "+nomePac(a.paciente_id))}" onclick="event.stopPropagation();abrirForm(${a.id})">${escA(a.hora||"")} ${escA(nomePac(a.paciente_id))}</span>`).join("");
+    cel+=`<div class="dia${iso===hojeISO?" hoje":""}" onclick="novoNaData('${iso}')"><span class="num">${d}</span>${evs}</div>`;
+  }
+  cont.innerHTML=`
+    <div class="cal-cab">
+      <button onclick="navAgenda(-1)" ${agendaYM<=minYM?"disabled":""} title="Mês anterior">‹</button>
+      <h3>${MESES_PT[mes-1]} de ${ano}</h3>
+      <button onclick="navAgenda(1)" ${agendaYM>=maxYM?"disabled":""} title="Próximo mês">›</button>
+    </div>
+    <div class="card" style="padding:1rem"><div class="cal">${cel}</div>
+      <p class="hint" style="color:var(--dim);margin-top:.8rem;font-size:.8rem">Clique num dia para agendar · clique num serviço para abrir. Navegação limitada aos meses com agendamentos.</p>
+    </div>`;
+}
+
+/* --------------------------- vista Kanban ------------------------------- */
+const KAN_COLS=["Agendado","Confirmado","Atendido","Faltou","Remarcado"];
+function kcard(a){
+  const p=a.procedimento_id?acha("procedimentos",a.procedimento_id):null;
+  return `<div class="kcard" draggable="true" data-id="${a.id}"${p&&p.cor?` style="border-left:4px solid ${corSegura(p.cor)}"`:""} onclick="abrirForm(${a.id})">
+    <b>${escA(a.nome_agenda||nomePac(a.paciente_id))}</b>
+    <small>${dataBR(a.data)}${a.hora?" · "+escA(a.hora):""}${p?" · "+escA(p.nome):""}${a.profissional_id?" · "+escA(nomeProf(a.profissional_id)):""}</small></div>`;
+}
+function renderKanban(){
+  const cont=$("#mod-kanban");
+  const base=dadosVisiveis();
+  cont.innerHTML=`<div class="kanban">`+KAN_COLS.map((st)=>{
+    const cards=base.filter((a)=>(a.status||"Agendado")===st);
+    return `<div class="kcol" data-status="${st}">
+      <h4>${st} <span>${cards.length}</span></h4>
+      <div class="kcards">${cards.map(kcard).join("")||'<p class="kvazio">—</p>'}</div></div>`;
+  }).join("")+`</div>`;
+  // arrastar para mudar a situação
+  let arrastando=null;
+  cont.querySelectorAll(".kcard").forEach((c)=>{
+    c.addEventListener("dragstart",(e)=>{ arrastando=c.dataset.id; e.dataTransfer.effectAllowed="move"; });
+  });
+  cont.querySelectorAll(".kcol").forEach((col)=>{
+    col.addEventListener("dragover",(e)=>{ e.preventDefault(); col.classList.add("drag"); });
+    col.addEventListener("dragleave",()=>col.classList.remove("drag"));
+    col.addEventListener("drop",async(e)=>{ e.preventDefault(); col.classList.remove("drag");
+      if(!arrastando) return;
+      try{ await api("atendimentos/"+arrastando,"PUT",{status:col.dataset.status}); await carregarLista(); }
+      catch(err){ toast(err.message,true); }
+      arrastando=null;
+    });
+  });
+}
+
+/* ======================= formulário genérico ========================= */
+function campoHTML(campo, val){
+  const [k,lab,tipo,op={}]=campo, id="f-"+k;
+  const req=op.req?' <span style="color:var(--red)">*</span>':"";
+  const wrap=(inner,full)=>`<div class="${full?"full":""}"${op.menor?' data-menor="1"':""}>${inner}</div>`;
+  if(tipo==="titulo")
+    return wrap(`<h3 style="margin:.7rem 0 -.2rem;color:var(--marinho);font-size:.78rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-top:1px solid #e7ecf4;padding-top:.9rem">${escA(lab)}</h3>`,true);
+  if(tipo==="checkbox")
+    return wrap(`<label style="display:flex;gap:.5rem;align-items:center;margin-top:1.1rem;cursor:pointer;color:var(--text)"><input type="checkbox" id="${id}" style="width:auto" ${Number(val)?"checked":""}> ${lab}</label>`,op.full);
+  let ctrl;
+  if(tipo==="textarea") ctrl=`<textarea id="${id}">${escA(val||"")}</textarea>`;
+  else if(tipo==="password") ctrl=`<input id="${id}" type="password" autocomplete="new-password" value="">`;
+  else if(tipo==="select"){
+    const opts=op.bool?[["0","Não"],["1","Sim"]]:(op.opcoes||[]).map((o)=>Array.isArray(o)?o:[o,o]);
+    const atual=(val===undefined||val===null||val==="")?(op.padrao??(op.bool?"0":"")):val;
+    ctrl=`<select id="${id}">${op.placeholder?`<option value="">${op.placeholder}</option>`:""}`+
+      opts.map(([v,l])=>`<option value="${escA(v)}"${String(atual)===String(v)?" selected":""}>${escA(l)}</option>`).join("")+`</select>`;
+  }
+  else if(tipo==="ref"){
+    // listas de apoio só oferecem itens ativos (o já gravado continua aparecendo)
+    const lista=(CACHE[op.tabela]||[]).filter((r)=>r.ativo===undefined||Number(r.ativo)!==0||String(val)===String(r.id));
+    ctrl=`<select id="${id}"><option value="">—</option>`+
+      lista.map((r)=>`<option value="${r.id}"${String(val)===String(r.id)?" selected":""}>${escA(rotuloRef(r))}</option>`).join("")+`</select>`;
+  }
+  else if(tipo==="busca"){   // combobox com campo de busca; guarda id (padrão) ou o nome (op.valor==="nome")
+    const lista=CACHE[op.tabela]||[], usaNome=op.valor==="nome", atualVal=val??"";
+    let atualLab="";
+    if(atualVal!==""){ const achado=lista.find((r)=>String(usaNome?rotuloRef(r):r.id)===String(atualVal)); atualLab=achado?rotuloRef(achado):String(atualVal); }
+    ctrl=`<div class="cbx" data-cbx data-tab="${escA(op.tabela)}" data-valor="${usaNome?"nome":"id"}" data-id="${id}"${op.filtradoPorProf?' data-filtraprof="1"':""}${op.preenche?` data-preenche="${escA(op.preenche)}"`:""}>
+        <input type="text" id="${id}-txt" class="cbx-inp" autocomplete="off" placeholder="Digite para buscar…" value="${escA(atualLab)}"
+          oninput="cbxFiltrar('${id}')" onfocus="cbxFiltrar('${id}')" onkeydown="cbxTecla(event,'${id}')" onblur="cbxBlur('${id}')">
+        <input type="hidden" id="${id}" value="${escA(atualVal)}">
+        <div class="cbx-list" id="${id}-list" hidden></div>
+      </div>`;
+  }
+  else if(tipo==="servicos_check"){
+    let sel=[]; try{ sel=JSON.parse(val||"[]"); if(!Array.isArray(sel)) sel=[]; }catch{ sel=val?[val]:[]; }  // compat: texto antigo
+    const lista=(CACHE.procedimentos||[]).filter((x)=>Number(x.ativo)!==0);
+    ctrl = lista.length
+      ? `<input type="text" id="${id}-busca" class="chk-busca" placeholder="Buscar procedimento…" autocomplete="off" oninput="filtrarChkBusca('${id}')" style="margin-bottom:.5rem">
+         <div class="chk-grid" id="${id}-grid">`+lista.map((s)=>{const r=rotuloProc(s);return `<label class="chk"><input type="checkbox" value="${escA(r)}"${sel.includes(r)?" checked":""}> ${escA(r)}</label>`;}).join("")+`</div>`
+      : `<p class="hint" style="color:var(--dim)">Nenhum procedimento cadastrado ainda. Cadastre em <b>Cadastros → Procedimentos</b>.</p>`;
+  }
+  else if(tipo==="cor") ctrl=`<div style="display:flex;gap:.6rem;align-items:center">
+      <input type="color" id="${id}" value="${escA(val||"#5B4FD8")}" style="width:56px;height:38px;padding:2px">
+      <span class="hint" style="color:var(--dim)">Cor de identificação na agenda</span></div>`;
+  else if(tipo==="foto") ctrl=`<div style="display:flex;gap:1rem;align-items:center">
+      <img class="foto-prev" id="${id}-prev" src="${val?escA(val):""}" alt="" style="${val?"":"display:none"}">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="subirFoto('${id}')">Enviar foto</button>
+      <input type="hidden" id="${id}" value="${escA(val||"")}"></div>`;
+  else if(tipo==="arquivo") ctrl=`<div style="display:flex;gap:.8rem;align-items:center">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="subirArquivo('${id}')">Enviar arquivo</button>
+      <span id="${id}-nome" class="arq-link">${val?`<a href="${escA(val)}" target="_blank">arquivo enviado</a>`:""}</span>
+      <input type="hidden" id="${id}" value="${escA(val||"")}"></div>`;
+  else if(tipo==="fotos"){
+    const arr=(()=>{ try{return JSON.parse(val||"[]");}catch{return [];} })();
+    ctrl=`<button type="button" class="btn btn-ghost btn-sm" onclick="subirFotos('${id}')">+ Adicionar foto</button>
+      <div class="fotos-lista" id="${id}-lista"></div><input type="hidden" id="${id}" value='${escA(JSON.stringify(arr))}'>`;
+  }
+  else { const t=tipo==="date"?"date":tipo==="time"?"time":tipo==="number"?"number":tipo==="email"?"email":"text";
+    const md=MASCARA[tipo]?` data-mask="${tipo}" inputmode="numeric"`:"";
+    const iv=MASCARA[tipo]?aplicarMascara(tipo,val||""):(val||"");
+    ctrl=`<input id="${id}" type="${t}"${md} value="${escA(iv)}">`; }
+  return wrap(`<label>${lab}${req}</label>${ctrl}`,op.full);
+}
+
+async function abrirForm(id){
+  const m=MODULOS[MOD];
+  FORM_ID=id||0;
+  let dados={};
+  if(id){ try{ dados=await api(MOD+"/"+id); }catch(e){ return toast(e.message,true); } }
+  const host=$("#modal-host");
+  const campos=camposDoPerfil(m);
+  host.innerHTML=`<div class="modal-bg"><div class="modal">
+    <h2>${id?"Editar":m.novo||"Novo"}</h2>
+    <div class="modal-corpo">
+      <div class="formgrid">${campos.map((c)=>campoHTML(c,dados[c[0]])).join("")}</div>
+      <div id="form-erros"></div>
+    </div>
+    <div class="acoes">
+      ${m.imprimir&&id?`<button class="btn btn-ghost" onclick="imprimirFicha(${id})">Imprimir ficha</button>`:""}
+      ${m.historico&&id?`<button class="btn btn-ghost" onclick="imprimirHistorico(${id})">Imprimir prontuário completo</button>`:""}
+      ${id?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-navy" onclick="salvarReg(${id||0})">Salvar</button>
+    </div></div></div>`;
+  // máscaras ao digitar
+  host.querySelector(".modal").addEventListener("input",(e)=>{ const mk=e.target.dataset.mask;
+    if(mk){ e.target.value=aplicarMascara(mk,e.target.value); } });
+  // campos que dependem de outro (habilita/desabilita)
+  for(const [k,,,op={}] of m.campos){ if(op.dependeDe){
+    const mestre=$("#f-"+op.dependeDe), dep=$("#f-"+k);
+    const sync=()=>{ const on=String(mestre.value)==="1"; dep.disabled=!on; if(!on) dep.value=""; };
+    mestre.addEventListener("change",sync); sync();
+  }}
+  // galerias de fotos já existentes
+  for(const [k,,tipo] of m.campos) if(tipo==="fotos") desenharFotos("f-"+k);
+  // bloco do responsável: só aparece quando o usuário é menor de 18 anos
+  if(MOD==="pacientes"){
+    const nasc=$("#f-nascimento");
+    if(nasc){ nasc.addEventListener("change",sincMenor); nasc.addEventListener("input",sincMenor); }
+    sincMenor();
+  }
+  // serviços restritos ao profissional escolhido (agenda e prontuário)
+  const campoProf=m.campos.find((c)=>c[3]&&c[3].filtraServicos);
+  if(campoProf){
+    const prof=$("#f-"+campoProf[0]);
+    if(prof){ prof.addEventListener("change",()=>filtrarServicos(false)); }
+    filtrarServicos(true);
+  }
+  // agenda: escolher o paciente/procedimento traz os dados do cadastro
+  if(MOD==="atendimentos"){
+    const pac=$("#f-paciente_id");
+    if(pac) pac.addEventListener("change",()=>preencherDoPaciente(!id));
+    const proc=$("#f-procedimento_id");
+    if(proc) proc.addEventListener("change",()=>preencherDoProcedimento(!id));
+    const prof=$("#f-profissional_id");
+    // trocar de profissional pode invalidar o procedimento escolhido
+    if(prof) prof.addEventListener("change",()=>{
+      const allow=procedimentosPermitidos(); const pv=$("#f-procedimento_id");
+      if(allow && pv && pv.value){ const p=acha("procedimentos",pv.value);
+        if(p && !allow.has(rotuloProc(p))){ pv.value=""; $("#f-procedimento_id-txt").value=""; } }
+    });
+    const hi=$("#f-hora");
+    if(hi) hi.addEventListener("change",()=>calcularFim());
+  }
+}
+/* Ao escolher o paciente na agenda, puxa nome, celular e convênio do cadastro.
+   Só sobrescreve campo vazio quando estamos editando (não apaga o que já existe). */
+function preencherDoPaciente(novo){
+  const p=acha("pacientes",($("#f-paciente_id")||{}).value); if(!p) return;
+  const set=(sel,v)=>{ const e=$(sel); if(e && v && (novo||!e.value)) e.value=v; };
+  set("#f-nome_agenda", p.nome_contato||p.nome);
+  set("#f-celular", p.celular||p.telefone);
+  const cv=$("#f-convenio_id"); if(cv && p.convenio_id && (novo||!cv.value)) cv.value=p.convenio_id;
+}
+/* Ao escolher o procedimento, sugere o valor e calcula o horário final. */
+function preencherDoProcedimento(novo){
+  const pr=acha("procedimentos",($("#f-procedimento_id")||{}).value); if(!pr) return;
+  const v=$("#f-valor"); if(v && pr.valor && (novo||!v.value)) v.value=pr.valor;
+  calcularFim(true);
+}
+/* hora_fim = hora + duração do procedimento (só preenche se estiver vazio). */
+function calcularFim(forcar){
+  const hi=$("#f-hora"), hf=$("#f-hora_fim"); if(!hi||!hf||!hi.value) return;
+  if(hf.value && !forcar) return;
+  const pr=acha("procedimentos",($("#f-procedimento_id")||{}).value);
+  const dur=pr&&Number(pr.duracao)>0?Number(pr.duracao):40;
+  const [h,m]=hi.value.split(":").map(Number); if(Number.isNaN(h)) return;
+  const t=h*60+(m||0)+dur;
+  hf.value=`${String(Math.floor(t/60)%24).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;
+}
+/* ------------------- combobox com busca (campo "busca") ---------------- */
+function cbxWrap(id){ const el=$("#"+id); return el?el.closest(".cbx"):null; }
+function cbxOpcoes(wrap){ return CACHE[wrap.dataset.tab]||[]; }
+function cbxFiltrar(id){
+  const wrap=cbxWrap(id); if(!wrap) return;
+  const inp=$("#"+id+"-txt"), list=$("#"+id+"-list");
+  const termo=inp.value.trim().toLowerCase();
+  const usaNome=wrap.dataset.valor==="nome";
+  let base=cbxOpcoes(wrap);
+  // só procedimentos ativos; e, na agenda, só os que o profissional realiza
+  if(wrap.dataset.tab==="procedimentos"){
+    base=base.filter((r)=>Number(r.ativo)!==0);
+    if(wrap.dataset.filtraprof==="1"){ const allow=procedimentosPermitidos(); if(allow) base=base.filter((r)=>allow.has(rotuloProc(r))); }
+  }
+  if(wrap.dataset.tab==="convenios"||wrap.dataset.tab==="salas") base=base.filter((r)=>Number(r.ativo)!==0);
+
+  /* Paciente pode ser achado por NOME, CPF ou código. O CPF casa digitado com ou
+     sem máscara: comparamos só os dígitos dos dois lados. */
+  const ehPaciente = wrap.dataset.tab==="pacientes";
+  const dig = soDig(termo);
+  const casa = (r) => {
+    if(rotuloRef(r).toLowerCase().includes(termo)) return true;
+    if(!ehPaciente) return false;
+    if(dig.length>=3){
+      if(soDig(r.cpf).includes(dig)) return true;
+      if(soDig(r.celular).includes(dig) || soDig(r.telefone).includes(dig)) return true;
+    }
+    return !!(termo && r.codigo && String(r.codigo).toLowerCase().includes(termo));
+  };
+  const ops=base.filter(casa).slice(0,60);
+  // no paciente, mostra o CPF ao lado do nome para diferenciar homônimos
+  const extra = (r) => (ehPaciente && r.cpf) ? ` <span style="color:var(--dim);font-size:.82em">· ${escA(r.cpf)}</span>` : "";
+  list.innerHTML = ops.length
+    ? ops.map((r)=>{ const v=usaNome?rotuloRef(r):r.id; return `<div class="cbx-op" data-v="${escA(String(v))}" data-l="${escA(rotuloRef(r))}">${escA(rotuloRef(r))}${extra(r)}</div>`; }).join("")
+    : '<div class="cbx-vazio">Nenhum resultado</div>';
+  list.hidden=false;
+}
+function cbxEscolher(id,v,l){
+  const hid=$("#"+id); hid.value=v; $("#"+id+"-txt").value=l;
+  const list=$("#"+id+"-list"); if(list) list.hidden=true;
+  hid.dispatchEvent(new Event("change",{bubbles:true}));
+}
+function cbxBlur(id){
+  // fecha depois do clique na opção (mousedown já tratou); valida o texto
+  setTimeout(()=>{
+    const wrap=cbxWrap(id); if(!wrap) return;
+    const list=$("#"+id+"-list"); if(list) list.hidden=true;
+    const inp=$("#"+id+"-txt"), hid=$("#"+id), usaNome=wrap.dataset.valor==="nome";
+    const t=inp.value.trim();
+    if(!t){ hid.value=""; hid.dispatchEvent(new Event("change",{bubbles:true})); return; }
+    const match=cbxOpcoes(wrap).find((r)=>rotuloRef(r).toLowerCase()===t.toLowerCase());
+    if(match){ hid.value=usaNome?rotuloRef(match):match.id; inp.value=rotuloRef(match); }
+    else { const cur=hid.value; const ach=cbxOpcoes(wrap).find((r)=>String(usaNome?rotuloRef(r):r.id)===String(cur));
+      inp.value=ach?rotuloRef(ach):""; if(!ach) hid.value=""; }
+    hid.dispatchEvent(new Event("change",{bubbles:true}));
+  },160);
+}
+function cbxTecla(e,id){
+  const list=$("#"+id+"-list"); if(!list) return;
+  if(e.key==="Escape"){ list.hidden=true; return; }
+  const ops=[...list.querySelectorAll(".cbx-op")]; if(!ops.length) return;
+  let i=ops.findIndex((o)=>o.classList.contains("hi"));
+  if(e.key==="ArrowDown"){ e.preventDefault(); i=Math.min(ops.length-1,i+1); }
+  else if(e.key==="ArrowUp"){ e.preventDefault(); i=Math.max(0,i-1); }
+  else if(e.key==="Enter"){ e.preventDefault(); const alvo=ops[i]||ops[0]; cbxEscolher(id,alvo.dataset.v,alvo.dataset.l); return; }
+  else return;
+  ops.forEach((o)=>o.classList.remove("hi")); if(ops[i]){ ops[i].classList.add("hi"); ops[i].scrollIntoView({block:"nearest"}); }
+}
+// clique numa opção (mousedown para vir antes do blur)
+document.addEventListener("mousedown",(e)=>{
+  const opt=e.target.closest(".cbx-op"); if(!opt) return;
+  e.preventDefault();
+  const wrap=opt.closest(".cbx"); if(wrap) cbxEscolher(wrap.dataset.id,opt.dataset.v,opt.dataset.l);
+});
+/* procedimentos exibidos ficam restritos aos que o profissional escolhido realiza */
+function servicosDoProfissional(){
+  let profVal="",usaNome=false;
+  if(MOD==="atendimentos"){ const e=$("#f-profissional_id"); profVal=e?e.value:""; }
+  else if(MOD==="prontuario"){ const e=$("#f-profissional"); profVal=e?e.value:""; usaNome=true; }
+  if(!profVal) return null;                       // ninguém escolhido → mostra todos
+  const prof=(CACHE.profissionais||[]).find((p)=>String(usaNome?p.nome:p.id)===String(profVal));
+  if(!prof) return null;
+  let arr=[]; try{ arr=JSON.parse(prof.especialidade||"[]"); if(!Array.isArray(arr)) arr=[]; }catch{ arr=prof.especialidade?[prof.especialidade]:[]; }
+  return new Set(arr);
+}
+/* Na agenda, o combobox de procedimento também respeita o profissional escolhido:
+   se ele tem procedimentos vinculados, só esses aparecem na busca. */
+function procedimentosPermitidos(){
+  const e=$("#f-profissional_id"); const profVal=e?e.value:"";
+  if(!profVal) return null;
+  const prof=(CACHE.profissionais||[]).find((p)=>String(p.id)===String(profVal));
+  if(!prof) return null;
+  let arr=[]; try{ arr=JSON.parse(prof.especialidade||"[]"); if(!Array.isArray(arr)) arr=[]; }catch{ arr=[]; }
+  return arr.length ? new Set(arr) : null;        // sem vínculo cadastrado → não restringe
+}
+// Visibilidade dos checkboxes de serviço = filtro do profissional (agenda/prontuário)
+// combinado com o campo de busca. Fonte única, chamada pelos dois gatilhos.
+function aplicarVisibilidadeServicos(id, inicial){
+  const grid=$("#"+id+"-grid"); if(!grid) return;
+  const allow=(MOD==="atendimentos"||MOD==="prontuario") ? servicosDoProfissional() : null;
+  const termo=(($("#"+id+"-busca")||{}).value||"").trim().toLowerCase();
+  grid.querySelectorAll(".chk").forEach((lab)=>{
+    const cb=lab.querySelector("input");
+    const okProf=!allow||allow.has(cb.value);
+    const okBusca=!termo||lab.textContent.toLowerCase().includes(termo);
+    lab.hidden=!(okProf&&okBusca);
+    if(!okProf && !inicial) cb.checked=false;   // ao trocar de profissional, desmarca serviços não oferecidos
+  });
+  let aviso=grid.parentElement.querySelector(".chk-aviso");
+  if(allow && allow.size===0){   // profissional sem serviços vinculados (independe da busca)
+    if(!aviso){ aviso=document.createElement("p"); aviso.className="chk-aviso"; aviso.style.cssText="color:var(--dim);margin-top:.45rem;font-size:.82rem"; grid.parentElement.appendChild(aviso); }
+    aviso.textContent="Este profissional não tem procedimentos vinculados — cadastre-os em Cadastros → Profissionais."; aviso.hidden=false;
+  } else if(aviso){ aviso.hidden=true; }
+}
+function filtrarServicos(inicial){ aplicarVisibilidadeServicos("f-especialidade", inicial); }   // gatilho: troca de profissional
+function filtrarChkBusca(id){ aplicarVisibilidadeServicos(id, true); }                            // gatilho: campo de busca
+// mostra/esconde os campos do responsável conforme a data de nascimento
+function sincMenor(){
+  const nasc=$("#f-nascimento"); if(!nasc) return;
+  const menor=ehMenor(nasc.value);
+  document.querySelectorAll('#modal-host [data-menor="1"]').forEach((el)=>{ el.hidden=!menor; });
+}
+function fecharModal(){ $("#modal-host").innerHTML=""; }
+// alguns campos não aparecem para certos perfis (ex.: o profissional não escolhe
+// "profissional" na agenda — é sempre ele). O servidor força isso de qualquer modo.
+function camposDoPerfil(m){ return m.campos.filter((c)=>!(c[3]&&c[3].ocultarPara===ME.perfil)); }
+
+function coletar(){
+  const m=MODULOS[MOD], out={}, erros=[];
+  const menor = MOD==="pacientes" && ehMenor(($("#f-nascimento")||{}).value);
+  for(const [k,lab,tipo,op={}] of camposDoPerfil(m)){
+    if(tipo==="titulo") continue;          // apenas rótulo de seção
+    if(op.menor && !menor){ out[k]=""; continue; }  // limpa dados do responsável quando não é menor
+    if(tipo==="servicos_check"){ const g=$("#f-"+k+"-grid"); out[k]=JSON.stringify(g?[...g.querySelectorAll("input:checked")].map((c)=>c.value):[]); continue; }
+    const el=$("#f-"+k); if(!el) continue;
+    el.classList && el.classList.remove("erro");
+    let v = tipo==="checkbox" ? (el.checked?1:0) : (el.value||"").trim();
+    if(op.bool) v=Number(v);
+    const vazio = v==="" || v===null || (op.bool && false);
+    if(op.req && (v===""||v===null||v===undefined)){ erros.push(`“${lab}” é obrigatório.`); el.classList.add("erro"); }
+    if(v!=="" && !vazio){
+      if(tipo==="cpf" && !cpfValido(v)){ erros.push("CPF inválido."); el.classList.add("erro"); }
+      if(tipo==="email" && !emailValido(v)){ erros.push("E-mail inválido."); el.classList.add("erro"); }
+      if(tipo==="tel" && soDig(v).length<10){ erros.push("Telefone incompleto."); el.classList.add("erro"); }
+      if(tipo==="nis" && soDig(v).length!==11){ erros.push("NIS deve ter 11 dígitos."); el.classList.add("erro"); }
+      if(tipo==="sus" && soDig(v).length!==15){ erros.push("Cartão SUS deve ter 15 dígitos."); el.classList.add("erro"); }
+    }
+    out[k]=v;
+  }
+  return {out,erros};
+}
+async function salvarReg(id){
+  const {out,erros}=coletar();
+  const box=$("#form-erros");
+  if(erros.length){ box.innerHTML=`<div class="erros">${erros.map(escA).join("<br>")}</div>`; return; }
+  box.innerHTML="";
+  try{
+    let r;
+    if(id) r=await api(MOD+"/"+id,"PUT",out); else r=await api(MOD,"POST",out);
+    if(RECARREGA_CACHE.includes(MOD)) await recarregarCache();
+    fecharModal(); toast("Registro salvo."); carregarLista();
+  }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
+}
+// tabelas que alimentam seletores: mudou uma, o CACHE precisa ser refeito
+const RECARREGA_CACHE=["pacientes","profissionais","convenios","procedimentos","salas"];
+async function excluirReg(id){
+  if(!confirm("Excluir este registro? Esta ação não pode ser desfeita.")) return;
+  try{ await api(MOD+"/"+id,"DELETE");
+    if(RECARREGA_CACHE.includes(MOD)) await recarregarCache();
+    fecharModal(); toast("Registro excluído."); carregarLista();
+  }catch(e){ toast(e.message,true); }
+}
+
+/* ==========================================================================
+   PAPEL TIMBRADO DA CLÍNICA
+   Cabeçalho com a marca (logo oficial inline — SVG em <img> não carregaria a
+   fonte externa), faixa violeta→champagne, rodapé com endereço e contatos.
+   Repete em TODA página impressa: o cabeçalho vai em <thead> de uma tabela de
+   página, técnica que faz o navegador reimprimi-lo a cada quebra.
+   ========================================================================== */
+const LOGO_SVG = `<svg viewBox="169 832 1636 293" role="img" aria-label="BemEstarClinic" style="height:46px;width:auto"><g fill="#5136d6"><text font-family="Questrial, 'Segoe UI', sans-serif" font-size="195.83" transform="translate(460.23 1051.93)"><tspan x="0" y="0">BemEs</tspan><tspan x="622.14" y="0">t</tspan><tspan x="684.02" y="0">arClinic</tspan></text><path d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></g></svg>`;
+/* Só a flor da marca (sem o texto), recortada no seu bounding box — usada como
+   marca d'água no centro das páginas impressas. */
+const LOTUS_SVG = `<svg viewBox="196 852 268 210" xmlns="http://www.w3.org/2000/svg" role="presentation"><path fill="#5136d6" d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></svg>`;
+const CLINICA = {
+  nome: "BemEstarClinic",
+  sub: "Psicanálise · Ozonioterapia · Terapias Integrativas",
+  cnpj: "02.192.745/0001-25",
+  endereco: "Empresarial Nordeste Corporate, sala 707 — Universitário, Caruaru-PE",
+  contato: "faleconosco@bemestarclinic.com · (81) 97303-7762 · bemestarclinic.com",
+};
+function timbreHTML(titulo, corpo, opc){
+  const o = opc || {};
+  // margens internas — o @page fica com margem ZERO (é o que apaga o cabeçalho e
+  // o rodapé que o navegador imprime: data, título e URL). O respiro da folha
+  // passa a vir daqui, do padding das células da tabela de página.
+  const mx = o.paisagem ? "1.2cm" : "1.5cm";
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escA(titulo)} — ${CLINICA.nome}</title>
+  <style>
+   /* margem 0 = sem cabeçalho/rodapé do navegador na impressão */
+   @page{margin:0;size:A4${o.paisagem?" landscape":""}}
+   *{box-sizing:border-box}
+   body{font:12.5px/1.55 'Segoe UI',system-ui,Arial,sans-serif;color:#232733;margin:0}
+   /* MARCA D'ÁGUA — a flor da marca, centralizada e discreta. position:fixed faz
+      o navegador repeti-la em TODAS as páginas impressas. */
+   .marcadagua{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+     width:${o.paisagem?"46%":"62%"};opacity:.055;z-index:0;pointer-events:none;
+     -webkit-print-color-adjust:exact;print-color-adjust:exact}
+   .marcadagua svg{width:100%;height:auto;display:block}
+   /* conteúdo sempre acima da marca d'água */
+   .pag{position:relative;z-index:1}
+   /* cabeçalho/rodapé que se repetem a cada página impressa */
+   .pag{width:100%;border-collapse:collapse}
+   .pag thead td{padding:${mx} ${mx} 0}
+   .pag tbody td{padding:0 ${mx}}
+   .pag tfoot td{padding:0 ${mx} ${mx}}
+   .pag thead td,.pag tfoot td{border:0}
+   .timbre{display:flex;align-items:center;gap:1rem;padding-bottom:.55rem;border-bottom:2px solid #5B4FD8}
+   .timbre .marca{line-height:0}
+   .timbre .id{line-height:1.25}
+   .timbre .nome{font-weight:700;color:#5136d6;font-size:1.02rem;letter-spacing:.01em}
+   .timbre .sub{color:#7a7f92;font-size:.7rem}
+   .timbre .doc{margin-left:auto;text-align:right;color:#7a7f92;font-size:.68rem;line-height:1.5}
+   .faixa{height:3.5px;background:linear-gradient(90deg,#5B4FD8 0%,#5136d6 55%,#C9A86A 100%);margin:0 0 1.15rem}
+   .rod{margin-top:1.1rem;border-top:1px solid #eceaf6;padding-top:.45rem;color:#9aa0ad;font-size:.66rem;
+        display:flex;justify-content:space-between;gap:1rem}
+   h1{color:#5136d6;font-size:1.15rem;margin:.1rem 0 .2rem}
+   .subtitulo{color:#7a7f92;font-size:.8rem;margin:0 0 1rem}
+   .sec{margin:1.25rem 0 .45rem;color:#5B4FD8;font-size:.7rem;font-weight:700;letter-spacing:.09em;
+        text-transform:uppercase;border-bottom:1px solid #eceaf6;padding-bottom:.22rem;page-break-after:avoid}
+   table.d{width:100%;border-collapse:collapse}
+   table.d th{text-align:left;width:190px;color:#5a6172;font-weight:600;vertical-align:top;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa}
+   table.d td{padding:.34rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top}
+   .grade{display:grid;grid-template-columns:1fr 1fr;gap:0 1.4rem}
+   .foto{width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid #e6e2f5;float:right;margin:0 0 .6rem 1rem}
+   .cards{display:flex;flex-wrap:wrap;gap:.55rem;margin:.4rem 0}
+   .kpi{border:1px solid #eceaf6;border-radius:10px;padding:.55rem .85rem;min-width:118px}
+   .kpi b{display:block;font-size:1.45rem;color:#5136d6;line-height:1}
+   .kpi span{font-size:.68rem;color:#8a90a0;text-transform:uppercase;letter-spacing:.04em}
+   .barra{display:flex;align-items:center;gap:.6rem;margin:.26rem 0;font-size:.8rem}
+   .barra .lb{width:210px}.barra .b{flex:1;height:9px;background:#f1effa;border-radius:5px;overflow:hidden}
+   .barra .b i{display:block;height:100%;background:#5B4FD8}.barra .n{width:32px;text-align:right;font-weight:700;color:#5136d6}
+   /* matrizes e listas das anamneses */
+   table.m{width:100%;border-collapse:collapse;margin:.2rem 0 .5rem;font-size:.8rem}
+   table.m th,table.m td{border:1px solid #e6e2f5;padding:.28rem .45rem;text-align:left}
+   table.m th{background:#f7f5fd;color:#5a6172;font-weight:600}
+   table.m td.c{text-align:center;width:64px}
+   .marc{font-size:.95rem;line-height:1}
+   .campo{margin:.25rem 0 .5rem}
+   .campo .rot{color:#5a6172;font-weight:600;font-size:.76rem}
+   .campo .val{white-space:pre-wrap;border-bottom:1px dotted #d8d3ee;min-height:1.1em;padding:.1rem 0}
+   .assin{margin-top:2.2rem;display:flex;gap:2.5rem;page-break-inside:avoid}
+   .assin div{flex:1;border-top:1px solid #ababc0;padding-top:.3rem;text-align:center;color:#5a6172;font-size:.72rem}
+   .quebra{page-break-before:always}
+   .evo{page-break-inside:avoid;border-left:3px solid #5B4FD8;padding:.1rem 0 .1rem .7rem;margin:.7rem 0}
+   .evo .cab{font-weight:700;color:#5136d6;font-size:.82rem}
+   .evo .met{color:#8a90a0;font-size:.72rem;margin-bottom:.2rem}
+  </style></head><body>
+  <div class="marcadagua" aria-hidden="true">${LOTUS_SVG}</div>
+  <table class="pag">
+    <thead><td>
+      <div class="timbre">
+        <span class="marca">${LOGO_SVG}</span>
+        <div class="id"><div class="nome">${CLINICA.nome}</div><div class="sub">${CLINICA.sub}</div></div>
+        <div class="doc">CNPJ ${CLINICA.cnpj}<br>${CLINICA.endereco}<br>${CLINICA.contato}</div>
+      </div>
+      <div class="faixa"></div>
+    </td></thead>
+    <tfoot><td>
+      <div class="rod"><span>${CLINICA.nome} · documento de uso interno — dado sensível (LGPD)</span><span>Emitido em ${new Date().toLocaleString("pt-BR")}</span></div>
+    </td></tfoot>
+    <tbody><tr><td>
+      <h1>${escA(titulo)}</h1>
+      ${o.subtitulo?`<p class="subtitulo">${escA(o.subtitulo)}</p>`:""}
+      ${corpo}
+    </td></tr></tbody>
+  </table>
+  <scr`+`ipt>window.onload=function(){setTimeout(function(){window.print()},250)}</scr`+`ipt>
+  </body></html>`;
+}
+function abrirImpressao(titulo, corpo, opc){
+  const w=window.open("","_blank","width=880,height=960");
+  if(!w) return toast("Permita pop-ups para imprimir.",true);
+  w.document.write(timbreHTML(titulo, corpo, opc)); w.document.close();
+}
+
+/* ==========================================================================
+   ANAMNESES — formulário montado a partir do modelo (MODELOS, vindo do servidor)
+   O cabeçalho "Dados pessoais" vem do cadastro do paciente e é só leitura:
+   escolher o paciente já traz tudo preenchido (pedido do Dr.).
+   ========================================================================== */
+let ANAM_ID = 0, ANAM_TIPO = "", ANAM_PAC = null;
+
+async function abrirAnamnese(id, tipoSugerido){
+  ANAM_ID = id || 0;
+  let reg = { tipo: tipoSugerido || filtroAnamTipo || "psicanalise", dados: "{}", data: hojeISO(), profissional: "" };
+  if(id){ try{ reg = await api("anamneses/"+id); }catch(e){ return toast(e.message,true); } }
+  ANAM_TIPO = reg.tipo;
+  ANAM_PAC = reg.paciente_id ? await api("pacientes/"+reg.paciente_id).catch(()=>null) : null;
+  let dados = {}; try{ dados = JSON.parse(reg.dados||"{}"); }catch{}
+
+  const host=$("#modal-host");
+  const opcoesTipo = Object.entries(MODELOS).map(([k,m])=>`<option value="${escA(k)}"${k===ANAM_TIPO?" selected":""}>${escA(m.rotulo||m.titulo)}</option>`).join("");
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(1000px,96vw)">
+    <h2>${id?"Editar anamnese":"Nova anamnese"}</h2>
+    <div class="modal-corpo">
+    <div class="formgrid">
+      <div><label>Modelo de anamnese <span style="color:var(--red)">*</span></label>
+        <select id="an-tipo" onchange="trocarModeloAnamnese()">${opcoesTipo}</select></div>
+      <div><label>Paciente <span style="color:var(--red)">*</span></label>
+        <div class="cbx" data-cbx data-tab="pacientes" data-valor="id" data-id="an-paciente">
+          <input type="text" id="an-paciente-txt" class="cbx-inp" autocomplete="off" placeholder="Digite o nome ou CPF…" value="${ANAM_PAC?escA(ANAM_PAC.nome):""}"
+            oninput="cbxFiltrar('an-paciente')" onfocus="cbxFiltrar('an-paciente')" onkeydown="cbxTecla(event,'an-paciente')" onblur="cbxBlur('an-paciente')">
+          <input type="hidden" id="an-paciente" value="${escA(reg.paciente_id||"")}">
+          <div class="cbx-list" id="an-paciente-list" hidden></div>
+        </div></div>
+      <div><label>Data</label><input type="date" id="an-data" value="${escA(reg.data||hojeISO())}"></div>
+      <div><label>Profissional responsável</label>
+        <div class="cbx" data-cbx data-tab="profissionais" data-valor="nome" data-id="an-prof">
+          <input type="text" id="an-prof-txt" class="cbx-inp" autocomplete="off" placeholder="Digite para buscar…" value="${escA(reg.profissional||"")}"
+            oninput="cbxFiltrar('an-prof')" onfocus="cbxFiltrar('an-prof')" onkeydown="cbxTecla(event,'an-prof')" onblur="cbxBlur('an-prof')">
+          <input type="hidden" id="an-prof" value="${escA(reg.profissional||"")}">
+          <div class="cbx-list" id="an-prof-list" hidden></div>
+        </div></div>
+    </div>
+    <div id="an-dados-pessoais"></div>
+    <div id="an-form"></div>
+    <div id="form-erros"></div>
+    </div>
+    <div class="acoes">
+      ${id?`<button class="btn btn-ghost" onclick="imprimirAnamnese(${id})">Imprimir</button>`:""}
+      ${id?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-navy" onclick="salvarAnamnese()">Salvar</button>
+    </div></div></div>`;
+
+  $("#an-paciente").addEventListener("change", async ()=>{
+    const pid=$("#an-paciente").value;
+    ANAM_PAC = pid ? await api("pacientes/"+pid).catch(()=>null) : null;
+    pintarDadosPessoaisAnamnese();
+  });
+  pintarDadosPessoaisAnamnese();
+  montarFormAnamnese(dados);
+}
+/* Cabeçalho só-leitura com os dados do cadastro do paciente escolhido. */
+function pintarDadosPessoaisAnamnese(){
+  const box=$("#an-dados-pessoais"); if(!box) return;
+  if(!ANAM_PAC){ box.innerHTML=`<p class="hint" style="color:var(--dim);margin:.8rem 0">Escolha o paciente — os dados do cadastro aparecem aqui automaticamente.</p>`; return; }
+  const p=ANAM_PAC, idade=idadeAnos(p.nascimento);
+  const item=(r,v)=> v?`<div><span style="color:var(--dim);font-size:.72rem">${escA(r)}</span><br><b style="font-weight:600">${escA(v)}</b></div>`:"";
+  box.innerHTML=`<div class="card" style="margin:.9rem 0;background:#f7f5fd;border-color:#e6e2f5">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+      <b style="color:var(--marinho)">Dados pessoais (do cadastro)</b>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="abrirCadastroDoPaciente()">Editar cadastro</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem 1rem;font-size:.86rem">
+      ${item("Nome",p.nome)}
+      ${item("Nascimento",p.nascimento?dataBR(p.nascimento)+(idade!==null?` (${idade}a)`:""):"")}
+      ${item("CPF",p.cpf)}${item("RG",p.rg)}
+      ${item("Estado civil",p.estado_civil)}${item("Escolaridade",p.escolaridade)}
+      ${item("Profissão",p.profissao)}${item("Religião",p.religiao)}
+      ${item("WhatsApp",p.celular)}${item("E-mail",p.email)}
+      ${item("Convênio",nomeConv(p.convenio_id))}
+      ${item("Endereço",enderecoCompleto(p))}
+      ${p.altura?item("Altura",p.altura+" m"):""}${p.peso?item("Peso",p.peso+" kg"):""}
+    </div></div>`;
+}
+function abrirCadastroDoPaciente(){ if(ANAM_PAC) window.open("/restrito/","_self"); }
+
+/* Monta os campos do modelo escolhido. */
+function montarFormAnamnese(dados){
+  const modelo=MODELOS[ANAM_TIPO]; const box=$("#an-form");
+  if(!modelo){ box.innerHTML=`<p class="hint">Modelo não encontrado.</p>`; return; }
+  let h="";
+  modelo.secoes.forEach((sec,si)=>{
+    h+=`<h3 style="margin:1.2rem 0 .5rem;color:var(--marinho);font-size:.8rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-top:1px solid var(--line);padding-top:.9rem">${escA(sec.titulo)}</h3>`;
+    if(sec.tipo==="matriz"){
+      const m=dados[sec.campo]||{};
+      h+=`<div style="overflow:auto"><table class="anam-m" data-matriz="${escA(sec.campo)}"><tr><th></th>${sec.colunas.map((c)=>`<th>${escA(c)}</th>`).join("")}</tr>`;
+      sec.linhas.forEach((lin)=>{
+        h+=`<tr><td>${escA(lin)}</td>`+sec.colunas.map((c)=>
+          `<td style="text-align:center"><input type="checkbox" data-mx="${escA(sec.campo)}" data-k="${escA(lin+"|"+c)}"${sec.exclusivo?` data-lin="${escA(sec.campo+"|"+lin)}"`:""}${m[lin+"|"+c]?" checked":""} style="width:auto"></td>`).join("")+`</tr>`;
+      });
+      h+=`</table></div>`;
+    } else if(sec.tipo==="lista"){
+      h+=`<div data-lista="${escA(sec.campo)}" data-cols='${escA(JSON.stringify(sec.colunas))}'>
+        <table class="anam-m"><tr>${sec.colunas.map((c)=>`<th>${escA(c)}</th>`).join("")}<th style="width:38px"></th></tr>
+        <tbody id="lst-${escA(sec.campo)}"></tbody></table>
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-top:.4rem" onclick="addLinhaLista('${escA(sec.campo)}')">+ Adicionar linha</button></div>`;
+    } else {
+      h+=`<div class="formgrid">`;
+      sec.campos.forEach(([k,rot,tipo,op={}])=>{
+        const v=dados[k];
+        const full = (tipo==="textarea"||tipo==="check") ? ' class="full"' : "";
+        h+=`<div${full}><label>${escA(rot)}</label>`;
+        if(tipo==="textarea") h+=`<textarea id="an-f-${escA(k)}" data-f="${escA(k)}" data-t="textarea">${escA(v||"")}</textarea>`;
+        else if(tipo==="check") h+=`<div class="chk-grid" data-f="${escA(k)}" data-t="check">`+
+          (op.opcoes||[]).map((o)=>`<label class="chk"><input type="checkbox" value="${escA(o)}"${(v||[]).includes(o)?" checked":""}> ${escA(o)}</label>`).join("")+`</div>`;
+        else if(tipo==="radio"||tipo==="simnao"){
+          const ops = tipo==="simnao" ? ["Sim","Não"] : (op.opcoes||[]);
+          h+=`<div class="chk-grid" data-f="${escA(k)}" data-t="radio" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">`+
+            ops.map((o)=>`<label class="chk"><input type="radio" name="an-r-${escA(k)}" value="${escA(o)}"${v===o?" checked":""}> ${escA(o)}</label>`).join("")+`</div>`;
+        }
+        else h+=`<input id="an-f-${escA(k)}" data-f="${escA(k)}" data-t="${escA(tipo)}" type="${tipo==="number"?"number":tipo==="date"?"date":"text"}" value="${escA(v||"")}">`;
+        h+=`</div>`;
+      });
+      h+=`</div>`;
+    }
+  });
+  box.innerHTML=h;
+  // linhas das listas (medicamentos, cirurgias…)
+  modelo.secoes.filter((s)=>s.tipo==="lista").forEach((sec)=>{
+    const linhas=(dados[sec.campo]||[]);
+    if(linhas.length) linhas.forEach((r)=>addLinhaLista(sec.campo,r)); else { addLinhaLista(sec.campo); addLinhaLista(sec.campo); }
+  });
+  // nas matrizes Sim/Não, marcar uma coluna desmarca a outra da mesma linha
+  box.querySelectorAll('input[data-lin]').forEach((cb)=>cb.addEventListener("change",()=>{
+    if(!cb.checked) return;
+    box.querySelectorAll(`input[data-lin="${cb.dataset.lin}"]`).forEach((o)=>{ if(o!==cb) o.checked=false; });
+  }));
+}
+function addLinhaLista(campo, valores){
+  const tb=$("#lst-"+campo); if(!tb) return;
+  const cont=tb.closest("[data-lista]"); const cols=JSON.parse(cont.dataset.cols);
+  const tr=document.createElement("tr");
+  tr.innerHTML=cols.map((_,i)=>`<td><input data-col="${i}" value="${escA((valores&&valores[i])||"")}" style="border:0;padding:.3rem"></td>`).join("")+
+    `<td style="text-align:center"><button type="button" class="btn btn-ghost btn-sm" onclick="this.closest('tr').remove()">×</button></td>`;
+  tb.appendChild(tr);
+}
+function trocarModeloAnamnese(){
+  ANAM_TIPO=$("#an-tipo").value;
+  montarFormAnamnese(coletarAnamnese().dados);   // preserva o que dá para preservar
+}
+function coletarAnamnese(){
+  const box=$("#an-form"), dados={};
+  box.querySelectorAll("[data-f]").forEach((el)=>{
+    const k=el.dataset.f, t=el.dataset.t;
+    if(t==="check") dados[k]=[...el.querySelectorAll("input:checked")].map((c)=>c.value);
+    else if(t==="radio"){ const c=el.querySelector("input:checked"); if(c) dados[k]=c.value; }
+    else { const v=(el.value||"").trim(); if(v) dados[k]=v; }
+  });
+  box.querySelectorAll("[data-matriz]").forEach((tb)=>{
+    const campo=tb.dataset.matriz, m={};
+    tb.querySelectorAll("input[data-mx]").forEach((cb)=>{ if(cb.checked) m[cb.dataset.k]=1; });
+    if(Object.keys(m).length) dados[campo]=m;
+  });
+  box.querySelectorAll("[data-lista]").forEach((cont)=>{
+    const campo=cont.dataset.lista, linhas=[];
+    cont.querySelectorAll("tbody tr").forEach((tr)=>{
+      const r=[...tr.querySelectorAll("input[data-col]")].map((i)=>i.value.trim());
+      if(r.some((x)=>x)) linhas.push(r);
+    });
+    if(linhas.length) dados[campo]=linhas;
+  });
+  return { dados };
+}
+async function salvarAnamnese(){
+  const box=$("#form-erros");
+  const paciente_id=$("#an-paciente").value;
+  if(!paciente_id){ box.innerHTML=`<div class="erros">Escolha o paciente.</div>`; return; }
+  const body={ paciente_id, tipo:$("#an-tipo").value, data:$("#an-data").value,
+    profissional:$("#an-prof").value, dados:JSON.stringify(coletarAnamnese().dados) };
+  try{
+    if(ANAM_ID) await api("anamneses/"+ANAM_ID,"PUT",body); else await api("anamneses","POST",body);
+    fecharModal(); toast("Anamnese salva."); carregarLista();
+  }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; }
+}
+async function excluirAnamnese(id){
+  if(!confirm("Excluir esta anamnese? Esta ação não pode ser desfeita.")) return;
+  try{ await api("anamneses/"+id,"DELETE"); fecharModal(); toast("Anamnese excluída."); carregarLista(); }
+  catch(e){ toast(e.message,true); }
+}
+const hojeISO=()=>new Date().toISOString().slice(0,10);
+
+/* Bloco "Dados pessoais" reaproveitado por TODAS as impressões do paciente —
+   é ele que o Dr. pediu que já viesse preenchido do cadastro. */
+const L = (r, v) => v ? `<tr><th>${escA(r)}</th><td>${escA(v)}</td></tr>` : "";
+function enderecoCompleto(p){
+  return [[p.endereco, p.numero].filter(Boolean).join(", "), p.complemento, p.bairro, p.cidade, p.cep]
+    .filter(Boolean).join(" · ");
+}
+function blocoDadosPessoais(p, convNome){
+  const idade = idadeAnos(p.nascimento);
+  const sexo = { M:"Masculino", F:"Feminino", O:"Outro" }[p.sexo] || p.sexo;
+  return `${p.foto?`<img class="foto" src="${escA(p.foto)}" alt="">`:""}
+    <div class="sec">Dados pessoais</div>
+    <div class="grade">
+      <table class="d">
+        ${L("Nome", p.nome)}
+        ${L("Nascimento", p.nascimento ? dataBR(p.nascimento) + (idade!==null?` (${idade} anos)`:"") : "")}
+        ${L("CPF", p.cpf)}${L("RG", p.rg)}${L("Sexo", sexo)}
+        ${L("Estado civil", p.estado_civil)}${L("Naturalidade", p.naturalidade)}
+      </table>
+      <table class="d">
+        ${L("Escolaridade", p.escolaridade)}${L("Profissão", p.profissao)}${L("Religião", p.religiao)}
+        ${L("WhatsApp / Celular", p.celular)}${L("Telefone", p.telefone)}${L("E-mail", p.email)}
+        ${L("Convênio", convNome || nomeConv(p.convenio_id))}
+      </table>
+    </div>
+    <table class="d">${L("Endereço", enderecoCompleto(p))}
+      ${p.altura||p.peso?L("Altura / Peso",[p.altura?p.altura+" m":"",p.peso?p.peso+" kg":""].filter(Boolean).join(" · ")):""}
+      ${L("Código (prontuário)", p.codigo)}</table>
+    ${p.resp_nome?`<div class="sec">Responsável legal</div>
+    <table class="d">${L("Nome",p.resp_nome)}${L("CPF",p.resp_cpf)}${L("RG",p.resp_rg)}${L("Nascimento",dataBR(p.resp_nascimento))}</table>`:""}`;
+}
+const assinatura = (quem) => `<div class="assin"><div>${escA(quem||"Profissional responsável")}</div><div>Paciente / responsável</div></div>`;
+
+/* Ficha imprimível do paciente. */
+async function imprimirFicha(id){
+  let p; try{ p=await api("pacientes/"+id); }catch(e){ return toast(e.message,true); }
+  const corpo = blocoDadosPessoais(p) + `
+    <div class="sec">Filiação e outros</div>
+    <table class="d">${L("Nome da mãe",p.mae)}${L("Nome do pai",p.pai)}${L("Tipo sanguíneo",p.sangue)}
+      ${L("Cor de pele",p.cor_pele)}${L("Prioridade",p.prioridade)}${L("Indicação",p.indicacao)}${L("TAG",p.tag)}
+      ${L("Consentimento",Number(p.consentimento)?"Assinado / aceito":"")}</table>
+    ${p.observacao?`<div class="sec">Observação</div><p>${escA(p.observacao)}</p>`:""}`;
+  abrirImpressao("Ficha do paciente", corpo, { subtitulo: p.nome });
+}
+
+/* ==========================================================================
+   IMPRESSÃO DA ANAMNESE — cabeçalho com os dados do cadastro + respostas
+   ========================================================================== */
+const MARC = (on) => on ? "☒" : "☐";
+function anamneseCorpoHTML(modelo, dados, p, convNome){
+  let html = blocoDadosPessoais(p, convNome);
+  for(const sec of modelo.secoes){
+    html += `<div class="sec">${escA(sec.titulo)}</div>`;
+    if(sec.tipo==="matriz"){
+      const m=(dados[sec.campo]||{});
+      html += `<table class="m"><tr><th></th>${sec.colunas.map((c)=>`<th class="c" style="text-align:center">${escA(c)}</th>`).join("")}</tr>`;
+      for(const lin of sec.linhas){
+        html += `<tr><td>${escA(lin)}</td>` + sec.colunas.map((c)=>
+          `<td class="c"><span class="marc">${MARC(m[lin+"|"+c])}</span></td>`).join("") + `</tr>`;
+      }
+      html += `</table>`;
+    } else if(sec.tipo==="lista"){
+      const linhas=(dados[sec.campo]||[]).filter((r)=>r.some((x)=>String(x||"").trim()));
+      html += `<table class="m"><tr>${sec.colunas.map((c)=>`<th>${escA(c)}</th>`).join("")}</tr>`;
+      if(linhas.length) for(const r of linhas) html += `<tr>${sec.colunas.map((_,i)=>`<td>${escA(r[i]||"")}</td>`).join("")}</tr>`;
+      else html += `<tr><td colspan="${sec.colunas.length}" style="color:#9aa">—</td></tr>`;
+      html += `</table>`;
+    } else {
+      for(const [k,rot,tipo,op={}] of sec.campos){
+        const v=dados[k];
+        if(tipo==="check"){
+          html += `<div class="campo"><div class="rot">${escA(rot)}</div><div class="val">` +
+            (op.opcoes||[]).map((o)=>`<span style="margin-right:.9rem"><span class="marc">${MARC((v||[]).includes(o))}</span> ${escA(o)}</span>`).join("") + `</div></div>`;
+        } else if(tipo==="radio"||tipo==="simnao"){
+          const ops = tipo==="simnao" ? ["Sim","Não"] : (op.opcoes||[]);
+          html += `<div class="campo"><div class="rot">${escA(rot)}</div><div class="val">` +
+            ops.map((o)=>`<span style="margin-right:.9rem"><span class="marc">${MARC(v===o)}</span> ${escA(o)}</span>`).join("") + `</div></div>`;
+        } else {
+          html += `<div class="campo"><div class="rot">${escA(rot)}</div><div class="val">${escA(v||"")}</div></div>`;
+        }
+      }
+    }
+  }
+  return html;
+}
+async function imprimirAnamnese(id){
+  let a; try{ a=await api("anamneses/"+id); }catch(e){ return toast(e.message,true); }
+  const modelo=MODELOS[a.tipo]; if(!modelo) return toast("Modelo de anamnese não encontrado.",true);
+  let p; try{ p=await api("pacientes/"+a.paciente_id); }catch(e){ return toast(e.message,true); }
+  let dados={}; try{ dados=JSON.parse(a.dados||"{}"); }catch{}
+  const corpo = anamneseCorpoHTML(modelo, dados, p) + assinatura(a.profissional);
+  abrirImpressao(modelo.titulo, corpo, { subtitulo: `${p.nome}${a.data?" · "+dataBR(a.data):""}` });
+}
+
+/* ==========================================================================
+   PRONTUÁRIO COMPLETO — tudo do paciente, em sequência cronológica.
+   Atende ao pedido: "se o paciente tiver 1+ ano de tratamento, poder imprimir
+   tudo certinho dele, por sequência".
+   ========================================================================== */
+async function imprimirHistorico(pacienteId){
+  let h; try{ h=await api("historico/"+pacienteId); }catch(e){ return toast(e.message,true); }
+  const p=h.paciente;
+  const nAt=h.atendimentos.length, nEv=h.evolucoes.length, nAn=h.anamneses.length;
+  // período de tratamento
+  const datas=[...h.atendimentos.map((x)=>x.data),...h.evolucoes.map((x)=>x.data)].filter(Boolean).sort();
+  const periodo = datas.length ? `${dataBR(datas[0])} a ${dataBR(datas[datas.length-1])}` : "—";
+
+  let corpo = blocoDadosPessoais(p, p.convenio_nome);
+  corpo += `<div class="sec">Resumo do tratamento</div>
+    <div class="cards">
+      <div class="kpi"><b>${nAt}</b><span>Atendimentos</span></div>
+      <div class="kpi"><b>${nEv}</b><span>Evoluções</span></div>
+      <div class="kpi"><b>${nAn}</b><span>Anamneses</span></div>
+      <div class="kpi" style="min-width:190px"><b style="font-size:.95rem;padding-top:.3rem">${escA(periodo)}</b><span>Período</span></div>
+    </div>`;
+
+  // 1) anamneses, cada uma em página própria (documento completo)
+  h.anamneses.forEach((a)=>{
+    const modelo=MODELOS[a.tipo]; if(!modelo) return;
+    let dados={}; try{ dados=JSON.parse(a.dados||"{}"); }catch{}
+    corpo += `<div class="quebra"></div><h1 style="margin-top:0">${escA(modelo.titulo)}</h1>
+      <p class="subtitulo">${escA(a.data?dataBR(a.data):"")}${a.profissional?" · "+escA(a.profissional):""}</p>`;
+    // sem repetir os dados pessoais (já saíram na capa): só as respostas
+    const modeloSóRespostas = anamneseCorpoHTML(modelo, dados, {}, "").replace(/^[\s\S]*?(?=<div class="sec">)/, "");
+    corpo += modeloSóRespostas;
+  });
+
+  // 2) linha do tempo das evoluções (o miolo do prontuário)
+  if(nEv){
+    corpo += `<div class="quebra"></div><h1 style="margin-top:0">Evolução clínica</h1>
+      <p class="subtitulo">${escA(p.nome)} · ${nEv} registro(s) · ${escA(periodo)}</p>`;
+    h.evolucoes.forEach((e,i)=>{
+      let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
+      corpo += `<div class="evo">
+        <div class="cab">${i+1}. ${escA(e.data?dataBR(e.data):"(sem data)")}</div>
+        <div class="met">${escA(e.profissional||"—")}${servs.length?" · "+escA(servs.join(", ")):""}</div>
+        ${e.avaliacao?`<p><b>Avaliação:</b> ${escA(e.avaliacao)}</p>`:""}
+        ${e.evolucao?`<p><b>Evolução:</b> ${escA(e.evolucao)}</p>`:""}
+        ${e.plano?`<p><b>Plano:</b> ${escA(e.plano)}</p>`:""}
+        ${e.encaminhamentos?`<p><b>Encaminhamentos:</b> ${escA(e.encaminhamentos)}</p>`:""}
+        ${e.responsavel?`<p style="color:#8a90a0;font-size:.75rem">Responsável técnico: ${escA(e.responsavel)}</p>`:""}
+      </div>`;
+    });
+  }
+
+  // 3) histórico de atendimentos (agenda), em ordem
+  if(nAt){
+    corpo += `<div class="quebra"></div><h1 style="margin-top:0">Histórico de atendimentos</h1>
+      <p class="subtitulo">${escA(p.nome)} · ${nAt} atendimento(s)</p>
+      <table class="m"><tr><th>Data</th><th>Horário</th><th>Procedimento</th><th>Profissional</th><th>Sala</th><th>Convênio</th><th>Situação</th></tr>`;
+    h.atendimentos.forEach((a)=>{
+      corpo += `<tr><td>${escA(dataBR(a.data))}</td><td>${escA(a.hora||"—")}${a.hora_fim?"–"+escA(a.hora_fim):""}</td>
+        <td>${escA(a.procedimento_nome||"—")}</td><td>${escA(a.profissional_nome||"—")}</td>
+        <td>${escA(a.sala_nome||"—")}</td><td>${escA(a.convenio_nome||"—")}</td><td>${escA(a.status||"—")}</td></tr>`;
+    });
+    corpo += `</table>`;
+  }
+  corpo += assinatura();
+  abrirImpressao("Prontuário completo", corpo, { subtitulo: `${p.nome} · período ${periodo}` });
+}
+
+/* Relatório impresso com o timbre e os mesmos indicadores da tela. */
+async function imprimirRelatorio(){
+  let d; try{ d=await api("relatorios"); }catch(e){ return toast(e.message,true); }
+  const kpi=(r,n)=>`<div class="kpi"><b>${n}</b><span>${escA(r)}</span></div>`;
+  const barras=(rows,fmt)=>{ if(!rows||!rows.length) return '<p style="color:#9aa">Sem dados no período.</p>';
+    const max=Math.max(...rows.map((x)=>x.total),1);
+    return rows.map((x)=>`<div class="barra"><span class="lb">${escA(fmt?fmt(x.rotulo):x.rotulo)}</span><span class="b"><i style="width:${Math.round(x.total/max*100)}%"></i></span><span class="n">${x.total}</span></div>`).join(""); };
+  const corpo=`
+    <div class="cards">
+      ${kpi("Pacientes",d.totais.pacientes)}${kpi("Atendimentos",d.totais.atendimentos)}${kpi("Atendidos",d.totais.atendidos)}
+      ${kpi("Faltas",d.totais.faltas)}${kpi("Anamneses",d.totais.anamneses)}${kpi("Evoluções",d.totais.prontuarios)}
+    </div>
+    <div class="sec">Atendimentos por procedimento</div>${barras(d.porProcedimento)}
+    <div class="sec">Atendimentos por profissional</div>${barras(d.porProfissional)}
+    <div class="sec">Atendimentos por convênio</div>${barras(d.porConvenio)}
+    <div class="sec">Atendimentos por situação</div>${barras(d.porStatus)}
+    <div class="sec">Atendimentos por mês</div>${barras(d.porMes,mesBR)}`;
+  abrirImpressao("Relatório de atividades", corpo);
+}
+
+/* Impressão da agenda de atendimentos, com o timbre da clínica, agrupada por
+   dia — respeita o filtro ativo (serviço/situação/mês) e a busca. */
+const DIAS_SEMANA=["domingo","segunda-feira","terça-feira","quarta-feira","quinta-feira","sexta-feira","sábado"];
+const contatoPac=(id)=>{ const r=acha("pacientes",id); return r?(r.celular||r.telefone||""):""; };
+const CORES_STATUS={Agendado:"#5B4FD8",Confirmado:"#16a34a",Atendido:"#3B2E9E",Faltou:"#dc2626",Remarcado:"#d97706",Cancelado:"#94a3b8"};
+function imprimirAgenda(){
+  const dados=dadosVisiveis().filter((a)=>a.data).slice()
+    .sort((x,y)=> (x.data===y.data ? String(x.hora||"").localeCompare(String(y.hora||"")) : x.data.localeCompare(y.data)));
+  if(!dados.length) return toast("Nenhum agendamento para imprimir.",true);
+  const datas=[...new Set(dados.map((a)=>a.data))].sort();
+  const periodo=`Período de ${dataBR(datas[0])} até ${dataBR(datas[datas.length-1])}`;
+  const filtro=filtroAgenda?` · Filtro: ${escA(rotuloFiltro())}`:"";
+  const linha=(a)=>{
+    const faixa=a.hora?`${a.hora}${a.hora_fim?"–"+a.hora_fim:""}`:"—";
+    const cor=CORES_STATUS[a.status||"Agendado"]||"#94a3b8";
+    const val=(a.valor&&String(a.valor).trim())?`R$ ${escA(a.valor)}`:"";
+    const cont=contatoPac(a.paciente_id);
+    const partes=[
+      `<b>${escA(a.nome_agenda||nomePac(a.paciente_id))}</b>`,
+      a.procedimento_id?escA(nomeProc(a.procedimento_id)):"",
+      val,
+      a.profissional_id?escA(nomeProf(a.profissional_id)):"",
+      a.sala_id?escA(nomeSala(a.sala_id)):"",
+      a.convenio_id?escA(nomeConv(a.convenio_id)):"",
+      cont?`📞 ${escA(a.celular||cont)}`:"",
+      `<em style="color:${cor};font-style:normal;font-weight:700">${escA(a.status||"Agendado")}</em>`,
+    ].filter(Boolean).join(" &nbsp;·&nbsp; ");
+    return `<div class="ag-l" style="border-left:3px solid ${cor}"><span class="ag-h">${faixa}</span><span class="ag-d">${partes}</span></div>`;
+  };
+  let corpo=`<style>
+     .ag-sub{color:#5a6172;font-size:.82rem;margin:-.4rem 0 1rem}
+     .ag-dia{margin:1.1rem 0 .3rem;color:#5136d6;font-weight:700;font-size:.9rem;border-bottom:1px solid #eceaf6;padding-bottom:.25rem;text-transform:capitalize}
+     .ag-l{display:flex;gap:.7rem;align-items:baseline;padding:.34rem .55rem;border-bottom:1px solid #f5f3fb;page-break-inside:avoid}
+     .ag-h{flex:0 0 96px;font-weight:700;color:#5136d6;font-variant-numeric:tabular-nums;font-size:.82rem}
+     .ag-d{flex:1;font-size:.82rem;color:#232733;line-height:1.5}
+     .ag-tot{margin-top:1rem;font-size:.8rem;color:#5a6172;font-weight:600}
+   </style>
+   <p class="ag-sub">${escA(periodo)}${filtro}</p>`;
+  for(const dia of datas){
+    const [a,mth,d]=dia.split("-").map(Number);
+    const dow=DIAS_SEMANA[new Date(a,mth-1,d).getDay()];
+    corpo+=`<div class="ag-dia">${dow}, ${d} de ${MESES_PT[mth-1]} de ${a}</div>`;
+    corpo+=dados.filter((x)=>x.data===dia).map(linha).join("");
+  }
+  corpo+=`<p class="ag-tot">Total de registros: ${dados.length}</p>`;
+  abrirImpressao("Agenda de atendimentos", corpo, { paisagem: true });
+}
+
+/* ------------------------------ uploads -------------------------------- */
+function escolherArquivo(accept){ return new Promise((ok)=>{ const fi=document.createElement("input");
+  fi.type="file"; fi.accept=accept; fi.onchange=()=>ok(fi.files[0]||null); fi.click(); }); }
+function lerDataURL(f){ return new Promise((ok)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.readAsDataURL(f); }); }
+async function enviar(f){ return api("upload","POST",{name:f.name,dataUrl:await lerDataURL(f)}); }
+async function subirFoto(id){ const f=await escolherArquivo("image/*"); if(!f) return;
+  try{ const up=await enviar(f); $("#"+id).value=up.path; const p=$("#"+id+"-prev"); p.src=up.path; p.style.display=""; toast("Foto enviada."); }
+  catch(e){ toast(e.message,true); } }
+async function subirArquivo(id){ const f=await escolherArquivo("image/*,application/pdf"); if(!f) return;
+  try{ const up=await enviar(f); $("#"+id).value=up.path; $("#"+id+"-nome").innerHTML=`<a href="${up.path}" target="_blank">${escA(f.name)}</a>`; toast("Arquivo enviado."); }
+  catch(e){ toast(e.message,true); } }
+async function subirFotos(id){ const f=await escolherArquivo("image/*"); if(!f) return;
+  try{ const up=await enviar(f); const inp=$("#"+id); const arr=JSON.parse(inp.value||"[]"); arr.push(up.path); inp.value=JSON.stringify(arr); desenharFotos(id); }
+  catch(e){ toast(e.message,true); } }
+function desenharFotos(id){ const inp=$("#"+id); let arr=[]; try{ arr=JSON.parse(inp.value||"[]"); }catch{}
+  $("#"+id+"-lista").innerHTML=arr.map((src,i)=>`<figure><img src="${escA(src)}" alt=""><button type="button" onclick="removerFoto('${id}',${i})">×</button></figure>`).join(""); }
+function removerFoto(id,i){ const inp=$("#"+id); const arr=JSON.parse(inp.value||"[]"); arr.splice(i,1); inp.value=JSON.stringify(arr); desenharFotos(id); }
+
+/* ----------------------------- relatórios ------------------------------ */
+async function carregarRelatorios(){
+  try{ const d=await api("relatorios");
+    $("#rel-stats").innerHTML=[["Pacientes",d.totais.pacientes],["Atendimentos",d.totais.atendimentos],
+      ["Atendidos",d.totais.atendidos],["Faltas",d.totais.faltas],["Anamneses",d.totais.anamneses],["Evoluções",d.totais.prontuarios]]
+      .map(([r,n])=>`<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
+    // as barras de "por procedimento" e "por situação" levam à agenda filtrada
+    $("#rel-esp").innerHTML=barras(d.porProcedimento,"procedimento")||'<p class="vazio">Sem atendimentos ainda.</p>';
+    $("#rel-status").innerHTML=barras(d.porStatus,"status")||'<p class="vazio">Sem atendimentos ainda.</p>';
+    $("#rel-mes").innerHTML=barras(d.porMes.map((x)=>({rotulo:mesBR(x.rotulo),total:x.total,bruto:x.rotulo})),"mes")||'<p class="vazio">Sem atendimentos ainda.</p>';
+  }catch(e){ toast(e.message,true); }
+}
+function barras(rows,filtro){ if(!rows||!rows.length) return "";
+  const max=Math.max(...rows.map((r)=>r.total),1);
+  return rows.map((r)=>{
+    const clic=filtro?` class="barra clik" onclick="irParaAgenda('${filtro}',${JSON.stringify(r.bruto??r.rotulo).replace(/"/g,"&quot;")})"`:' class="barra"';
+    return `<div${clic}><span style="width:180px">${escA(r.rotulo)}</span><span class="b"><i style="width:${Math.round(r.total/max*100)}%"></i></span><span class="n">${r.total}</span></div>`;
+  }).join(""); }
+
+/* Clique numa barra do relatório → abre a Agenda, vista Tabela, já filtrada. */
+let filtroAgenda=null, preservarFiltro=false;
+function irParaAgenda(tipo,valor){
+  filtroAgenda={tipo,valor}; preservarFiltro=true;   // sobrevive ao mostrarModulo
+  vistaAgenda="tabela";
+  const btn=document.querySelector('.navbtn[data-nav="atendimentos"]');
+  if(btn) btn.click();
+}
+function limparFiltroAgenda(){ filtroAgenda=null; carregarLista(); }
+function aplicarFiltroAgenda(lista){
+  if(!filtroAgenda) return lista;
+  const {tipo,valor}=filtroAgenda;
+  return lista.filter((a)=>{
+    if(tipo==="status") return (a.status||"Agendado")===valor;
+    if(tipo==="mes") return String(a.data||"").slice(0,7)===valor;
+    if(tipo==="procedimento"){ const nome=a.procedimento_id?(acha("procedimentos",a.procedimento_id)||{}).nome:""; return (nome||"(sem procedimento)")===valor; }
+    return true;
+  });
+}
+function rotuloFiltro(){ if(!filtroAgenda) return ""; const t={procedimento:"Procedimento",status:"Situação",mes:"Mês"}[filtroAgenda.tipo]||filtroAgenda.tipo; const v=filtroAgenda.tipo==="mes"?mesBR(filtroAgenda.valor):filtroAgenda.valor; return `${t}: ${v}`; }
+
+/* ------------------------------- CSV ----------------------------------- */
+function exportarCSV(){
+  const m=MODULOS[MOD]; if(!LISTA.length) return toast("Nada para exportar.",true);
+  const cols=m.colunas.map((c)=>c[0]);
+  const cab=m.colunas.map((c)=>c[1]);
+  const linha=(vals)=>vals.map((v)=>`"${String(v??"").replace(/"/g,'""')}"`).join(";");
+  const corpo=LISTA.map((row)=>linha(m.colunas.map((c)=>{
+    const v=row[c[0]]; const t=c[2];
+    if(t==="pac") return nomePac(v); if(t==="prof") return nomeProf(v);
+    if(t==="conv") return nomeConv(v); if(t==="sala") return nomeSala(v);
+    if(t==="proc") return nomeProc(v); if(t==="anam") return rotuloAnam(v);
+    if(t==="servicos"){ let a=[]; try{a=JSON.parse(v||"[]");}catch{a=v?[v]:[];} return a.join(", "); }
+    if(t==="bool") return Number(v)?"Sim":"Não"; if(t==="data") return dataBR(v);
+    return v??""; })));
+  const csv="﻿"+[linha(cab),...corpo].join("\r\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=MOD+".csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ------------------------------- conta --------------------------------- */
+async function trocarSenha(){
+  try{ await api("senha","POST",{atual:$("#ct-atual").value,nova:$("#ct-nova").value});
+    $("#ct-atual").value=$("#ct-nova").value=""; toast("Senha alterada."); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* -------------------------------- boot --------------------------------- */
+(async()=>{ try{ const me=await api("me"); iniciarApp(me); }
+  catch{ $("#login").hidden=false; $("#lg-user").focus(); } })();
+</script>
+</body>
+</html>

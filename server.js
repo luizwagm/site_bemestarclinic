@@ -12,13 +12,27 @@ const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 
 const ROOT = __dirname;
-const PORT = 5185;
+const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir uma cópia de teste
 
 /* Versão do gerenciador — fonte única da verdade. O painel lê daqui pela API,
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.7.0";
+const APP_VERSION = "1.9.0";
+
+/* CSP do painel /admin. Segunda linha de defesa: mesmo que um texto vindo do
+   banco escape do escape do HTML, o navegador recusa script de outra origem,
+   <object>/<embed> e a página dentro de um iframe alheio. 'unsafe-inline' é
+   necessário porque o painel usa <script> e style inline. */
+const CSP_PAINEL = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; " +
+  "form-action 'self'; img-src 'self' data: https:; " +
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+  "font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'";
+
+/* Sistema de gestão da clínica (/restrito) — app INDEPENDENTE deste painel.
+   Compartilha só o processo e a porta; banco, sessão e login são separados. */
+const { handleRestrito } = require("./restrito");
+
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -1199,6 +1213,23 @@ http.createServer(async (req, res) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");            // impede clickjacking no painel
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
+  /* HSTS — obriga o navegador a só voltar por HTTPS, fechando a janela de
+     downgrade (o visitante que digita "bemestarclinic.com" e trafega o cookie
+     de sessão em claro antes do redirect). Só sob HTTPS: emitir em HTTP puro
+     travaria o acesso em ambiente sem certificado. Emitido AQUI, então vale
+     para site, /admin e /restrito — todos passam por este handler. */
+  if (req.headers["x-forwarded-proto"] === "https")
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+
+  /* Sistema de gestão da clínica (/restrito) — app independente, banco próprio.
+     Vem ANTES do modo manutenção de propósito: a equipe precisa continuar
+     atendendo mesmo com o site fechado para o público. */
+  try { if (handleRestrito(req, res, p)) return; }
+  catch (e) {
+    console.error("  ✖ /restrito:", e.message);
+    if (!res.headersSent) { res.writeHead(500); res.end("Erro interno"); }
+    return;
+  }
 
   try {
     /* Modo manutenção: barra o visitante mas deixa passar o painel, a API e os
@@ -1322,10 +1353,14 @@ http.createServer(async (req, res) => {
       }
       if (p === "/api/upload" && req.method === "POST") {
         const { name, dataUrl } = await readBody(req);
-        const m = /^data:(image\/(?:png|jpe?g|webp|svg\+xml|gif));base64,(.+)$/.exec(dataUrl || "");
-        if (!m) return json(res, 400, { error: "Envie uma imagem (png, jpg, webp, svg ou gif)" });
+        /* SVG fica de fora: é XML, aceita <script> dentro e seria servido da
+           MESMA origem do site — um arquivo desses vira XSS armazenado, com
+           acesso ao cookie de quem abrisse o link. Os SVG da identidade ficam
+           em assets/img, versionados; o painel só envia imagem rasterizada. */
+        const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/.exec(dataUrl || "");
+        if (!m) return json(res, 400, { error: "Envie uma imagem PNG, JPG, WEBP ou GIF." });
         const safe = slug(path.parse(name || "foto").name).slice(0, 40) || "foto";
-        const ext = m[1] === "image/svg+xml" ? ".svg" : "." + m[1].split("/")[1].replace("jpeg", "jpg");
+        const ext = "." + m[1].split("/")[1].replace("jpeg", "jpg");
         const file = `${Date.now().toString(36)}-${safe}${ext}`;
         fs.writeFileSync(path.join(UPLOAD_DIR, file), Buffer.from(m[2], "base64"));
         return json(res, 200, { ok: true, path: `/assets/img/uploads/${file}` });
@@ -1336,8 +1371,12 @@ http.createServer(async (req, res) => {
 
     if (p === "/admin" || p === "/admin/") {
       // no-store: painel autenticado não deve ficar em cache — e garante que a
-      // versão mostrada na tela de login seja sempre a que está rodando agora
-      res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow" });
+      // versão mostrada na tela de login seja sempre a que está rodando agora.
+      // CSP: mesmo que um texto do banco escape do escape, o navegador se recusa
+      // a executar script de outra origem ou <object>; e frame-ancestors 'none'
+      // fecha clickjacking no painel.
+      res.writeHead(200, { "Content-Type": MIME[".html"], "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow", "Content-Security-Policy": CSP_PAINEL });
       const adminHtml = fs.readFileSync(path.join(ROOT, "admin", "index.html"), "utf8")
         .replaceAll("{{APP_VERSION}}", APP_VERSION);
       return res.end(adminHtml);
@@ -1348,8 +1387,14 @@ http.createServer(async (req, res) => {
        Exceção: /.well-known/ precisa passar, é por onde o Let's Encrypt valida
        o domínio para emitir e renovar o certificado. */
     const ocultoProibido = /(^|\/)\.(?!well-known\/)/.test(p);
-    const extProibida = /\.(js|json|md|db|log|bak|sqlite3?|ya?ml|toml|lock)$/i.test(p) && !p.startsWith("/assets/");
-    if (/^\/(data|src|node_modules)(\/|$)/.test(p) || ocultoProibido || extProibida) {
+    /* Extensões que nunca são conteúdo do site. Inclui os artefatos de deploy:
+       um deploy.sh servido em HTTP 200 entrega de bandeja o nome do serviço, o
+       usuário do systemd, o caminho da aplicação e onde ficam os backups. */
+    const extProibida = /\.(js|json|md|db|log|bak|sqlite3?|ya?ml|toml|lock|sh|bash|service|env|conf|ini|sql|pem|key|crt|backup|old|orig|swp|tmp)$/i.test(p)
+      && !p.startsWith("/assets/");
+    // pastas que nunca devem ser navegáveis
+    const dirProibido = /^\/(data|src|node_modules|nginx|backups|restrito\/arquivos)(\/|$)/.test(p);
+    if (dirProibido || ocultoProibido || extProibida) {
       res.writeHead(404, { "Content-Type": "text/plain" });
       return res.end("404");
     }
