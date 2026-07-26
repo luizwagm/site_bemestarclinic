@@ -52,6 +52,9 @@
     #login{position:fixed;inset:0;background:var(--violet);display:grid;place-items:center;z-index:50}
     #login .card{width:min(360px,90vw);text-align:center;padding:2rem}
     .imgrow{display:flex;gap:.6rem;align-items:center}
+    .cep-row{display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem}
+    .cep-row .cep-busca{max-width:160px}
+    .cep-aviso{white-space:nowrap}
     /* --- Manutenção --- */
     #card-manutencao.manut-on{border-color:#f6c6d4;background:#fffafb;box-shadow:0 0 0 3px rgba(224,66,107,.09)}
     .manut-estado{margin:.2rem 0 .6rem}
@@ -356,11 +359,43 @@ function renderTexts() {
             ${val ? `<img class="thumb" src="${escA(val)}" alt="">` : ""}
           </div>`;
         if (tipo === "bigtext") return `<label>${escA(rotulo)}</label><textarea ${attrs} style="min-height:150px">${escA(val)}</textarea>`;
+        // endereço com busca de CEP: digita o CEP e o texto vem preenchido
+        if (tipo === "endereco_cep") return `<label>${escA(rotulo)}</label>
+          <div class="cep-row">
+            <input class="cep-busca" inputmode="numeric" maxlength="9" placeholder="CEP (00000-000)"
+                   oninput="buscarCepAdmin(this)" onblur="buscarCepAdmin(this)">
+            <span class="cep-aviso hint"></span>
+          </div>
+          <textarea ${attrs}>${escA(val)}</textarea>`;
         if (tipo === "textarea" || tipo === "lista" || tipo === "stats" || tipo === "json_lista")
           return `<label>${escA(rotulo)}</label><textarea ${attrs}>${escA(val)}</textarea>`;
         return `<label>${escA(rotulo)}</label><input ${attrs} value="${escA(val)}">`;
       }).join("")}
     </div>`).join("");
+}
+
+/* Busca o CEP pelo nosso servidor (a CSP do painel é connect-src 'self') e
+   escreve o endereço no textarea logo abaixo. Só preenche se estiver vazio —
+   o que o cliente já digitou nunca é sobrescrito. */
+let cepUltimo = "";
+async function buscarCepAdmin(input) {
+  const d = String(input.value || "").replace(/\D/g, "").slice(0, 8);
+  input.value = d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  const aviso = input.parentElement.querySelector(".cep-aviso");
+  const area = input.closest(".cep-row").nextElementSibling;
+  if (d.length !== 8) { aviso.textContent = ""; return; }
+  if (d === cepUltimo) return;
+  cepUltimo = d;
+  aviso.style.color = ""; aviso.textContent = "Buscando…";
+  try {
+    const r = await fetch("/api/cep/" + d);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { aviso.style.color = "var(--amarelo,#b3792a)"; aviso.textContent = j.error || "CEP não encontrado."; return; }
+    const linha = [j.logradouro, j.bairro, j.uf ? `${j.cidade}/${j.uf}` : j.cidade].filter(Boolean).join(", ");
+    if (area && !area.value.trim()) area.value = linha;
+    aviso.style.color = "#1c7a45";
+    aviso.textContent = `✓ ${linha}${area && area.value.trim() && area.value.trim() !== linha ? " (endereço atual mantido)" : ""}`;
+  } catch (e) { aviso.style.color = "#b3792a"; aviso.textContent = "Não consegui consultar agora."; }
 }
 
 async function saveTexts() {

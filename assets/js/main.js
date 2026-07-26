@@ -70,6 +70,45 @@ function initFab() {
   document.body.appendChild(a);
 }
 
+/* CEP do formulário de agendamento: digitou os 8 dígitos, monta o endereço.
+   A consulta passa pelo nosso servidor (/api/cep) — o visitante não é exposto
+   a um serviço de terceiro e o resultado fica em cache lá. */
+function initCepAgendar() {
+  const cep = $("#a-cep");
+  const end = $("#a-end");
+  const aviso = $("#a-cep-aviso");
+  if (!cep || !end) return;
+
+  const soDig = (s) => String(s || "").replace(/\D/g, "");
+  cep.addEventListener("input", () => {
+    const d = soDig(cep.value).slice(0, 8);
+    cep.value = d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;   // máscara 00000-000
+    if (d.length === 8) buscar(d);
+    else if (aviso) aviso.textContent = "";
+  });
+  cep.addEventListener("blur", () => { const d = soDig(cep.value); if (d.length === 8) buscar(d); });
+
+  let ultimo = "";
+  async function buscar(d) {
+    if (d === ultimo) return;
+    ultimo = d;
+    if (aviso) { aviso.style.color = ""; aviso.textContent = "Buscando endereço…"; }
+    try {
+      const r = await fetch("/api/cep/" + d);
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { if (aviso) { aviso.style.color = "#b3792a"; aviso.textContent = j.error || "CEP não encontrado — escreva o endereço."; } return; }
+      const linha = [j.logradouro, j.bairro, j.uf ? `${j.cidade}/${j.uf}` : j.cidade].filter(Boolean).join(", ");
+      // não apaga o que a pessoa já escreveu; só completa quando está vazio
+      if (!end.value.trim()) end.value = linha;
+      if (aviso) { aviso.style.color = "#1c7a45"; aviso.textContent = `✓ ${j.cidade}${j.uf ? "/" + j.uf : ""}`; }
+      const num = $("#a-num");
+      if (num && !num.value) num.focus();
+    } catch (e) {
+      if (aviso) { aviso.style.color = "#b3792a"; aviso.textContent = "Não consegui consultar agora — escreva o endereço."; }
+    }
+  }
+}
+
 /* Formulário de agendamento (/agendar/) → monta a mensagem e envia ao WhatsApp */
 function initAgendarForm() {
   const form = $("#agendar-form");
@@ -82,6 +121,8 @@ function initAgendarForm() {
     const alvo = [...sel.options].find((o) => o.text.trim() === esp.trim());
     if (alvo) sel.value = alvo.value || alvo.text;
   }
+
+  initCepAgendar();
 
   const refWrap = $("#ref-quem-wrap");
   const refInput = $("#a-quem");
@@ -115,6 +156,8 @@ function initAgendarForm() {
       L("🔹 Nome do pai", d.pai) +
       `\n*🏡 Endereço e Contato*\n` +
       L("📍 Endereço", d.endereco) +
+      L("🔢 Número/compl.", d.numero) +
+      L("📮 CEP", d.cep) +
       L("📞 Telefone", d.telefone) +
       L("📞 Emergência", d.emergencia) +
       L("📷 Instagram", d.instagram) +

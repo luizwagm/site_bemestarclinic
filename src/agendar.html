@@ -91,8 +91,19 @@
 
           <fieldset class="agendar-group">
             <legend class="agendar-legend">🏡 Endereço e Contato</legend>
+            <div class="field-row">
+              <div class="field">
+                <label for="a-cep">CEP <span class="hint-inline">(preenche o endereço sozinho)</span></label>
+                <input id="a-cep" name="cep" type="text" inputmode="numeric" maxlength="9" autocomplete="postal-code" placeholder="00000-000">
+                <span id="a-cep-aviso" class="hint-inline" aria-live="polite"></span>
+              </div>
+              <div class="field">
+                <label for="a-num">Número e complemento</label>
+                <input id="a-num" name="numero" type="text" placeholder="Ex.: 120, apto 302">
+              </div>
+            </div>
             <div class="field">
-              <label for="a-end">Endereço completo* <span class="hint-inline">(número, bairro, cidade e CEP)</span></label>
+              <label for="a-end">Endereço completo* <span class="hint-inline">(rua, bairro e cidade)</span></label>
               <textarea id="a-end" name="endereco" rows="2" required></textarea>
             </div>
             <div class="field-row">

@@ -409,7 +409,7 @@ const MODULOS = {
       ["email","E-mail","email"],
       ["canal","Canal de contato","select",{opcoes:["WhatsApp","Telefone","E-mail","Presencial"],placeholder:"Selecione…"}],
       ["_end","Endereço","titulo",{full:1}],
-      ["cep","CEP","cep"],
+      ["cep","CEP","cep",{dica:"Digite o CEP e o endereço é preenchido sozinho"}],
       ["endereco","Logradouro","text"],
       ["numero","Número","text"],
       ["bairro","Bairro","text"],
@@ -495,7 +495,7 @@ const MODULOS = {
   anamneses: { titulo:"Anamneses", novo:"Nova anamnese", busca:true, anamnese:true,
     colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["tipo","Modelo","anam"],["profissional","Profissional"]],
     campos:[] },   // formulário próprio, montado pelo modelo — ver abrirAnamnese()
-  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true, fichaPaciente:true,
+  prontuario: { titulo:"Prontuário eletrônico", novo:"Novo registro", busca:true, fichaPaciente:true, imprimirEvolucao:true,
     colunas:[["data","Data","data"],["paciente_id","Paciente","pac"],["especialidade","Procedimento","servicos"],["profissional","Profissional"]],
     campos:[
       ["paciente_id","Paciente","busca",{tabela:"pacientes",req:1}],
@@ -737,6 +737,7 @@ function renderTabela(){
   tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
     <td style="text-align:right;white-space:nowrap">${
       anam ? `<button class="btn btn-ghost btn-sm" onclick="imprimirAnamnese(${row.id})">Imprimir</button> `
+           : m.imprimirEvolucao ? `<button class="btn btn-ghost btn-sm" onclick="imprimirEvolucao(${row.id})">Imprimir</button> `
            : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
     }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
     }${MOD==="profissionais"?`<button class="btn btn-ghost btn-sm" onclick="alternarBloqueio(${row.id},${Number(row.ativo)!==0?1:0})">${Number(row.ativo)!==0?"Bloquear":"Desbloquear"}</button> `:""
@@ -913,6 +914,7 @@ async function abrirForm(id){
     </div>
     <div class="acoes">
       ${m.imprimir&&id?`<button class="btn btn-ghost" onclick="imprimirFicha(${id})">Imprimir ficha</button>`:""}
+      ${m.imprimirEvolucao&&id?`<button class="btn btn-ghost" onclick="imprimirEvolucao(${id})">Imprimir (ficha + evolução)</button>`:""}
       ${m.historico&&id?`<button class="btn btn-ghost" onclick="imprimirHistorico(${id})">Imprimir prontuário completo</button>`:""}
       ${id&&!temHistorico?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
@@ -935,6 +937,9 @@ async function abrirForm(id){
     if(nasc){ nasc.addEventListener("change",sincMenor); nasc.addEventListener("input",sincMenor); }
     sincMenor();
   }
+  // CEP preenche logradouro/bairro/cidade automaticamente
+  ligarBuscaCep("f-cep",{endereco:"f-endereco",bairro:"f-bairro",cidade:"f-cidade",
+    complemento:"f-complemento",numero:"f-numero"});
   // serviços restritos ao profissional escolhido (agenda e prontuário)
   const campoProf=m.campos.find((c)=>c[3]&&c[3].filtraServicos);
   if(campoProf){
@@ -1136,6 +1141,44 @@ function aplicarVisibilidadeServicos(id, inicial){
 }
 function filtrarServicos(inicial){ aplicarVisibilidadeServicos("f-especialidade", inicial); }   // gatilho: troca de profissional
 function filtrarChkBusca(id){ aplicarVisibilidadeServicos(id, true); }                            // gatilho: campo de busca
+/* ==========================================================================
+   BUSCA DE CEP — assim que os 8 dígitos são digitados, preenche o endereço.
+   Passa pelo nosso servidor (/api/cep), não direto na internet: a CSP desta
+   tela é `connect-src 'self'`.
+   Só preenche campo VAZIO — nunca sobrescreve o que a recepção já digitou —,
+   exceto quando o CEP muda de verdade, aí atualiza tudo.
+   ========================================================================== */
+function ligarBuscaCep(idCep, campos){
+  const el=$("#"+idCep); if(!el) return;
+  let ultimo=soDig(el.value||"");
+  const aviso=document.createElement("span");
+  aviso.style.cssText="display:block;font-size:.75rem;margin-top:.2rem";
+  el.parentElement.appendChild(aviso);
+  const setar=(id,v,forcar)=>{ const c=id&&$("#"+id); if(c&&v&&(forcar||!c.value)) c.value=v; };
+
+  async function buscar(){
+    const cep=soDig(el.value||"");
+    if(cep.length!==8){ aviso.textContent=""; return; }
+    const mudou = cep!==ultimo; ultimo=cep;
+    aviso.style.color="var(--dim)"; aviso.textContent="Buscando endereço…";
+    try{
+      const r=await fetch("/api/cep/"+cep);
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok){ aviso.style.color="var(--ambar)"; aviso.textContent=j.error||"CEP não encontrado — preencha à mão."; return; }
+      setar(campos.endereco, j.logradouro, mudou);
+      setar(campos.bairro, j.bairro, mudou);
+      setar(campos.cidade, j.uf?`${j.cidade}/${j.uf}`:j.cidade, mudou);
+      setar(campos.complemento, j.complemento, false);   // complemento do CEP é genérico: nunca sobrescreve
+      aviso.style.color="var(--verde)";
+      aviso.textContent=`✓ ${j.cidade}${j.uf?"/"+j.uf:""}`;
+      const n=campos.numero&&$("#"+campos.numero);
+      if(n&&!n.value) n.focus();                          // já deixa o cursor no número
+    }catch(e){ aviso.style.color="var(--ambar)"; aviso.textContent="Não consegui consultar agora — preencha à mão."; }
+  }
+  el.addEventListener("blur",buscar);
+  el.addEventListener("input",()=>{ if(soDig(el.value||"").length===8) buscar(); });
+}
+
 // mostra/esconde os campos do responsável conforme a data de nascimento
 function sincMenor(){
   const nasc=$("#f-nascimento"); if(!nasc) return;
@@ -1231,7 +1274,7 @@ async function excluirReg(id){
    Repete em TODA página impressa: o cabeçalho vai em <thead> de uma tabela de
    página, técnica que faz o navegador reimprimi-lo a cada quebra.
    ========================================================================== */
-const LOGO_SVG = `<svg viewBox="169 832 1636 293" role="img" aria-label="BemEstarClinic" style="height:46px;width:auto"><g fill="#5136d6"><text font-family="Questrial, 'Segoe UI', sans-serif" font-size="195.83" transform="translate(460.23 1051.93)"><tspan x="0" y="0">BemEs</tspan><tspan x="622.14" y="0">t</tspan><tspan x="684.02" y="0">arClinic</tspan></text><path d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></g></svg>`;
+const LOGO_SVG = `<svg viewBox="169 832 1636 293" role="img" aria-label="BemEstarClinic" style="height:46px;width:auto"><g fill="#5136d6"><text font-family="Questrial, 'Segoe UI', sans-serif" font-size="195.83" transform="translate(460.23 1051.93)" textLength="1330" lengthAdjust="spacingAndGlyphs"><tspan x="0" y="0">BemEstarClinic</tspan></text><path d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></g></svg>`;
 /* Só a flor da marca (sem o texto), recortada no seu bounding box — usada como
    marca d'água no centro das páginas impressas. */
 const LOTUS_SVG = `<svg viewBox="196 852 268 210" xmlns="http://www.w3.org/2000/svg" role="presentation"><path fill="#5136d6" d="M457.37,933.57c-12.78-6.05-27.06-9.42-42.14-9.42-6.31,0-12.49.59-18.47,1.73-10.36-30.93-35.62-55.03-67.26-63.77-31.63,8.74-56.9,32.84-67.25,63.77-5.98-1.13-12.16-1.73-18.47-1.73-15.08,0-29.37,3.38-42.15,9.42-1.87,7.58-2.86,15.51-2.86,23.66,0,54.51,44.19,98.7,98.7,98.7,9.79,0,19.24-1.42,28.17-4.08-3.59-13.09-9.55-25.19-17.4-35.81-15.83-21.43-39.33-36.86-66.44-42.21,6.88-1.37,13.99-2.08,21.27-2.08,25.01,0,48.05,8.43,66.44,22.59,18.39-14.17,41.43-22.59,66.43-22.59,7.28,0,14.39.71,21.27,2.08-27.11,5.36-50.61,20.78-66.44,42.21-7.85,10.62-13.81,22.72-17.4,35.81,8.93,2.66,18.39,4.08,28.18,4.08,54.5,0,98.69-44.19,98.69-98.7,0-8.16-.99-16.08-2.86-23.66ZM329.5,976.94c-10.47,0-18.97-8.49-18.97-18.97s8.49-18.97,18.97-18.97,18.97,8.49,18.97,18.97-8.49,18.97-18.97,18.97Z"/></svg>`;
@@ -1249,25 +1292,42 @@ function timbreHTML(titulo, corpo, opc){
   // passa a vir daqui, do padding das células da tabela de página.
   const mx = o.paisagem ? "1.2cm" : "1.5cm";
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${escA(titulo)} — ${CLINICA.nome}</title>
+  <style id="pg">
+   /* Orientação da folha. Este bloco inteiro é reescrito pelos botões
+      Retrato/Paisagem — por isso margens e marca d'água são variáveis:
+      trocando aqui, o documento inteiro se ajusta junto. */
+   @page{margin:0;size:A4${o.paisagem ? " landscape" : ""}}
+   :root{--mx:${o.paisagem ? "1.2cm" : "1.5cm"};--wm:${o.paisagem ? "46%" : "62%"}}
+  </style>
   <style>
-   /* margem 0 = sem cabeçalho/rodapé do navegador na impressão */
-   @page{margin:0;size:A4${o.paisagem?" landscape":""}}
    *{box-sizing:border-box}
    body{font:12.5px/1.55 'Segoe UI',system-ui,Arial,sans-serif;color:#232733;margin:0}
    /* MARCA D'ÁGUA — a flor da marca, centralizada e discreta. position:fixed faz
       o navegador repeti-la em TODAS as páginas impressas. */
    .marcadagua{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-     width:${o.paisagem?"46%":"62%"};opacity:.055;z-index:0;pointer-events:none;
+     width:var(--wm);opacity:.055;z-index:0;pointer-events:none;
      -webkit-print-color-adjust:exact;print-color-adjust:exact}
    .marcadagua svg{width:100%;height:auto;display:block}
    /* conteúdo sempre acima da marca d'água */
    .pag{position:relative;z-index:1}
    /* cabeçalho/rodapé que se repetem a cada página impressa */
    .pag{width:100%;border-collapse:collapse}
-   .pag thead td{padding:${mx} ${mx} 0}
-   .pag tbody td{padding:0 ${mx}}
-   .pag tfoot td{padding:0 ${mx} ${mx}}
+   .pag thead td{padding:var(--mx) var(--mx) 0}
+   .pag tbody td{padding:0 var(--mx)}
+   .pag tfoot td{padding:0 var(--mx) var(--mx)}
    .pag thead td,.pag tfoot td{border:0}
+   /* Barra de controle: só na tela, nunca no papel */
+   .barra-imp{position:sticky;top:0;z-index:9;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;
+     background:#f3f0fb;border-bottom:1px solid #ddd7f0;padding:.55rem .9rem;
+     font:13px/1.4 'Segoe UI',system-ui,Arial,sans-serif}
+   .barra-imp b{color:#5136d6}
+   .barra-imp button{font:inherit;cursor:pointer;border:1.5px solid #cfc6ea;background:#fff;color:#5136d6;
+     border-radius:999px;padding:.32rem .85rem;font-weight:600}
+   .barra-imp button:hover{background:#efeafc}
+   .barra-imp button.on{background:#5136d6;color:#fff;border-color:#5136d6}
+   .barra-imp .imp{background:#5136d6;color:#fff;border-color:#5136d6}
+   .barra-imp .dica{color:#7a7f92;margin-left:auto}
+   @media print{.barra-imp{display:none!important}}
    .timbre{display:flex;align-items:center;gap:1rem;padding-bottom:.55rem;border-bottom:2px solid #5B4FD8}
    .timbre .marca{line-height:0}
    .timbre .id{line-height:1.25}
@@ -1309,6 +1369,13 @@ function timbreHTML(titulo, corpo, opc){
    .evo .cab{font-weight:700;color:#5136d6;font-size:.82rem}
    .evo .met{color:#8a90a0;font-size:.72rem;margin-bottom:.2rem}
   </style></head><body>
+  <div class="barra-imp">
+    <b>Orientação:</b>
+    <button type="button" id="bt-retrato" onclick="orientar(false)">Retrato (vertical)</button>
+    <button type="button" id="bt-paisagem" onclick="orientar(true)">Paisagem (horizontal)</button>
+    <button type="button" class="imp" onclick="window.print()">🖨 Imprimir</button>
+    <span class="dica">Esta barra não sai no papel.</span>
+  </div>
   <div class="marcadagua" aria-hidden="true">${LOTUS_SVG}</div>
   <table class="pag">
     <thead><td>
@@ -1328,7 +1395,20 @@ function timbreHTML(titulo, corpo, opc){
       ${corpo}
     </td></tr></tbody>
   </table>
-  <scr`+`ipt>window.onload=function(){setTimeout(function(){window.print()},250)}</scr`+`ipt>
+  <scr`+`ipt>
+   /* Troca a orientação reescrevendo o bloco <style id="pg">: o @page muda a
+      folha e as variáveis ajustam margem e tamanho da marca d'água junto. */
+   var ehPaisagem = ${o.paisagem ? "true" : "false"};
+   function orientar(p){
+     ehPaisagem = p;
+     document.getElementById("pg").textContent =
+       "@page{margin:0;size:A4" + (p ? " landscape" : "") + "}" +
+       ":root{--mx:" + (p ? "1.2cm" : "1.5cm") + ";--wm:" + (p ? "46%" : "62%") + "}";
+     document.getElementById("bt-retrato").className = p ? "" : "on";
+     document.getElementById("bt-paisagem").className = p ? "on" : "";
+   }
+   orientar(ehPaisagem);
+  </scr`+`ipt>
   </body></html>`;
 }
 function abrirImpressao(titulo, corpo, opc){
@@ -1630,6 +1710,28 @@ async function imprimirAnamnese(id){
   let dados={}; try{ dados=JSON.parse(a.dados||"{}"); }catch{}
   const corpo = anamneseCorpoHTML(modelo, dados, p) + assinatura(a.profissional);
   abrirImpressao(modelo.titulo, corpo, { subtitulo: `${p.nome}${a.data?" · "+dataBR(a.data):""}` });
+}
+
+/* Impressão de UMA evolução do prontuário: ficha do paciente + o registro
+   clínico daquela sessão. É o que o profissional leva para o arquivo ou entrega
+   ao paciente quando ele pede o registro de um atendimento específico. */
+async function imprimirEvolucao(id){
+  let e; try{ e=await api("prontuario/"+id); }catch(err){ return toast(err.message,true); }
+  let p={}; try{ p=await api("pacientes/"+e.paciente_id); }catch{}
+  let servs=[]; try{ servs=JSON.parse(e.especialidade||"[]"); }catch{ servs=e.especialidade?[e.especialidade]:[]; }
+  const bloco=(rot,txt)=> txt?`<div class="sec">${escA(rot)}</div><p style="white-space:pre-wrap">${escA(txt)}</p>`:"";
+  const corpo = blocoDadosPessoais(p) + `
+    <div class="sec">Atendimento</div>
+    <table class="d">${L("Data",dataBR(e.data))}${L("Profissional",e.profissional)}
+      ${L("Procedimento",servs.join(", "))}</table>
+    ${bloco("Avaliação",e.avaliacao)}
+    ${bloco("Evolução da sessão",e.evolucao)}
+    ${bloco("Plano terapêutico",e.plano)}
+    ${bloco("Encaminhamentos",e.encaminhamentos)}
+    ${e.anexos?`<div class="sec">Anexo</div><p>Há arquivo anexado a este registro no sistema.</p>`:""}
+    ${assinatura(e.responsavel||e.profissional)}`;
+  abrirImpressao("Prontuário — registro de atendimento", corpo,
+    { subtitulo: `${p.nome||""}${e.data?" · "+dataBR(e.data):""}` });
 }
 
 /* ==========================================================================

@@ -25,7 +25,7 @@ const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
 // Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
 // casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "1.3.0";
+const SISTEMA_VERSION = "1.5.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via

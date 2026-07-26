@@ -18,7 +18,55 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.10.0";
+
+/* ==========================================================================
+   CONSULTA DE CEP
+   Fonte: ViaCEP (base dos Correios, aberta e sem chave). Se ela falhar, tenta a
+   BrasilAPI — assim o preenchimento não morre por indisponibilidade de um
+   serviço. A API oficial dos Correios exige contrato e credencial; estas duas
+   servem os mesmos dados de endereçamento.
+   O resultado fica em cache por 30 dias: CEP praticamente não muda, e isso
+   evita ir à internet a cada tecla.
+   ========================================================================== */
+const cacheCep = new Map();               // cep -> { dados, ts }
+const CEP_TTL = 30 * 24 * 3600e3;         // 30 dias
+const cepPorIp = new Map();               // ip -> { n, ts }
+const CEP_MAX = 60, CEP_JANELA = 60e3;    // 60 consultas por minuto por IP
+function podeConsultarCep(ip) {
+  const t = cepPorIp.get(ip);
+  if (!t || Date.now() - t.ts > CEP_JANELA) { cepPorIp.set(ip, { n: 1, ts: Date.now() }); return true; }
+  t.n++;
+  return t.n <= CEP_MAX;
+}
+setInterval(() => { const lim = Date.now() - CEP_JANELA; for (const [k, v] of cepPorIp) if (v.ts < lim) cepPorIp.delete(k); }, 5 * 60e3).unref();
+
+async function pegarJson(url) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);   // não deixa a request pendurada
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": "BemEstarClinic/1.0" } });
+    if (!r.ok) return null;
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+/* Devolve sempre o mesmo formato, venha de onde vier. */
+async function buscarCep(cep) {
+  try {
+    const v = await pegarJson(`https://viacep.com.br/ws/${cep}/json/`);
+    if (v && !v.erro && v.localidade) {
+      return { cep, logradouro: v.logradouro || "", complemento: v.complemento || "",
+        bairro: v.bairro || "", cidade: v.localidade, uf: v.uf || "" };
+    }
+    if (v && v.erro) return null;                        // CEP inexistente: não adianta tentar de novo
+  } catch (e) { /* cai para a segunda fonte */ }
+  const b = await pegarJson(`https://brasilapi.com.br/api/cep/v1/${cep}`);
+  if (b && b.city) {
+    return { cep, logradouro: b.street || "", complemento: "",
+      bairro: b.neighborhood || "", cidade: b.city, uf: b.state || "" };
+  }
+  return null;
+}
 
 /* CSP do painel /admin. Segunda linha de defesa: mesmo que um texto vindo do
    banco escape do escape do HTML, o navegador recusa script de outra origem,
@@ -1129,7 +1177,7 @@ const CAMPOS = [
     ["phone_fixed", "Telefone fixo", "input"],
     ["contact_email", "E-mail", "input"],
     ["instagram", "Instagram (sem @)", "input"],
-    ["address", "Endereço completo", "textarea"],
+    ["address", "Endereço completo", "endereco_cep"],
     ["footer_horario", "Horário de atendimento (também vai para o Google)", "textarea"],
     ["cnpj", "CNPJ", "input"],
     ["img_og", "Imagem de compartilhamento (WhatsApp/Facebook)", "image"],
@@ -1272,6 +1320,35 @@ http.createServer(async (req, res) => {
         res.setHeader("Set-Cookie", `sid=${t}; HttpOnly; Path=/; SameSite=Lax${https ? "; Secure" : ""}`);
         return json(res, 200, { ok: true });
       }
+
+      /* ---------------------- Busca de CEP (público) ----------------------
+         Fica ANTES do login de propósito: o formulário de agendamento do site
+         é usado por visitante, sem sessão.
+         Por que passar pelo nosso servidor em vez de o navegador chamar direto:
+          · a CSP do /admin e do /restrito é `connect-src 'self'` — chamada
+            externa seria bloqueada, e afrouxá-la enfraqueceria a política;
+          · o IP de quem digita o CEP não vai para um terceiro (LGPD);
+          · dá para cachear e limitar o uso num lugar só.                     */
+      const mcep = p.match(/^\/api\/cep\/(\d{8})$/);
+      if (mcep && req.method === "GET") {
+        const cep = mcep[1];
+        const emCache = cacheCep.get(cep);
+        if (emCache && Date.now() - emCache.ts < CEP_TTL) return json(res, 200, emCache.dados);
+        if (!podeConsultarCep(clientIp(req))) return json(res, 429, { error: "Muitas consultas de CEP. Aguarde um instante." });
+        try {
+          const dados = await buscarCep(cep);
+          if (!dados) return json(res, 404, { error: "CEP não encontrado." });
+          cacheCep.set(cep, { dados, ts: Date.now() });
+          if (cacheCep.size > 5000) cacheCep.delete(cacheCep.keys().next().value);
+          return json(res, 200, dados);
+        } catch (e) {
+          console.warn("  ⚠ consulta de CEP falhou:", e.message);
+          return json(res, 503, { error: "Não consegui consultar o CEP agora. Preencha o endereço à mão." });
+        }
+      }
+      // CEP mal formatado: responde sem sair para a internet
+      if (/^\/api\/cep\//.test(p)) return json(res, 400, { error: "Informe um CEP com 8 dígitos." });
+
       if (!authed(req)) return json(res, 401, { error: "Não autenticado" });
       if (p === "/api/me") return json(res, 200, { ok: true, version: APP_VERSION });
       if (p === "/api/stats") return json(res, 200, statsAcessos());
