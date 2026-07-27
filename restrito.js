@@ -23,9 +23,12 @@ const { abrirBanco } = require("./db");
 
 const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
-// Versão do sistema de gestão da clínica (/restrito). Feature nova → sobe a 2ª
-// casa (1.1.0, 1.2.0…); correção de bug → a 3ª (1.0.1, 1.0.2…).
-const SISTEMA_VERSION = "2.2.1";
+/* Versão do sistema de gestão da clínica (/restrito).
+   REGRA DO CLIENTE: feature nova sobe a 2ª casa (1.12.0, 1.13.0, 1.14.0…);
+   correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
+   houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
+   voltou para a série 1.x, que é a que ele acompanha. */
+const SISTEMA_VERSION = "1.15.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -135,7 +138,7 @@ db.exec(`
     prontuario_id INTEGER NOT NULL, tipo TEXT NOT NULL, texto TEXT,
     data TEXT, profissional TEXT, anexo TEXT,
     arquivado INTEGER DEFAULT 0, arquivado_em TEXT,
-    usuario_id INTEGER, criado TEXT);
+    usuario_id INTEGER, criado TEXT, atualizado TEXT);
 
   /* HISTÓRICO — linha do tempo de cada paciente e de cada prontuário.
      É o que sobrevive quando o paciente sai e volta: a data de cadastro é
@@ -204,6 +207,8 @@ for (const alt of [
   "ALTER TABLE anamneses ADD COLUMN finalizada_em TEXT",
   "ALTER TABLE anamneses ADD COLUMN prontuario_id INTEGER",
   "ALTER TABLE procedimentos ADD COLUMN anamnese_modelo TEXT",
+  // marca de edição do lançamento clínico (o histórico guarda o que mudou)
+  "ALTER TABLE prontuario_registros ADD COLUMN atualizado TEXT",
 ]) { try { db.exec(alt); } catch { /* já existe */ } }
 
 /* ------------------------- senha (scrypt) e config ------------------------ */
@@ -229,6 +234,48 @@ function anotar(entidade, entidadeId, evento, detalhe, sessao) {
   if (!entidadeId) return;
   db.prepare("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)")
     .run(entidade, entidadeId, evento, detalhe || "", sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
+}
+
+/* ==========================================================================
+   O QUE MUDOU NUM TEXTO — para o histórico dizer não só "foi editado", mas
+   MOSTRAR o trecho.
+
+   O caso normal no prontuário é ACRESCENTAR ao final (o profissional abre a
+   evolução e escreve mais um parágrafo). Comparando o começo e o fim iguais dos
+   dois textos, o que sobra no meio é exatamente o que entrou (e o que saiu, se
+   algo foi apagado). Não é um diff palavra a palavra — é o suficiente para
+   quem lê o histórico entender o que aconteceu sem abrir o registro.
+   ========================================================================== */
+const recortar = (t, n = 120) => {
+  const s = String(t || "").replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n) + "…" : s;
+};
+function trechoAlterado(antes, depois) {
+  const a = String(antes || ""), b = String(depois || "");
+  if (a === b) return "";
+  let i = 0;                                     // quanto o começo tem de igual
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  let j = 0;                                     // quanto o fim tem de igual
+  while (j < a.length - i && j < b.length - i && a[a.length - 1 - j] === b[b.length - 1 - j]) j++;
+  let entrou = b.slice(i, b.length - j).trim();
+  let saiu   = a.slice(i, a.length - j).trim();
+  /* SUBSTITUIÇÃO (mexeu no meio do texto): alarga o recorte até as bordas das
+     palavras, senão "melhora" → "piora" sairia como trocou "melh" por "pi" — o
+     "ora" final é comum aos dois e o corte cai no meio da palavra.
+     Só vale aqui: em acréscimo ou remoção puros o recorte já bate certo, e
+     alargar transformaria "acrescentou" num "trocou" confuso. */
+  if (entrou && saiu) {
+    const ehBorda = (c) => c === undefined || /\s/.test(c);
+    while (i > 0 && !ehBorda(a[i - 1])) i--;
+    while (j > 0 && !ehBorda(a[a.length - j])) j--;
+    entrou = b.slice(i, b.length - j).trim();
+    saiu   = a.slice(i, a.length - j).trim();
+  }
+  if (entrou && !saiu) return `acrescentou: "${recortar(entrou)}"`;
+  if (saiu && !entrou) return `removeu: "${recortar(saiu)}"`;
+  if (entrou && saiu)  return `trocou "${recortar(saiu, 60)}" por "${recortar(entrou, 60)}"`;
+  // só mudou espaçamento/quebra de linha
+  return `texto reformatado (${b.length} caracteres)`;
 }
 
 /* Hash descartável usado só para gastar o mesmo tempo quando o login digitado
@@ -621,6 +668,17 @@ function vinculosDe(tabela, id) {
     somar(conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
   }
   if (tabela === "salas") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
+  /* Prontuário com conteúdo NÃO se apaga. Apagar a pasta destruiria registro
+     clínico (os lançamentos ficariam órfãos no banco, invisíveis mas presentes)
+     e deixaria anamnese e agenda apontando para um número que não existe mais.
+     Quem encerra um tratamento dá ALTA — a pasta some das telas de ativo e o
+     histórico continua inteiro. Pasta aberta por engano, ainda vazia, pode ser
+     excluída normalmente. */
+  if (tabela === "prontuario") {
+    somar(conta("SELECT COUNT(*) c FROM prontuario_registros WHERE prontuario_id=?", id), "lançamento");
+    somar(conta("SELECT COUNT(*) c FROM anamneses WHERE prontuario_id=?", id), "anamnese");
+    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE prontuario_id=?", id), "agendamento");
+  }
   return v;
 }
 
@@ -976,27 +1034,47 @@ async function rotaApi(req, res, p) {
   if (p === "modelos") return json(res, 200, MODELOS_ANAMNESE);
 
   // relatórios: agregações para a tela de indicadores
+  /* RELATÓRIOS — aceita recorte por período (?de=AAAA-MM-DD&ate=AAAA-MM-DD).
+     Os dois lados são opcionais: só `de` = daí em diante, só `ate` = até ali.
+     O corte roda no SQL (é onde estão os números), não na tela.
+     A data usada é a do FATO: `data` no atendimento e na anamnese, `criado` no
+     cadastro do paciente e na abertura do prontuário. */
   if (p === "relatorios") {
     if (!pode(s.perfil, "relatorios")) return json(res, 403, { error: "Sem permissão." });
+    const q = new URL(req.url, "http://x").searchParams;
+    const soData = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+    const de = soData(q.get("de")), ate = soData(q.get("ate"));
+    /* Monta o recorte para uma coluna. Fica como texto porque as datas já
+       passaram pelo crivo do formato acima — nada do usuário entra cru. */
+    const corte = (col, alias) => {
+      const c = alias ? `${alias}.${col}` : col;
+      const p = [`${c} IS NOT NULL`, `${c} <> ''`];
+      if (de) p.push(`substr(${c},1,10) >= '${de}'`);
+      if (ate) p.push(`substr(${c},1,10) <= '${ate}'`);
+      return (de || ate) ? p.join(" AND ") : "1=1";
+    };
+    const onde = (col, alias) => ` WHERE ${corte(col, alias)}`;
+    const e = (col, alias) => ` AND ${corte(col, alias)}`;
     const grupo = (sql) => db.prepare(sql).all();
     const n = (sql) => db.prepare(sql).get().c;
     return json(res, 200, {
+      periodo: { de, ate },
       totais: {
-        pacientes: n("SELECT COUNT(*) c FROM pacientes"),
-        atendimentos: n("SELECT COUNT(*) c FROM atendimentos"),
-        atendidos: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Atendido'"),
-        faltas: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Faltou'"),
-        anamneses: n("SELECT COUNT(*) c FROM anamneses"),
-        prontuarios: n("SELECT COUNT(*) c FROM prontuario"),
+        pacientes: n("SELECT COUNT(*) c FROM pacientes" + onde("criado")),
+        atendimentos: n("SELECT COUNT(*) c FROM atendimentos" + onde("data")),
+        atendidos: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Atendido'" + e("data")),
+        faltas: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Faltou'" + e("data")),
+        anamneses: n("SELECT COUNT(*) c FROM anamneses" + onde("data")),
+        prontuarios: n("SELECT COUNT(*) c FROM prontuario" + onde("aberto_em")),
       },
       porProcedimento: grupo(`SELECT COALESCE(NULLIF(pr.nome,''),'(sem procedimento)') rotulo, COUNT(*) total
-        FROM atendimentos a LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id GROUP BY rotulo ORDER BY total DESC`),
+        FROM atendimentos a LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
       porProfissional: grupo(`SELECT COALESCE(NULLIF(pf.nome,''),'(sem profissional)') rotulo, COUNT(*) total
-        FROM atendimentos a LEFT JOIN profissionais pf ON pf.id=a.profissional_id GROUP BY rotulo ORDER BY total DESC`),
+        FROM atendimentos a LEFT JOIN profissionais pf ON pf.id=a.profissional_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
       porConvenio: grupo(`SELECT COALESCE(NULLIF(c.nome,''),'(sem convênio)') rotulo, COUNT(*) total
-        FROM atendimentos a LEFT JOIN convenios c ON c.id=a.convenio_id GROUP BY rotulo ORDER BY total DESC`),
-      porStatus: grupo("SELECT COALESCE(NULLIF(status,''),'(sem status)') rotulo, COUNT(*) total FROM atendimentos GROUP BY rotulo ORDER BY total DESC"),
-      porMes: grupo("SELECT substr(data,1,7) rotulo, COUNT(*) total FROM atendimentos WHERE data<>'' GROUP BY rotulo ORDER BY rotulo DESC LIMIT 12"),
+        FROM atendimentos a LEFT JOIN convenios c ON c.id=a.convenio_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
+      porStatus: grupo("SELECT COALESCE(NULLIF(status,''),'(sem status)') rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY total DESC"),
+      porMes: grupo("SELECT substr(data,1,7) rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY rotulo DESC LIMIT 12"),
     });
   }
 
@@ -1372,7 +1450,7 @@ async function rotaApi(req, res, p) {
       if (donoCol && String(row[donoCol]) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." });
       if (tabela === "profissionais") anexarAcesso(row);
       // a tela avisa quando o registro tem histórico e por isso não pode ser excluído
-      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas"].includes(tabela))
+      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas", "prontuario"].includes(tabela))
         row._vinculos = vinculosDe(tabela, id);
       return json(res, 200, row);
     }
@@ -1459,9 +1537,35 @@ async function rotaApi(req, res, p) {
         if (e) return json(res, 400, { error: e });
       }
       if (tabela === "anamneses" && b.dados !== undefined && typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
+      /* Lançamento do prontuário: guarda o estado ANTERIOR para o histórico
+         poder dizer o que mudou. Registro clínico editado precisa deixar
+         rastro — quem leu a evolução ontem tem de conseguir ver que ela foi
+         complementada hoje, e com o quê. */
+      let antesReg = null;
+      if (tabela === "prontuario_registros")
+        antesReg = db.prepare("SELECT prontuario_id,tipo,texto,data,profissional FROM prontuario_registros WHERE id=?").get(id) || null;
+
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
       if (use.length) db.prepare(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`).run(...use.map((c) => b[c]), id);
       if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) db.prepare("UPDATE anamneses SET atualizado=? WHERE id=?").run(agora(), id);
+
+      if (antesReg) {
+        const depois = db.prepare("SELECT texto,data,profissional FROM prontuario_registros WHERE id=?").get(id) || {};
+        const mudancas = [];
+        const t = trechoAlterado(antesReg.texto, depois.texto);
+        if (t) mudancas.push(t);
+        if (String(antesReg.data || "") !== String(depois.data || ""))
+          mudancas.push(`data ${antesReg.data || "—"} → ${depois.data || "—"}`);
+        if (String(antesReg.profissional || "") !== String(depois.profissional || ""))
+          mudancas.push(`profissional ${antesReg.profissional || "—"} → ${depois.profissional || "—"}`);
+        if (mudancas.length) {
+          db.prepare("UPDATE prontuario_registros SET atualizado=? WHERE id=?").run(agora(), id);
+          const rot = "Lançamento atualizado: " + rotuloTipo(antesReg.tipo);
+          anotar("prontuario", antesReg.prontuario_id, rot, mudancas.join(" · "), s);
+          const pr = db.prepare("SELECT paciente_id,numero FROM prontuario WHERE id=?").get(antesReg.prontuario_id) || {};
+          if (pr.paciente_id) anotar("paciente", pr.paciente_id, rot + (pr.numero ? " (" + pr.numero + ")" : ""), mudancas.join(" · "), s);
+        }
+      }
       if (tabela === "atendimentos") {
         const pasta = sincronizarProntuarioDoAtendimento(id, antesAtend);
         return json(res, 200, { ok: true, prontuario: pasta || null });
@@ -1477,13 +1581,15 @@ async function rotaApi(req, res, p) {
       if (donoCol) { const dono = db.prepare(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`).get(id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
       /* Cadastro com histórico não se apaga — bloqueia-se. Apagar deixaria a
          agenda antiga sem profissional e o prontuário impresso sem procedimento. */
-      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas"].includes(tabela)) {
+      if (["profissionais", "pacientes", "procedimentos", "convenios", "salas", "prontuario"].includes(tabela)) {
         const v = vinculosDe(tabela, id);
         if (v.length) {
           const podeBloquear = COLS[tabela].has("ativo");
-          return json(res, 409, { error: `Não dá para excluir: este registro já tem histórico (${v.join(", ")}). `
-            + (podeBloquear ? "Use Bloquear — ele some das telas de escolha, mas o histórico continua intacto."
-                            : "Excluir apagaria parte do histórico do paciente."), vinculos: v });
+          const saida = tabela === "prontuario"
+            ? "Use Dar alta — a pasta sai da lista de tratamentos ativos e todo o registro continua intacto."
+            : (podeBloquear ? "Use Bloquear — ele some das telas de escolha, mas o histórico continua intacto."
+                            : "Excluir apagaria parte do histórico do paciente.");
+          return json(res, 409, { error: `Não dá para excluir: este registro já tem histórico (${v.join(", ")}). ${saida}`, vinculos: v });
         }
       }
       // profissional sem histórico: o acesso dele vai junto

@@ -157,6 +157,9 @@
       padding:.1rem .45rem;font-size:.84rem;letter-spacing:.03em;white-space:nowrap}
     .num-pront--grande{display:inline-block;font-size:1.05rem;padding:.4rem .8rem}
     .sem-pront{color:var(--dim);font-size:.8rem;font-style:italic}
+    /* lançamento clínico que foi editado depois de criado — o que mudou fica
+       no Histórico da pasta */
+    .marca-edicao{color:var(--ambar);font-size:.7rem;font-weight:600}
     /* painel de vínculo do agendamento e faixa da anamnese finalizada */
     .vinc-agenda{margin:.2rem 0 .3rem}
     .vinc-ok,.vinc-falta{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;
@@ -178,9 +181,11 @@
       border:1px solid rgba(0,0,0,.22);box-shadow:0 0 0 1px rgba(255,255,255,.6) inset}
     .proc-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.86rem;color:var(--text)}
     /* procedimento na agenda: etiqueta preenchida com a cor do procedimento */
+    /* a etiqueta QUEBRA em vez de cortar: nome de procedimento longo
+       ("Protocolo Integrativo — Ozônio e Detox") precisa ser lido inteiro */
     .proc-tag-cheia{display:inline-block;max-width:100%;padding:.16rem .55rem;border-radius:999px;
-      font-size:.78rem;font-weight:600;line-height:1.5;white-space:nowrap;overflow:hidden;
-      text-overflow:ellipsis;vertical-align:middle}
+      font-size:.78rem;font-weight:600;line-height:1.5;vertical-align:middle;
+      white-space:normal;overflow-wrap:anywhere}
     /* grupos por tipo dentro da lista de busca (Consulta / Sessão / Procedimento) */
     .cbx-grupo{position:sticky;top:0;background:#f3f0fb;color:var(--marinho);font-weight:700;
       font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;padding:.3rem .7rem;border-bottom:1px solid var(--line)}
@@ -191,6 +196,19 @@
     .prof-cor{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.2)}
     /* tabelas das anamneses (matrizes e listas) */
     .anam-m{width:100%;border-collapse:collapse;font-size:.86rem;margin:.2rem 0}
+    /* ---------------------------------------------------------------------
+       QUEBRA DE TEXTOS LONGOS
+       E-mail, endereço e observação não têm espaço onde quebrar naturalmente:
+       "faleconosco@bemestarclinic.com" é UMA palavra para o navegador e estoura
+       a coluna, empurrando a tabela ou vazando do cartão. `anywhere` permite
+       quebrar dentro da palavra só quando não couber — texto normal continua
+       quebrando nos espaços, como sempre.
+       Fica FORA de `.num-pront`, `.chip-pront` e `.proc-tag-cheia`, que são
+       códigos curtos e devem permanecer inteiros.
+       --------------------------------------------------------------------- */
+    .card, .card b, .card div,
+    #mod-tbody td, .anam-m td, .tabela td,
+    .vinc-ok, .vinc-falta, .faixa-final{overflow-wrap:anywhere}
     .anam-m th,.anam-m td{border:1px solid var(--line);padding:.32rem .5rem;text-align:left}
     .anam-m th{background:#f7f5fd;color:var(--muted);font-weight:600;font-size:.78rem}
     .anam-m td input[type=text],.anam-m td input:not([type]){width:100%}
@@ -207,8 +225,22 @@
     .modal h2{margin-bottom:1rem}
     .formgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.1rem}
     .formgrid .full{grid-column:1/-1}
-    .modal .acoes{display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;flex:0 0 auto;
+    .modal .acoes,.tela .acoes{display:flex;justify-content:flex-end;gap:.6rem;flex-wrap:wrap;flex:0 0 auto;
       margin-top:auto;padding:.9rem 0 .5rem;border-top:1px solid var(--line);background:#fff}
+    /* ---------------------------------------------------------------------
+       TELA DO PRONTUÁRIO — é um painel do sistema (#pane-pront), não um
+       overlay: menu lateral e barra do topo continuam no lugar. As ações
+       (Voltar, Imprimir, Salvar) vivem na topbar do painel, junto do título,
+       como nos demais módulos.
+       --------------------------------------------------------------------- */
+    #pront-titulo{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;min-width:0}
+    .pront-sub{font-size:.85rem;font-weight:500;color:var(--muted)}
+    .pront-acoes{display:flex;gap:.5rem;flex-wrap:wrap}
+    /* filtro de período: dois campos de data lado a lado */
+    .filtro-data{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+    .filtro-data label{margin:0;font-size:.82rem;font-weight:600;color:var(--muted)}
+    .filtro-data input[type=date]{width:auto;margin:0;padding:.38rem .55rem;font-size:.86rem}
+    .filtro-data .pd-info{color:var(--dim);font-size:.8rem}
     .erros{background:#fdecef;color:#a3243f;border-radius:9px;padding:.6rem .8rem;font-size:.85rem;margin-top:.8rem}
     .foto-prev{width:84px;height:84px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f0f3f8}
     .fotos-lista{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
@@ -253,20 +285,15 @@
         <button class="navbtn" data-nav="convenios">Convênios</button>
         <button class="navbtn" data-nav="procedimentos">Procedimentos</button>
         <button class="navbtn" data-nav="salas">Salas</button>
-        <!-- Anamneses: submenu dentro de Cadastros -->
-        <div class="side-sec side-sec--sub">
-          <button class="side-head" type="button">Anamneses <span class="tn-caret">▼</span></button>
-          <div class="side-sub">
-            <button class="navbtn" data-nav="anamneses" data-tipo="">Todas</button>
-            <button class="navbtn" data-nav="anamneses" data-tipo="psicanalise">Psicanálise</button>
-            <button class="navbtn" data-nav="anamneses" data-tipo="ozonio">Ozonioterapia</button>
-            <button class="navbtn" data-nav="anamneses" data-tipo="integrativas">Terapias Integrativas</button>
-          </div>
-        </div>
-        <button class="navbtn" data-nav="prontuario">Prontuário</button>
+        <!-- Anamneses: um item só. A escolha do modelo (psicanálise, ozônio,
+             integrativas) acontece dentro do formulário, não no menu. -->
+        <button class="navbtn" data-nav="anamneses">Anamneses</button>
       </div>
     </div>
     <button class="navbtn" data-nav="atendimentos">Agendamento</button>
+    <!-- Prontuário fica no menu principal: não é cadastro, é o acompanhamento
+         do tratamento — e é para onde a equipe vai o dia inteiro. -->
+    <button class="navbtn" data-nav="prontuario">Prontuário</button>
     <button class="navbtn" data-nav="documentos_gestao">Documentos</button>
     <button class="navbtn" data-nav="relatorios">Relatórios</button>
     <div class="side-credito">Produzido por<br>LA Software House.</div>
@@ -311,6 +338,8 @@
         <button class="vbtn" data-v="kanban" onclick="trocarVista('kanban')">▤ Kanban</button>
       </div>
       <div id="mod-prof" class="filtro-prof" hidden></div>
+      <!-- período: recorta a lista por data (Anamneses e Agenda) -->
+      <div id="mod-periodo" class="filtro-data" hidden></div>
       <div id="mod-filtro"></div>
       <div class="card" id="mod-tabela" style="padding:0;overflow:auto">
         <table>
@@ -322,8 +351,24 @@
       <div id="mod-kanban" hidden></div>
     </section>
 
+    <!-- TELA DO PRONTUÁRIO — é um painel do sistema como qualquer outro: o menu
+         lateral e a barra do topo continuam no lugar. Só substitui a lista
+         enquanto a pasta está aberta; "Voltar" devolve a lista. -->
+    <section class="panel" id="pane-pront">
+      <div class="topbar">
+        <h1 id="pront-titulo"></h1>
+        <div class="pront-acoes">
+          <button class="btn btn-ghost btn-sm" onclick="fecharPront()">← Voltar</button>
+          <button class="btn btn-ghost btn-sm" id="pront-imprimir">🖨 Imprimir prontuário</button>
+          <button class="btn btn-navy btn-sm" id="pront-salvar">Salvar</button>
+        </div>
+      </div>
+      <div id="pront-corpo"></div>
+    </section>
+
     <section class="panel" id="pane-relatorios">
       <div class="topbar"><h1>Relatórios</h1><button class="btn btn-ghost btn-sm" onclick="imprimirRelatorio()">Imprimir / PDF</button></div>
+      <div class="filtro-data" id="rel-periodo"></div>
       <div class="stat-grid" id="rel-stats"></div>
       <div class="rel-cols">
         <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por procedimento</h3><div id="rel-esp"></div></div>
@@ -653,6 +698,10 @@ function aplicarPermissoes(perfil){
 }
 
 let MOD = null, LISTA = [], FORM_ID = 0, ME = {};   // módulo, lista, id em edição e usuário logado
+/* Id da pasta cuja TELA está aberta (0 = nenhuma). É o que faz os modais
+   abertos de dentro do prontuário — anamnese, lançamento, vincular agendamento —
+   voltarem para a pasta ao fechar, em vez de cair na lista de outro módulo. */
+let PRONT_ABERTO = 0;
 
 /* ------------------------------ login ---------------------------------- */
 async function entrar(){ $("#lg-erro").textContent="";
@@ -674,12 +723,13 @@ async function iniciarApp(me){
 
 /* ---------------------------- navegação -------------------------------- */
 // filtro do submenu Anamneses (vazio = todas)
-let filtroAnamTipo = "";
+
 document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("click",()=>{
   document.querySelectorAll(".navbtn[data-nav]").forEach((x)=>x.classList.remove("on"));
   b.classList.add("on");
   const nav=b.dataset.nav;
-  filtroAnamTipo = nav==="anamneses" ? (b.dataset.tipo||"") : "";
+  // sair pelo menu também encerra a tela do prontuário
+  if(PRONT_ABERTO){ PRONT_ABERTO=0; PASTA=null; $("#pront-corpo").innerHTML=""; $("#pront-titulo").innerHTML=""; }
   document.querySelectorAll(".panel").forEach((x)=>x.classList.remove("on"));
   if(nav==="painel"){ $("#pane-painel").classList.add("on"); carregarPainel(); }
   else if(nav==="conta"){ $("#pane-conta").classList.add("on"); }
@@ -718,15 +768,89 @@ async function carregarPainel(){
   } catch(e){ toast(e.message,true); }
 }
 
+/* ==========================================================================
+   FILTRO DE PERÍODO — dois campos, início e fim.
+   O mesmo componente serve a Anamneses, Agenda e Relatórios; cada tela guarda
+   o seu par de datas, então trocar de módulo não embaralha o filtro do outro.
+   Qualquer um dos lados pode ficar vazio: só início = "daí em diante",
+   só fim = "até essa data".
+   ========================================================================== */
+const PERIODOS = {};                       // { relatorios:{de,ate}, anamneses:{…} }
+const periodoDe = (chave) => (PERIODOS[chave] = PERIODOS[chave] || { de:"", ate:"" });
+/* Data do registro só com a parte AAAA-MM-DD — `data` quando existe (é a data
+   do fato) e, na falta dela, `criado` (o carimbo de cadastro). */
+const dataDoRegistro = (r) => String(r.data || r.criado || "").slice(0,10);
+function dentroDoPeriodo(r, chave){
+  const p = periodoDe(chave);
+  if(!p.de && !p.ate) return true;
+  const d = dataDoRegistro(r);
+  if(!d) return false;                     // sem data não entra num recorte por data
+  if(p.de && d < p.de) return false;
+  if(p.ate && d > p.ate) return false;
+  return true;
+}
+/* Quem recarrega a tela quando o período muda. Um mapa, e não o nome da função
+   em texto: a CSP do /restrito proíbe `unsafe-eval`, então nada de `new
+   Function(...)` — e é melhor assim, o destino fica explícito. */
+const APLICAR_PERIODO = {
+  relatorios: () => aplicarPeriodoRelatorio(),
+  anamneses:  () => aplicarPeriodoLista(),
+  atendimentos: () => aplicarPeriodoLista(),
+};
+function mudouPeriodo(chave){ (APLICAR_PERIODO[chave] || (()=>{}))(); }
+/* O "Limpar" é desenhado SEMPRE e apenas se esconde: o HTML do filtro só é
+   montado ao entrar na tela, então um botão condicional nunca apareceria depois
+   de o usuário digitar uma data. Quem o mostra/esconde é pintarPeriodo(). */
+function periodoHTML(chave){
+  const p = periodoDe(chave);
+  return `<label>De</label><input type="date" id="pd-${chave}-de" value="${escA(p.de)}" onchange="mudouPeriodo('${chave}')">
+    <label>até</label><input type="date" id="pd-${chave}-ate" value="${escA(p.ate)}" onchange="mudouPeriodo('${chave}')">
+    <button class="btn btn-ghost btn-sm" id="pd-${chave}-limpar" onclick="limparPeriodo('${chave}')" hidden>Limpar</button>
+    <span class="pd-info" id="pd-${chave}-info"></span>`;
+}
+/* Atualiza o texto de apoio e o botão Limpar do filtro. */
+function pintarPeriodo(chave, texto){
+  const p = periodoDe(chave), ativo = !!(p.de || p.ate);
+  const bt = $("#pd-"+chave+"-limpar"); if(bt) bt.hidden = !ativo;
+  const inf = $("#pd-"+chave+"-info"); if(inf) inf.textContent = texto;
+}
+function lerPeriodo(chave){
+  const p = periodoDe(chave);
+  const de=$("#pd-"+chave+"-de"), ate=$("#pd-"+chave+"-ate");
+  p.de = de?de.value:""; p.ate = ate?ate.value:"";
+  // início depois do fim não filtra nada: avisa em vez de mostrar lista vazia
+  if(p.de && p.ate && p.de > p.ate){ const t=p.de; p.de=p.ate; p.ate=t;
+    if(de) de.value=p.de; if(ate) ate.value=p.ate;
+    toast("As datas estavam invertidas — corrigi a ordem.");
+  }
+  return p;
+}
+function limparPeriodo(chave){
+  const p = periodoDe(chave); p.de=""; p.ate="";
+  const de=$("#pd-"+chave+"-de"), ate=$("#pd-"+chave+"-ate");
+  if(de) de.value=""; if(ate) ate.value="";
+  mudouPeriodo(chave);
+}
+
 /* ==================== lista genérica de um módulo ===================== */
 let vistaAgenda = "tabela", agendaYM = null;
+/* Módulos que ganham o filtro de período (a data que importa em cada um). */
+const COM_PERIODO = new Set(["anamneses","atendimentos"]);
+const filtroData = () => { const p=PERIODOS[MOD]; return !!(p && (p.de||p.ate)); };
+function aplicarPeriodoLista(){ lerPeriodo(MOD); renderPeriodoInfo(); carregarLista(); }
+function renderPeriodoInfo(){
+  const p=periodoDe(MOD);
+  pintarPeriodo(MOD, (p.de||p.ate)
+    ? `mostrando ${p.de?"de "+dataBR(p.de):"tudo"}${p.ate?" até "+dataBR(p.ate):" em diante"}`
+    : "");
+}
 function mostrarModulo(){
   const m=MODULOS[MOD];
   // no submenu de anamneses o título mostra o modelo escolhido
-  $("#mod-titulo").textContent = (MOD==="anamneses" && filtroAnamTipo) ? `Anamneses — ${rotuloAnam(filtroAnamTipo)}` : m.titulo;
+  $("#mod-titulo").textContent = m.titulo;
   $("#mod-novo").textContent="+ "+(m.novo||"Novo");
   // "+ Novo" da anamnese abre o formulário próprio, já no modelo do submenu
-  $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0, filtroAnamTipo)) : (()=>abrirForm());
+  $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0)) : (()=>abrirForm());
   $("#mod-busca").hidden=!m.busca; $("#mod-busca").value="";
   $("#mod-busca").placeholder =
     MOD==="pacientes"  ? "Buscar por nome, código ou CPF…" :
@@ -739,6 +863,11 @@ function mostrarModulo(){
   $("#mod-vistas").hidden=!ehAgenda;
   $("#mod-imprimir").hidden=!ehAgenda;
   $("#mod-prof").hidden=!(ehAgenda || MOD==="prontuario");
+  // filtro de período nos módulos em que a data manda (anamneses e agenda)
+  const temPeriodo = COM_PERIODO.has(MOD);
+  $("#mod-periodo").hidden = !temPeriodo;
+  $("#mod-periodo").innerHTML = temPeriodo ? periodoHTML(MOD) : "";
+  if(temPeriodo) renderPeriodoInfo();
   if(ehAgenda) montarFiltroProfissional();
   else if(MOD==="prontuario") montarFiltroSituacao();
   if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
@@ -882,6 +1011,7 @@ function dadosVisiveis(){
     let l=aplicarFiltroAgenda(LISTA);
     if(filtroProf) l=l.filter((a)=>String(a.profissional_id)===String(filtroProf));
     l=filtrarPorPaciente(l);
+    l=l.filter((a)=>dentroDoPeriodo(a,"atendimentos"));
     return l;
   }
   if(MOD==="documentos_gestao") return filtrarPorPaciente(LISTA,(d,q)=>String(d.titulo||"").toLowerCase().includes(q));
@@ -891,11 +1021,11 @@ function dadosVisiveis(){
     return l;
   }
   if(MOD==="anamneses"){
-    /* Filtra pelo modelo do submenu e pelo PACIENTE digitado na busca. A busca
-       roda aqui, e não no servidor, porque a tabela guarda só o paciente_id —
-       nome, código e CPF vêm do cache. Casa por nome, por código e por CPF com
-       ou sem máscara (compara só os dígitos dos dois lados). */
-    let l = filtroAnamTipo ? LISTA.filter((a)=>a.tipo===filtroAnamTipo) : LISTA;
+    /* Filtra pelo PERÍODO e pelo PACIENTE digitado na busca. A busca roda aqui,
+       e não no servidor, porque a tabela guarda só o paciente_id — nome, código
+       e CPF vêm do cache. Casa por nome, por código e por CPF com ou sem
+       máscara (compara só os dígitos dos dois lados). */
+    let l = LISTA.filter((a)=>dentroDoPeriodo(a,"anamneses"));
     const q=(($("#mod-busca")||{}).value||"").trim().toLowerCase();
     if(q){
       const dig=soDig(q);
@@ -915,7 +1045,7 @@ function renderTabela(){
   const m=MODULOS[MOD], tb=$("#mod-tbody"), nc=m.colunas.length+1;
   const dados=dadosVisiveis();
   const q=m.busca?$("#mod-busca").value.trim():"";
-  if(!dados.length){ tb.innerHTML=`<tr><td colspan="${nc}" class="vazio">Nenhum registro ${q||filtroAgenda||filtroAnamTipo?"encontrado":"cadastrado ainda"}.</td></tr>`; return; }
+  if(!dados.length){ tb.innerHTML=`<tr><td colspan="${nc}" class="vazio">Nenhum registro ${q||filtroAgenda||filtroData()?"encontrado":"cadastrado ainda"}.</td></tr>`; return; }
   const anam=!!m.anamnese;
   tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
     <td style="text-align:right;white-space:nowrap">${
@@ -1099,31 +1229,52 @@ async function abrirForm(id){
   FORM_ID=id||0;
   let dados={};
   if(id){ try{ dados=await api(MOD+"/"+id); }catch(e){ return toast(e.message,true); } }
-  const host=$("#modal-host");
   const campos=camposDoPerfil(m);
   // cadastro já usado em atendimento/prontuário: some o botão Excluir e explica
   const temHistorico = Array.isArray(dados._vinculos) && dados._vinculos.length > 0;
   const temAtivo = m.campos.some((c)=>c[0]==="ativo");
-  host.innerHTML=`<div class="modal-bg"><div class="modal">
-    <h2>${id?"Editar":m.novo||"Novo"}</h2>
-    <div class="modal-corpo">
+  /* ABRIR um prontuário que já existe vira TELA DO SISTEMA (painel #pane-pront),
+     com menu lateral e barra do topo no lugar — ali dentro cabem a ficha do
+     paciente, os vínculos e quatro áreas de lançamento com anos de histórico.
+     Criar continua em modal, que é um formulário curto.
+     Nos dois casos os campos, os ids (#f-…) e o salvarReg são os mesmos: só
+     muda onde o HTML é escrito. */
+  const ehTelaPront = !!(m.prontuarioPasta && id);
+  const host = ehTelaPront ? $("#pront-corpo") : $("#modal-host");
+
+  const corpo = `
       ${m.fichaPaciente?`<div id="ficha-paciente"></div>`:""}
       ${m.prontuarioPasta&&id?`<div id="pasta-topo"></div>`:""}
-      ${temHistorico?`<p class="aviso-hist">🔒 Este cadastro já tem histórico (${escA(dados._vinculos.join(", "))}) e por isso <b>não pode ser excluído</b>${temAtivo?" — para tirá-lo de uso, mude a Situação para <b>Bloqueado</b>":""}.</p>`:""}
+      ${(temHistorico && !m.prontuarioPasta)?`<p class="aviso-hist">🔒 Este cadastro já tem histórico (${escA(dados._vinculos.join(", "))}) e por isso <b>não pode ser excluído</b>${temAtivo?" — para tirá-lo de uso, mude a Situação para <b>Bloqueado</b>":""}.</p>`:""}
       <div class="formgrid">${campos.map((c)=>campoHTML(c,dados[c[0]])).join("")}</div>
       ${m.prontuarioPasta&&id?`<div id="pasta-areas"></div>`:""}
-      <div id="form-erros"></div>
-    </div>
-    <div class="acoes">
+      <div id="form-erros"></div>`;
+
+  if(ehTelaPront){
+    // a tela usa a topbar do painel: título e ações ficam lá, não no corpo
+    $("#pront-titulo").innerHTML = `Prontuário ${escA(dados.numero||"")}`
+      + `<span class="pront-sub">${escA(nomePac(dados.paciente_id))}${dados.especialidade?" · "+escA(dados.especialidade):""}</span>`;
+    $("#pront-imprimir").onclick = () => imprimirPasta(id);
+    $("#pront-salvar").onclick   = () => salvarReg(id);
+    host.innerHTML = corpo;
+    PRONT_ABERTO = Number(id);
+    abrirPainelPront();
+  } else {
+    const acoes = `
       ${m.imprimir&&id?`<button class="btn btn-ghost" onclick="imprimirFicha(${id})">Imprimir ficha</button>`:""}
-      ${m.prontuarioPasta&&id?`<button class="btn btn-ghost" onclick="imprimirPasta(${id})">Imprimir prontuário</button>`:""}
       ${m.historico&&id?`<button class="btn btn-ghost" onclick="imprimirHistorico(${id})">Imprimir prontuário completo</button>`:""}
       ${id&&!temHistorico?`<button class="btn btn-danger" onclick="excluirReg(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
-      <button class="btn btn-navy" onclick="salvarReg(${id||0})">Salvar</button>
-    </div></div></div>`;
-  // máscaras ao digitar
-  host.querySelector(".modal").addEventListener("input",(e)=>{ const mk=e.target.dataset.mask;
+      <button class="btn btn-navy" onclick="salvarReg(${id||0})">Salvar</button>`;
+    host.innerHTML = `<div class="modal-bg"><div class="modal">
+        <h2>${id?"Editar":m.novo||"Novo"}</h2>
+        <div class="modal-corpo">${corpo}</div>
+        <div class="acoes">${acoes}</div>
+      </div></div>`;
+  }
+  // máscaras ao digitar — no contêiner do formulário, seja modal ou tela
+  const caixa = host.querySelector(".modal") || host;
+  caixa.addEventListener("input",(e)=>{ const mk=e.target.dataset.mask;
     if(mk){ e.target.value=aplicarMascara(mk,e.target.value); } });
   // campos que dependem de outro (habilita/desabilita)
   for(const [k,,,op={}] of m.campos){ if(op.dependeDe){
@@ -1550,10 +1701,9 @@ async function pintarVinculosPasta(prontId){
         <button type="button" class="btn btn-navy btn-sm" onclick="escolherAtendimentoParaVincular(${prontId})">+ Vincular agendamento</button>
       </div>${linhasAtend}</div>`;
 }
-async function abrirAnamneseDaPasta(id){
-  if(!await irParaModulo("anamneses")) return toast("Seu perfil não tem acesso às anamneses.",true);
-  abrirAnamnese(id);
-}
+/* Abre a anamnese SEM sair da tela do prontuário: é uma janela por cima, e
+   fechar devolve a pasta como estava. */
+async function abrirAnamneseDaPasta(id){ abrirAnamnese(id); }
 async function desvincularAtendimento(prontId, atendId){
   if(!confirm("Desvincular este agendamento do prontuário? O agendamento continua na agenda.")) return;
   try{ await api(`prontuario/${prontId}/atendimentos/${atendId}`,"DELETE"); pintarVinculosPasta(prontId); toast("Agendamento desvinculado."); }
@@ -1594,7 +1744,8 @@ function pintarArea(tipo, itens, prontId){
   el.innerHTML=`<table class="anam-m"><tr><th style="width:104px">Data</th><th>Registro</th><th style="width:150px">Profissional</th><th style="width:190px"></th></tr>`+
     itens.map((r)=>`<tr${Number(r.arquivado)?' class="arquivado"':""}>
       <td>${escA(dataBR(r.data))}${Number(r.arquivado)?'<br><span class="tag tag-nao" style="font-size:.66rem">arquivado</span>':""}</td>
-      <td>${escA((r.texto||"").slice(0,110))}${(r.texto||"").length>110?"…":""}</td>
+      <td>${escA((r.texto||"").slice(0,110))}${(r.texto||"").length>110?"…":""}
+        ${r.atualizado?`<br><span class="marca-edicao" title="O que mudou fica no Histórico da pasta">editado em ${escA(dataHoraBR(r.atualizado))}</span>`:""}</td>
       <td>${escA(r.profissional||"—")}</td>
       <td style="text-align:right;white-space:nowrap">
         <button type="button" class="btn btn-ghost btn-sm" onclick="abrirLancamento(${r.id},${prontId})">Acessar</button>
@@ -1742,7 +1893,30 @@ function sincMenor(){
   const menor=ehMenor(nasc.value);
   document.querySelectorAll('#modal-host [data-menor="1"]').forEach((el)=>{ el.hidden=!menor; });
 }
-function fecharModal(){ $("#modal-host").innerHTML=""; }
+/* Fecha o modal. Se ele foi aberto de DENTRO da tela do prontuário, a tela
+   continua onde estava e só recebe os vínculos atualizados — nunca se troca de
+   módulo por fechar uma janela. */
+function fecharModal(){
+  $("#modal-host").innerHTML="";
+  if(PRONT_ABERTO) pintarVinculosPasta(PRONT_ABERTO);
+}
+/* Mostra a tela do prontuário no lugar da lista, mantendo menu e topo. */
+function abrirPainelPront(){
+  document.querySelectorAll(".panel").forEach((x)=>x.classList.remove("on"));
+  $("#pane-pront").classList.add("on");
+  $("#pane-pront").scrollTop = 0;
+  window.scrollTo(0,0);
+}
+/* Volta para a lista de prontuários, já atualizada (alta, lançamentos e
+   vínculos podem ter mudado enquanto a pasta esteve aberta). */
+function fecharPront(){
+  PRONT_ABERTO = 0; FORM_ID = 0; PASTA = null;
+  $("#pront-corpo").innerHTML = "";
+  $("#pront-titulo").innerHTML = "";
+  document.querySelectorAll(".panel").forEach((x)=>x.classList.remove("on"));
+  $("#pane-mod").classList.add("on");
+  if(MOD) carregarLista();
+}
 // alguns campos não aparecem para certos perfis (ex.: o profissional não escolhe
 // "profissional" na agenda — é sempre ele). O servidor força isso de qualquer modo.
 function camposDoPerfil(m){ return m.campos.filter((c)=>!(c[3]&&c[3].ocultarPara===ME.perfil)); }
@@ -1788,6 +1962,9 @@ async function salvarReg(id){
       box.innerHTML=`<div class="erros">Cadastro salvo, mas o acesso não foi criado: ${escA(r.aviso)}</div>`;
       carregarLista(); return;
     }
+    /* Salvar na TELA do prontuário não sai dela: quem está lançando evolução
+       salva e continua trabalhando. Quem sai é o botão Voltar. */
+    if(PRONT_ABERTO && Number(id) === PRONT_ABERTO){ toast("Prontuário salvo."); return; }
     fecharModal();
     // no prontuário novo, mostra o número gerado — é o controle da clínica
     toast(r && r.numero ? `Prontuário salvo — nº ${r.numero}` : "Registro salvo.");
@@ -1900,7 +2077,13 @@ function timbreHTML(titulo, corpo, opc){
    .timbre .doc{margin-left:auto;text-align:right;color:#7a7f92;font-size:.68rem;line-height:1.5}
    .faixa{height:3.5px;background:linear-gradient(90deg,#5B4FD8 0%,#5136d6 55%,#C9A86A 100%);margin:0 0 1.15rem}
    .rod{margin-top:1.1rem;border-top:1px solid #eceaf6;padding-top:.45rem;color:#9aa0ad;font-size:.66rem;
-        display:flex;justify-content:space-between;gap:1rem}
+        display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;overflow-wrap:anywhere}
+   /* cabeçalho: CNPJ, e-mail, telefone e site, um por linha. O nowrap impede
+      que o número do telefone se parta ao meio.
+      (ATENÇÃO: este CSS vive dentro de um template literal — nada de crase
+      aqui, ela fecha a string e quebra o arquivo inteiro.) */
+   .timbre .doc{max-width:52%}
+   .timbre .doc div{white-space:nowrap}
    h1{color:#5136d6;font-size:1.15rem;margin:.1rem 0 .2rem}
    .subtitulo{color:#7a7f92;font-size:.8rem;margin:0 0 1rem}
    .sec{margin:1.25rem 0 .45rem;color:#5B4FD8;font-size:.7rem;font-weight:700;letter-spacing:.09em;
@@ -1908,6 +2091,9 @@ function timbreHTML(titulo, corpo, opc){
    table.d{width:100%;border-collapse:collapse}
    table.d th{text-align:left;width:190px;color:#5a6172;font-weight:600;vertical-align:top;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa}
    table.d td{padding:.34rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top}
+   /* e-mail e endereço não têm onde quebrar sozinhos e estouram a coluna no
+      papel, que é mais estreito que a tela — aqui o corte é obrigatório */
+   table.d td,table.m td,.grade{overflow-wrap:anywhere}
    .grade{display:grid;grid-template-columns:1fr 1fr;gap:0 1.4rem}
    .foto{width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid #e6e2f5;float:right;margin:0 0 .6rem 1rem}
    .cards{display:flex;flex-wrap:wrap;gap:.55rem;margin:.4rem 0}
@@ -1952,7 +2138,14 @@ function timbreHTML(titulo, corpo, opc){
       <div class="timbre">
         <span class="marca">${LOGO_SVG}</span>
         <div class="id"><div class="nome">${CLINICA.nome}</div><div class="sub">${CLINICA.sub}</div></div>
-        <div class="doc">CNPJ ${CLINICA.cnpj}<br>${CLINICA.email} · ${CLINICA.whatsapp}<br>${CLINICA.site}</div>
+        <!-- um dado por linha: e-mail e telefone juntos quebravam no meio do
+             número, que fica ilegível no papel -->
+        <div class="doc">
+          <div>CNPJ ${CLINICA.cnpj}</div>
+          <div>${CLINICA.email}</div>
+          <div>${CLINICA.whatsapp}</div>
+          <div>${CLINICA.site}</div>
+        </div>
       </div>
       <div class="faixa"></div>
     </td></thead>
@@ -2000,7 +2193,7 @@ async function abrirAnamnese(id, tipoSugerido, pre){
   /* Quem preenche a anamnese normalmente é o próprio profissional logado — a
      tela já vem com o nome dele. Continua trocável (admin e recepção escolhem). */
   const euProfissional = ME.perfil === "profissional" ? (ME.profissional_nome || ME.nome || "") : "";
-  let reg = { tipo: tipoSugerido || filtroAnamTipo || "psicanalise", dados: "{}", data: hojeISO(),
+  let reg = { tipo: tipoSugerido || "psicanalise", dados: "{}", data: hojeISO(),
               profissional: euProfissional,
               status: "Rascunho", procedimento: pre.procedimento || "", paciente_id: pre.paciente_id || "" };
   if(id){ try{ reg = await api("anamneses/"+id); }catch(e){ return toast(e.message,true); } }
@@ -2110,7 +2303,7 @@ async function finalizarAnamnese(){
     const r=await api("anamneses/"+ANAM_ID+"/finalizar","POST",{procedimento:proc});
     await recarregarCache();
     fecharModal();
-    await carregarLista();
+    if(!PRONT_ABERTO) await carregarLista();
     const n=r.prontuario?r.prontuario.numero:"";
     toast(`${r.criada?"Prontuário "+n+" aberto":"Anamnese vinculada ao prontuário "+n}`
       + (r.atendimentosVinculados?` · ${r.atendimentosVinculados} agendamento(s) vinculado(s)`:""));
@@ -2277,7 +2470,8 @@ async function salvarAnamnese(opc){
   try{
     if(ANAM_ID) await api("anamneses/"+ANAM_ID,"PUT",body);
     else { const r=await api("anamneses","POST",body); ANAM_ID=r.id; }   // guarda o id para o Finalizar
-    if(!opc.manterAberto){ fecharModal(); carregarLista(); }
+    // aberta de dentro do prontuário? fechar volta para a pasta, não para a lista
+    if(!opc.manterAberto){ fecharModal(); if(!PRONT_ABERTO) carregarLista(); }
     if(!opc.silencioso) toast("Anamnese salva.");
     return true;
   }catch(e){ box.innerHTML=`<div class="erros">${escA(e.message)}</div>`; return false; }
@@ -2613,7 +2807,12 @@ function removerFoto(id,i){ const inp=$("#"+id); const arr=JSON.parse(inp.value|
 
 /* ----------------------------- relatórios ------------------------------ */
 async function carregarRelatorios(){
-  try{ const d=await api("relatorios");
+  const p=periodoDe("relatorios");
+  $("#rel-periodo").innerHTML = periodoHTML("relatorios");
+  const qs = (p.de||p.ate) ? `?de=${encodeURIComponent(p.de)}&ate=${encodeURIComponent(p.ate)}` : "";
+  try{ const d=await api("relatorios"+qs);
+    pintarPeriodo("relatorios", (p.de||p.ate)
+      ? `período: ${p.de?dataBR(p.de):"início"} a ${p.ate?dataBR(p.ate):"hoje"}` : "todo o período");
     $("#rel-stats").innerHTML=[["Pacientes",d.totais.pacientes],["Atendimentos",d.totais.atendimentos],
       ["Atendidos",d.totais.atendidos],["Faltas",d.totais.faltas],["Anamneses",d.totais.anamneses],["Evoluções",d.totais.prontuarios]]
       .map(([r,n])=>`<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
@@ -2623,6 +2822,7 @@ async function carregarRelatorios(){
     $("#rel-mes").innerHTML=barras(d.porMes.map((x)=>({rotulo:mesBR(x.rotulo),total:x.total,bruto:x.rotulo})),"mes")||'<p class="vazio">Sem atendimentos ainda.</p>';
   }catch(e){ toast(e.message,true); }
 }
+function aplicarPeriodoRelatorio(){ lerPeriodo("relatorios"); carregarRelatorios(); }
 function barras(rows,filtro){ if(!rows||!rows.length) return "";
   const max=Math.max(...rows.map((r)=>r.total),1);
   return rows.map((r)=>{

@@ -17,6 +17,24 @@ echo "Serviço      : $(systemctl is-active "$SERVICO" 2>/dev/null)"
 printf "Site         : HTTP %s\n" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORTA/")"
 echo
 
+# O /restrito é uma página só, com todo o JavaScript embutido. Um erro de
+# sintaxe ali não aparece em lugar nenhum: o servidor entrega o arquivo, o
+# navegador desiste de interpretar e a tela fica em branco, sem erro no log.
+# Uma crase dentro do CSS (que mora num template literal) já causou isso.
+echo "--- O JavaScript do /restrito compila? ---"
+node -e '
+  const fs=require("fs");
+  const s=fs.readFileSync("restrito/app.html","utf8");
+  const i=s.indexOf("<script>"), j=s.lastIndexOf("</script>");
+  if(i<0||j<0){ console.log("  não achei o bloco <script> em restrito/app.html"); process.exit(0); }
+  const tmp=require("os").tmpdir()+"/bem-app-check.js";
+  fs.writeFileSync(tmp, s.slice(i+8,j));
+  try { new (require("vm").Script)(fs.readFileSync(tmp,"utf8"), {filename:"app.html"}); console.log("  OK: sem erro de sintaxe"); }
+  catch(e){ console.log("  ERRO DE SINTAXE — a tela do /restrito NÃO vai abrir:"); console.log("  " + e.message); }
+  finally { try{ fs.unlinkSync(tmp); }catch{} }
+' 2>/dev/null || echo "  não consegui verificar"
+echo
+
 echo "--- O banco corre risco no próximo pull? ---"
 if git ls-files --error-unmatch data/site.db >/dev/null 2>&1; then
   echo "  ATENÇÃO: data/site.db ainda é RASTREADO neste commit."
