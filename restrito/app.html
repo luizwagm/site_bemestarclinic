@@ -236,6 +236,20 @@
     #pront-titulo{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;min-width:0}
     .pront-sub{font-size:.85rem;font-weight:500;color:var(--muted)}
     .pront-acoes{display:flex;gap:.5rem;flex-wrap:wrap}
+    /* barra de paginação: quantos por página + navegação */
+    .paginacao{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;margin:.7rem 0 1rem}
+    .paginacao:empty{display:none}
+    .pglbl{font-size:.82rem;font-weight:600;color:var(--muted)}
+    .pgsel{width:auto;margin:0;padding:.3rem .5rem;font-size:.85rem}
+    .pginfo{color:var(--dim);font-size:.82rem}
+    .pgnav{display:flex;align-items:center;gap:.25rem;margin-left:auto;flex-wrap:wrap}
+    .pgbtn{min-width:32px;padding:.28rem .5rem;border:1px solid var(--line2);background:#fff;
+      color:var(--marinho);border-radius:8px;font-weight:600;font-size:.84rem;cursor:pointer}
+    .pgbtn:hover:not(:disabled){background:#eef4fb}
+    .pgbtn.on{background:var(--celeste);color:#fff;border-color:var(--celeste)}
+    .pgbtn:disabled{opacity:.4;cursor:default}
+    .pgsep{color:var(--dim);padding:0 .1rem}
+    @media print{.paginacao{display:none}}
     /* filtro de período: dois campos de data lado a lado */
     .filtro-data{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
     .filtro-data label{margin:0;font-size:.82rem;font-weight:600;color:var(--muted)}
@@ -337,7 +351,7 @@
           <button class="btn btn-navy" id="mod-novo" onclick="abrirForm()">+ Novo</button>
         </div>
       </div>
-      <input class="busca" id="mod-busca" placeholder="Buscar por nome ou CPF…" oninput="carregarLista()" style="margin-bottom:1rem" hidden>
+      <input class="busca" id="mod-busca" placeholder="Buscar por nome ou CPF…" oninput="buscarNaLista()" style="margin-bottom:1rem" hidden>
       <div id="mod-vistas" class="vista-toggle" hidden>
         <button class="vbtn on" data-v="tabela" onclick="trocarVista('tabela')">☰ Tabela</button>
         <button class="vbtn" data-v="agenda" onclick="trocarVista('agenda')">▦ Agenda</button>
@@ -353,6 +367,7 @@
           <tbody id="mod-tbody"><tr><td class="vazio">Carregando…</td></tr></tbody>
         </table>
       </div>
+      <div id="mod-paginacao" class="paginacao"></div>
       <div id="mod-agenda" hidden></div>
       <div id="mod-kanban" hidden></div>
     </section>
@@ -393,6 +408,7 @@
       <div class="filtro-data" id="relpac-filtro"></div>
       <div class="stat-grid" id="relpac-stats"></div>
       <div class="card" id="relpac-tabela" style="padding:0;overflow:auto"></div>
+      <div id="relpac-paginacao" class="paginacao"></div>
     </section>
 
     <section class="panel" id="pane-conta">
@@ -853,12 +869,83 @@ function limparPeriodo(chave){
   mudouPeriodo(chave);
 }
 
+/* ==========================================================================
+   PAGINAÇÃO
+   Uma tabela de 800 pacientes trava o navegador e não se lê. Cada tela guarda
+   o seu tamanho de página e a página atual, então trocar de módulo não
+   embaralha o outro.
+   Trocar de tamanho volta para a página 1 — senão, quem estava na página 9 de
+   10-em-10 cairia num vazio ao passar para 100-em-100.
+   ========================================================================== */
+const TAMANHOS_PAGINA = [10, 15, 30, 50, 100];
+const PAG = {};
+const pagDe = (chave) => (PAG[chave] = PAG[chave] || { tam: 15, pag: 1 });
+/* Recorta a lista e devolve o pedaço + o que a barra precisa saber. */
+function fatiar(chave, lista){
+  const p = pagDe(chave);
+  const paginas = Math.max(1, Math.ceil(lista.length / p.tam));
+  if(p.pag > paginas) p.pag = paginas;      // a lista encolheu (filtro/exclusão)
+  if(p.pag < 1) p.pag = 1;
+  const ini = (p.pag - 1) * p.tam;
+  return { itens: lista.slice(ini, ini + p.tam), total: lista.length, paginas, pagina: p.pag, ini };
+}
+function barraPaginacao(alvo, chave, info){
+  const el = $("#" + alvo); if(!el) return;
+  if(!info.total){ el.innerHTML = ""; return; }
+  const p = pagDe(chave);
+  const de = info.ini + 1, ate = Math.min(info.ini + p.tam, info.total);
+  const bt = (n, rot, ativo, desab) =>
+    `<button class="pgbtn${ativo?" on":""}" ${desab?"disabled":""} onclick="irParaPagina('${chave}',${n})">${rot}</button>`;
+  /* Só as páginas em volta da atual: com 40 páginas, mostrar todas é pior que
+     não mostrar nenhuma. */
+  const paginas = [];
+  const ini = Math.max(1, info.pagina - 2), fim = Math.min(info.paginas, info.pagina + 2);
+  if(ini > 1) paginas.push(bt(1, "1", false, false), ini > 2 ? `<span class="pgsep">…</span>` : "");
+  for(let i = ini; i <= fim; i++) paginas.push(bt(i, String(i), i === info.pagina, false));
+  if(fim < info.paginas) paginas.push(fim < info.paginas - 1 ? `<span class="pgsep">…</span>` : "", bt(info.paginas, String(info.paginas), false, false));
+
+  el.innerHTML = `
+    <label class="pglbl">Mostrar</label>
+    <select class="pgsel" onchange="mudarTamanhoPagina('${chave}',this.value)">
+      ${TAMANHOS_PAGINA.map((n)=>`<option value="${n}"${n===p.tam?" selected":""}>${n}</option>`).join("")}
+    </select>
+    <span class="pginfo">${de}–${ate} de ${info.total}</span>
+    ${info.paginas > 1 ? `<span class="pgnav">
+      ${bt(info.pagina-1, "‹", false, info.pagina<=1)}
+      ${paginas.join("")}
+      ${bt(info.pagina+1, "›", false, info.pagina>=info.paginas)}
+    </span>` : ""}`;
+}
+function repintarPagina(chave){
+  if(chave === "relpac") return pintarRelpacTabela();
+  return MOD === "atendimentos" ? pintarAtendimentos() : renderTabela();
+}
+function mudarTamanhoPagina(chave, valor){
+  const p = pagDe(chave);
+  p.tam = Number(valor) || 15;
+  p.pag = 1;
+  repintarPagina(chave);
+}
+function irParaPagina(chave, n){
+  const p = pagDe(chave);
+  p.pag = Math.max(1, Number(n) || 1);
+  repintarPagina(chave);
+  // volta ao topo da lista: mudar de página e continuar no rodapé desorienta
+  const cx = $("#pane-mod.on") || $("#pane-relpac.on");
+  if(cx) cx.scrollIntoView({ block: "start" });
+}
+/* Filtro, busca ou troca de módulo recomeçam da primeira página. */
+function reiniciarPagina(chave){ pagDe(chave).pag = 1; }
+/* Digitar na busca recomeça da primeira página: filtrar e continuar na página 7
+   quase sempre mostra "nenhum registro" mesmo havendo resultado. */
+function buscarNaLista(){ reiniciarPagina(MOD); carregarLista(); }
+
 /* ==================== lista genérica de um módulo ===================== */
 let vistaAgenda = "tabela", agendaYM = null;
 /* Módulos que ganham o filtro de período (a data que importa em cada um). */
 const COM_PERIODO = new Set(["anamneses","atendimentos"]);
 const filtroData = () => { const p=PERIODOS[MOD]; return !!(p && (p.de||p.ate)); };
-function aplicarPeriodoLista(){ lerPeriodo(MOD); renderPeriodoInfo(); carregarLista(); }
+function aplicarPeriodoLista(){ lerPeriodo(MOD); renderPeriodoInfo(); reiniciarPagina(MOD); carregarLista(); }
 function renderPeriodoInfo(){
   const p=periodoDe(MOD);
   pintarPeriodo(MOD, (p.de||p.ate)
@@ -893,7 +980,8 @@ function mostrarModulo(){
   else if(MOD==="prontuario") montarFiltroSituacao();
   else if(MOD==="pacientes") montarFiltroPaciente();
   if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
-  else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; }
+  else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; $("#mod-paginacao").hidden=false; }
+  reiniciarPagina(MOD);          // entrar num módulo começa da primeira página
   carregarLista();
 }
 function trocarVista(v){ vistaAgenda=v; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===v)); pintarAtendimentos(); }
@@ -905,6 +993,8 @@ function pintarAtendimentos(){
   $("#mod-tabela").hidden = vistaAgenda!=="tabela";
   $("#mod-agenda").hidden = vistaAgenda!=="agenda";
   $("#mod-kanban").hidden = vistaAgenda!=="kanban";
+  // paginação é da tabela; calendário e kanban mostram o mês/coluna inteiros
+  $("#mod-paginacao").hidden = vistaAgenda!=="tabela";
   if(vistaAgenda==="tabela") renderTabela();
   else if(vistaAgenda==="agenda") renderAgenda();
   else renderKanban();
@@ -977,7 +1067,7 @@ function montarFiltroProfissional(){
     ${filtroProf?`<button class="btn btn-ghost btn-sm" onclick="trocarProfAgenda('')">Ver todos</button>`:""}
     <span style="color:var(--dim);font-size:.8rem">${filtroProf?"Mostrando só a agenda deste profissional":`${ativos.length} profissionais ativos`}</span>`;
 }
-function trocarProfAgenda(v){ filtroProf=v; montarFiltroProfissional(); pintarAtendimentos(); }
+function trocarProfAgenda(v){ filtroProf=v; montarFiltroProfissional(); reiniciarPagina(MOD); pintarAtendimentos(); }
 
 /* Relação de prontuários ATIVOS (em tratamento) e INATIVOS (com alta). */
 let filtroSituacao = "";
@@ -989,7 +1079,7 @@ function montarFiltroSituacao(){
     <button class="btn btn-ghost btn-sm" onclick="imprimirRelacaoProntuarios()">🖨 Imprimir relação</button>
     <span style="color:var(--dim);font-size:.8rem" id="sit-contagem"></span>`;
 }
-function trocarSituacao(v){ filtroSituacao=v; montarFiltroSituacao(); carregarLista(); }
+function trocarSituacao(v){ filtroSituacao=v; montarFiltroSituacao(); reiniciarPagina(MOD); carregarLista(); }
 
 /* Relação de pacientes ATIVOS e INATIVOS — mesma leitura do filtro de
    prontuários, para a recepção não ter de aprender duas coisas diferentes. */
@@ -1002,7 +1092,7 @@ function montarFiltroPaciente(){
     <button class="btn btn-ghost btn-sm" onclick="imprimirRelacaoPacientes()">🖨 Imprimir relação</button>
     <span style="color:var(--dim);font-size:.8rem" id="pac-contagem"></span>`;
 }
-function trocarFiltroPaciente(v){ filtroPaciente=v; montarFiltroPaciente(); carregarLista(); }
+function trocarFiltroPaciente(v){ filtroPaciente=v; montarFiltroPaciente(); reiniciarPagina(MOD); carregarLista(); }
 
 /* Ativa/inativa direto da lista, sem abrir o cadastro. */
 async function alternarAtivoPaciente(id, estaAtivo){
@@ -1119,9 +1209,16 @@ function dadosVisiveis(){
 }
 function renderTabela(){
   const m=MODULOS[MOD], tb=$("#mod-tbody"), nc=m.colunas.length+1;
-  const dados=dadosVisiveis();
+  const todos=dadosVisiveis();
   const q=m.busca?$("#mod-busca").value.trim():"";
-  if(!dados.length){ tb.innerHTML=`<tr><td colspan="${nc}" class="vazio">Nenhum registro ${q||filtroAgenda||filtroData()?"encontrado":"cadastrado ainda"}.</td></tr>`; return; }
+  if(!todos.length){
+    tb.innerHTML=`<tr><td colspan="${nc}" class="vazio">Nenhum registro ${q||filtroAgenda||filtroData()?"encontrado":"cadastrado ainda"}.</td></tr>`;
+    barraPaginacao("mod-paginacao", MOD, { total:0 });
+    return;
+  }
+  const info=fatiar(MOD, todos);
+  const dados=info.itens;
+  barraPaginacao("mod-paginacao", MOD, info);
   const anam=!!m.anamnese;
   tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
     <td style="text-align:right;white-space:nowrap">${
@@ -2314,7 +2411,12 @@ async function abrirAnamnese(id, tipoSugerido, pre){
      isso, a faixa diria "reabra primeiro" e o formulário deixaria editar assim
      mesmo — mensagem e comportamento em desacordo. */
   const finalizada = reg.status === "Finalizada";
-  const pastaLigada = reg.prontuario_id ? achaPront(reg.prontuario_id) : null;
+  /* A pasta vem RESOLVIDA do servidor (`_prontuario`). Não dá para confiar no
+     cache aqui: a recepção não lê prontuários, e um prontuario_id sobrando de
+     uma pasta apagada precisa contar como "sem vínculo" — senão a anamnese
+     fica sem o botão Excluir e ninguém entende por quê. */
+  const pastaLigada = reg._prontuario || null;
+  const temVinculo = !!pastaLigada;
 
   const host=$("#modal-host");
   const opcoesTipo = Object.entries(MODELOS).map(([k,m])=>`<option value="${escA(k)}"${k===ANAM_TIPO?" selected":""}>${escA(m.rotulo||m.titulo)}</option>`).join("");
@@ -2335,7 +2437,7 @@ async function abrirAnamnese(id, tipoSugerido, pre){
     </div>`
     /* Reaberta para correção: é rascunho de novo, mas o prontuário que ela
        abriu continua existindo — por isso não pode mais ser excluída. */
-    :reg.prontuario_id?`<div class="faixa-final">
+    :temVinculo?`<div class="faixa-final">
       <b>Reaberta para correção</b> — continua vinculada ao prontuário
       ${pastaLigada?`<span class="num-pront">${escA(pastaLigada.numero||"")}</span> (${escA(pastaLigada.especialidade||"")})`:""}.
       Por fazer parte do registro clínico dele, não pode ser excluída.
@@ -2371,7 +2473,7 @@ async function abrirAnamnese(id, tipoSugerido, pre){
     </div>
     <div class="acoes">
       ${id?`<button class="btn btn-ghost" onclick="imprimirAnamnese(${id})">Imprimir</button>`:""}
-      ${(id&&!reg.prontuario_id)?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
+      ${(id&&!temVinculo)?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">${finalizada?"Fechar":"Cancelar"}</button>
       ${finalizada?"":`<button class="btn btn-navy" onclick="salvarAnamnese()">Salvar rascunho</button>
       <button class="btn btn-ok" onclick="finalizarAnamnese()">Finalizar e abrir prontuário</button>`}
@@ -2966,11 +3068,20 @@ async function carregarRelacaoPacientes(){
     ["Em tratamento",d.filter((x)=>x.emTratamento>0).length]]
     .map(([r,n])=>`<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
   $("#relpac-info").textContent = d.length ? `${d.length} paciente(s)` : "";
-  if(!d.length){ $("#relpac-tabela").innerHTML=`<p class="vazio">Nenhum paciente nesta situação.</p>`; return; }
+  reiniciarPagina("relpac");
+  pintarRelpacTabela();
+}
+/* Desenha só a tabela — a paginação repinta por aqui, sem ir ao servidor de novo. */
+function pintarRelpacTabela(){
+  const d=RELPAC.pacientes||[];
+  if(!d.length){ $("#relpac-tabela").innerHTML=`<p class="vazio">Nenhum paciente nesta situação.</p>`;
+    barraPaginacao("relpac-paginacao","relpac",{total:0}); return; }
+  const info=fatiar("relpac", d);
+  barraPaginacao("relpac-paginacao","relpac",info);
   $("#relpac-tabela").innerHTML=`<table>
     <thead><tr><th>Paciente</th><th>Endereço</th><th style="width:130px">WhatsApp</th>
       <th style="width:180px">Profissional</th><th style="width:190px">Especialidade</th><th style="width:96px">Situação</th></tr></thead>
-    <tbody>${d.map((x)=>`<tr>
+    <tbody>${info.itens.map((x)=>`<tr>
       <td><b>${escA(x.nome)}</b><br><span style="color:var(--dim);font-size:.76rem">${escA(x.codigo||"")}</span></td>
       <td>${escA(enderecoCompleto(x)||"—")}</td>
       <td>${escA(x.celular||x.telefone||"—")}</td>
@@ -3019,7 +3130,7 @@ function irParaAgenda(tipo,valor){
   const btn=document.querySelector('.navbtn[data-nav="atendimentos"]');
   if(btn) btn.click();
 }
-function limparFiltroAgenda(){ filtroAgenda=null; carregarLista(); }
+function limparFiltroAgenda(){ filtroAgenda=null; reiniciarPagina(MOD); carregarLista(); }
 function aplicarFiltroAgenda(lista){
   if(!filtroAgenda) return lista;
   const {tipo,valor}=filtroAgenda;

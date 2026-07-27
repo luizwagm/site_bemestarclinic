@@ -28,7 +28,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.17.1";
+const SISTEMA_VERSION = "1.18.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -227,6 +227,24 @@ try {
   const n = db.prepare("UPDATE pacientes SET ativo=1 WHERE ativo IS NULL").run().changes;
   if (n) console.log(`  · /restrito: ${n} paciente(s) marcados como ativos.`);
 } catch { /* coluna ainda não existe num banco muito antigo */ }
+
+/* ==========================================================================
+   VÍNCULOS ÓRFÃOS — apontam para um prontuário que não existe mais.
+   Versões antigas deixavam apagar a pasta sem soltar o que estava dentro; o
+   resultado é uma anamnese com prontuario_id preenchido apontando para o nada.
+   Na tela isso aparece como "sem prontuário" na lista (a busca não acha) mas
+   com o botão Excluir escondido (o campo está preenchido) — o registro fica
+   impossível de apagar sem motivo visível.
+   Soltar aqui devolve a anamnese para rascunho e o agendamento para a agenda,
+   sem perder nada.
+   ========================================================================== */
+try {
+  const an = db.prepare(`UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL
+     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`).run().changes;
+  const at = db.prepare(`UPDATE atendimentos SET prontuario_id=NULL
+     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`).run().changes;
+  if (an || at) console.log(`  · /restrito: vínculos órfãos soltos — ${an} anamnese(s), ${at} agendamento(s).`);
+} catch (e) { console.error("  ✖ soltar vínculos órfãos:", e.message); }
 
 /* ------------------------- senha (scrypt) e config ------------------------ */
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
@@ -1557,6 +1575,15 @@ async function rotaApi(req, res, p) {
       // a tela avisa quando o registro tem histórico e por isso não pode ser excluído
       if (["profissionais", "pacientes", "procedimentos", "convenios", "salas", "prontuario"].includes(tabela))
         row._vinculos = vinculosDe(tabela, id);
+      /* A pasta a que esta anamnese pertence, RESOLVIDA no servidor. É por ela
+         que a tela decide mostrar ou não o Excluir — não pelo campo
+         prontuario_id, que pode ter sobrado apontando para pasta apagada, nem
+         pelo cache do navegador, que a recepção nem carrega. */
+      if (tabela === "anamneses") {
+        row._prontuario = row.prontuario_id
+          ? db.prepare("SELECT id,numero,especialidade,status FROM prontuario WHERE id=?").get(row.prontuario_id) || null
+          : null;
+      }
       return json(res, 200, row);
     }
     if (req.method === "POST" && !id) {
@@ -1710,11 +1737,17 @@ async function rotaApi(req, res, p) {
          permanece, então o Excluir continua fora. */
       if (tabela === "anamneses") {
         const an = db.prepare("SELECT prontuario_id FROM anamneses WHERE id=?").get(id);
-        if (an && an.prontuario_id) {
-          const pr = db.prepare("SELECT numero, especialidade FROM prontuario WHERE id=?").get(an.prontuario_id) || {};
+        /* O que barra é o prontuário EXISTIR — não o campo estar preenchido.
+           Um id apontando para pasta apagada é lixo, não vínculo, e não pode
+           deixar a anamnese impossível de excluir. */
+        const pr = an && an.prontuario_id
+          ? db.prepare("SELECT numero, especialidade FROM prontuario WHERE id=?").get(an.prontuario_id) : null;
+        if (pr) {
           return json(res, 409, { error: `Não dá para excluir: esta anamnese está vinculada ao prontuário ${pr.numero || ""}`
             + `${pr.especialidade ? " (" + pr.especialidade + ")" : ""} e faz parte do registro clínico dele.` });
         }
+        // vínculo morto: solta antes de apagar, para não deixar rastro estranho
+        if (an && an.prontuario_id) db.prepare("UPDATE anamneses SET prontuario_id=NULL WHERE id=?").run(id);
       }
       // profissional sem histórico: o acesso dele vai junto
       if (tabela === "profissionais") db.prepare("DELETE FROM g_usuarios WHERE profissional_id=?").run(id);
