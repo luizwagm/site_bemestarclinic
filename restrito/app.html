@@ -1440,8 +1440,10 @@ async function abrirForm(id){
       if(allow && pv && pv.value){ const p=acha("procedimentos",pv.value);
         if(p && !allow.has(rotuloProc(p))){ pv.value=""; $("#f-procedimento_id-txt").value=""; } }
     });
+    // "input" além de "change": no campo de hora o navegador dispara input a
+    // cada segmento preenchido, então o Fim acompanha enquanto se digita
     const hi=$("#f-hora");
-    if(hi) hi.addEventListener("change",()=>calcularFim());
+    if(hi){ hi.addEventListener("change",()=>calcularFim()); hi.addEventListener("input",()=>calcularFim()); }
   }
 }
 /* ==========================================================================
@@ -1519,21 +1521,43 @@ function preencherDoPaciente(novo){
   set("#f-celular", p.celular||p.telefone);
   const cv=$("#f-convenio_id"); if(cv && p.convenio_id && (novo||!cv.value)) cv.value=p.convenio_id;
 }
-/* Ao escolher o procedimento, sugere o valor e calcula o horário final. */
+/* Ao escolher o procedimento, sugere o valor e recalcula o horário final.
+   LIMPAR o procedimento também recalcula — sem ele a duração volta a ser a
+   padrão de 40 minutos, e o Fim tem de acompanhar. */
 function preencherDoProcedimento(novo){
-  const pr=acha("procedimentos",($("#f-procedimento_id")||{}).value); if(!pr) return;
-  const v=$("#f-valor"); if(v && pr.valor && (novo||!v.value)) v.value=pr.valor;
-  calcularFim(true);
-}
-/* hora_fim = hora + duração do procedimento (só preenche se estiver vazio). */
-function calcularFim(forcar){
-  const hi=$("#f-hora"), hf=$("#f-hora_fim"); if(!hi||!hf||!hi.value) return;
-  if(hf.value && !forcar) return;
   const pr=acha("procedimentos",($("#f-procedimento_id")||{}).value);
-  const dur=pr&&Number(pr.duracao)>0?Number(pr.duracao):40;
-  const [h,m]=hi.value.split(":").map(Number); if(Number.isNaN(h)) return;
-  const t=h*60+(m||0)+dur;
-  hf.value=`${String(Math.floor(t/60)%24).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;
+  if(pr){ const v=$("#f-valor"); if(v && pr.valor && (novo||!v.value)) v.value=pr.valor; }
+  calcularFim();
+}
+/* ==========================================================================
+   FIM = INÍCIO + DURAÇÃO
+   Duração é a do procedimento escolhido; sem procedimento, 40 minutos.
+   15:00 → 15:40 · 16:40 → 17:20. Relógio de 24h.
+
+   Recalcula SEMPRE que o início ou o procedimento mudam. A versão anterior
+   desistia quando o Fim já tinha algum valor (`if(hf.value) return`), e o
+   resultado era o campo ficar preso num horário antigo: quem punha 15:00,
+   via 15:40, e depois corrigia para 16:40 continuava com 15:40 na tela.
+   Ajuste manual do Fim continua valendo — só é refeito quando o usuário
+   volta a mexer no início ou no procedimento.
+   ========================================================================== */
+const DURACAO_PADRAO = 40;
+function duracaoDoProcedimento(){
+  const pr=acha("procedimentos",($("#f-procedimento_id")||{}).value);
+  const d=pr?Number(pr.duracao):NaN;
+  return Number.isFinite(d)&&d>0 ? d : DURACAO_PADRAO;
+}
+function somarMinutos(hhmm, minutos){
+  const [h,m]=String(hhmm||"").split(":").map(Number);
+  if(!Number.isFinite(h)) return "";
+  const t=((h*60+(m||0)+minutos)%1440+1440)%1440;      // volta ao 00:00 depois das 24h
+  return `${String(Math.floor(t/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;
+}
+function calcularFim(){
+  const hi=$("#f-hora"), hf=$("#f-hora_fim");
+  if(!hi||!hf||!hi.value) return;
+  const novo=somarMinutos(hi.value, duracaoDoProcedimento());
+  if(novo) hf.value=novo;
 }
 /* ------------------- combobox com busca (campo "busca") ---------------- */
 function cbxWrap(id){ const el=$("#"+id); return el?el.closest(".cbx"):null; }
@@ -2308,6 +2332,13 @@ async function abrirAnamnese(id, tipoSugerido, pre){
       ${pastaLigada?`<span class="num-pront">${escA(pastaLigada.numero||"")}</span> (${escA(pastaLigada.especialidade||"")})`:""}.
       Para corrigir algo, reabra primeiro.
       <button type="button" class="btn btn-ghost btn-sm" onclick="reabrirAnamnese(${id})">Reabrir para correção</button>
+    </div>`
+    /* Reaberta para correção: é rascunho de novo, mas o prontuário que ela
+       abriu continua existindo — por isso não pode mais ser excluída. */
+    :reg.prontuario_id?`<div class="faixa-final">
+      <b>Reaberta para correção</b> — continua vinculada ao prontuário
+      ${pastaLigada?`<span class="num-pront">${escA(pastaLigada.numero||"")}</span> (${escA(pastaLigada.especialidade||"")})`:""}.
+      Por fazer parte do registro clínico dele, não pode ser excluída.
     </div>`:`<p class="hint" style="margin:0 0 .6rem;color:var(--dim)">
       Enquanto está sendo preenchida, a anamnese fica como <b>rascunho</b> e não cria prontuário.
       Ao <b>finalizar</b>, o sistema abre a pasta do paciente naquele procedimento — ou usa a que já existir.</p>`}
@@ -2340,7 +2371,7 @@ async function abrirAnamnese(id, tipoSugerido, pre){
     </div>
     <div class="acoes">
       ${id?`<button class="btn btn-ghost" onclick="imprimirAnamnese(${id})">Imprimir</button>`:""}
-      ${id&&!finalizada?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
+      ${(id&&!reg.prontuario_id)?`<button class="btn btn-danger" onclick="excluirAnamnese(${id})">Excluir</button>`:""}
       <button class="btn btn-ghost" onclick="fecharModal()">${finalizada?"Fechar":"Cancelar"}</button>
       ${finalizada?"":`<button class="btn btn-navy" onclick="salvarAnamnese()">Salvar rascunho</button>
       <button class="btn btn-ok" onclick="finalizarAnamnese()">Finalizar e abrir prontuário</button>`}

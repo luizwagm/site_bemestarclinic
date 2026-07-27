@@ -28,7 +28,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.17.0";
+const SISTEMA_VERSION = "1.17.1";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -693,17 +693,18 @@ function vinculosDe(tabela, id) {
     somar(conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
   }
   if (tabela === "salas") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
-  /* Prontuário com conteúdo NÃO se apaga. Apagar a pasta destruiria registro
-     clínico (os lançamentos ficariam órfãos no banco, invisíveis mas presentes)
-     e deixaria anamnese e agenda apontando para um número que não existe mais.
-     Quem encerra um tratamento dá ALTA — a pasta some das telas de ativo e o
-     histórico continua inteiro. Pasta aberta por engano, ainda vazia, pode ser
-     excluída normalmente. */
-  if (tabela === "prontuario") {
+  /* Prontuário com LANÇAMENTO não se apaga: ali está o registro clínico, e
+     apagar a pasta o deixaria órfão no banco — invisível, mas presente. Quem
+     encerra um tratamento dá ALTA.
+
+     Anamnese e agendamento NÃO entram nesta conta de propósito. Eles não são
+     conteúdo da pasta, são coisas ARQUIVADAS nela — e continuam existindo
+     sozinhos se ela sair. Se contassem, uma anamnese finalizada por engano
+     ficaria presa para sempre: a anamnese não se apaga por estar vinculada, e a
+     pasta não se apagaria por ter a anamnese. Do jeito que está, apagar a pasta
+     (enquanto ainda não tem lançamento) SOLTA os dois e permite recomeçar. */
+  if (tabela === "prontuario")
     somar(conta("SELECT COUNT(*) c FROM prontuario_registros WHERE prontuario_id=?", id), "lançamento");
-    somar(conta("SELECT COUNT(*) c FROM anamneses WHERE prontuario_id=?", id), "anamnese");
-    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE prontuario_id=?", id), "agendamento");
-  }
   return v;
 }
 
@@ -1702,10 +1703,42 @@ async function rotaApi(req, res, p) {
           return json(res, 409, { error: `Não dá para excluir: este registro já tem histórico (${v.join(", ")}). ${saida}`, vinculos: v });
         }
       }
+      /* Anamnese só se apaga enquanto NÃO estiver vinculada a um prontuário.
+         Depois de vinculada ela é parte do registro clínico daquela pasta —
+         foi ela que a abriu — e apagá-la deixaria o prontuário sem a origem.
+         Vale mesmo se a anamnese tiver sido reaberta para correção: o vínculo
+         permanece, então o Excluir continua fora. */
+      if (tabela === "anamneses") {
+        const an = db.prepare("SELECT prontuario_id FROM anamneses WHERE id=?").get(id);
+        if (an && an.prontuario_id) {
+          const pr = db.prepare("SELECT numero, especialidade FROM prontuario WHERE id=?").get(an.prontuario_id) || {};
+          return json(res, 409, { error: `Não dá para excluir: esta anamnese está vinculada ao prontuário ${pr.numero || ""}`
+            + `${pr.especialidade ? " (" + pr.especialidade + ")" : ""} e faz parte do registro clínico dele.` });
+        }
+      }
       // profissional sem histórico: o acesso dele vai junto
       if (tabela === "profissionais") db.prepare("DELETE FROM g_usuarios WHERE profissional_id=?").run(id);
+
+      /* Apagar a pasta SOLTA o que estava arquivado nela, sem destruir nada:
+         a anamnese volta a ser rascunho (e aí sim pode ser excluída ou
+         refinalizada no procedimento certo) e o agendamento volta a ficar sem
+         prontuário, seguindo normalmente na agenda. É o caminho de volta de
+         quem finalizou a anamnese errada. */
+      let soltos = null;
+      if (tabela === "prontuario") {
+        const pr = db.prepare("SELECT numero, paciente_id, especialidade FROM prontuario WHERE id=?").get(id) || {};
+        const nAn = db.prepare("UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL WHERE prontuario_id=?").run(id).changes;
+        const nAt = db.prepare("UPDATE atendimentos SET prontuario_id=NULL WHERE prontuario_id=?").run(id).changes;
+        soltos = { anamneses: nAn, atendimentos: nAt };
+        if (pr.paciente_id) {
+          const det = [nAn ? `${nAn} anamnese(s) voltaram a rascunho` : "", nAt ? `${nAt} agendamento(s) sem prontuário` : ""]
+            .filter(Boolean).join(" · ");
+          anotar("paciente", pr.paciente_id, `Prontuário excluído${pr.numero ? " " + pr.numero : ""}`,
+            [pr.especialidade, det].filter(Boolean).join(" — "), s);
+        }
+      }
       db.prepare(`DELETE FROM ${tabela} WHERE id=?`).run(id);
-      return json(res, 200, { ok: true });
+      return json(res, 200, soltos ? { ok: true, soltos } : { ok: true });
     }
   }
 
