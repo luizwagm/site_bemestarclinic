@@ -295,7 +295,13 @@
          do tratamento — e é para onde a equipe vai o dia inteiro. -->
     <button class="navbtn" data-nav="prontuario">Prontuário</button>
     <button class="navbtn" data-nav="documentos_gestao">Documentos</button>
-    <button class="navbtn" data-nav="relatorios">Relatórios</button>
+    <div class="side-sec">
+      <button class="side-head" type="button">Relatórios <span class="tn-caret">▼</span></button>
+      <div class="side-sub">
+        <button class="navbtn" data-nav="relatorios">Movimento da clínica</button>
+        <button class="navbtn" data-nav="relatorios_pacientes">Pacientes ativos / inativos</button>
+      </div>
+    </div>
     <div class="side-credito">Produzido por<br>LA Software House.</div>
   </aside>
 
@@ -375,6 +381,18 @@
         <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por situação</h3><div id="rel-status"></div></div>
       </div>
       <div class="card"><h3 style="margin-bottom:.6rem">Atendimentos por mês</h3><div id="rel-mes"></div></div>
+    </section>
+
+    <!-- RELAÇÃO DE PACIENTES — quem está ativo, quem saiu, com o que a clínica
+         precisa para entrar em contato e saber quem assiste. -->
+    <section class="panel" id="pane-relpac">
+      <div class="topbar">
+        <h1>Pacientes ativos / inativos</h1>
+        <button class="btn btn-ghost btn-sm" onclick="imprimirRelPacientes()">🖨 Imprimir relação</button>
+      </div>
+      <div class="filtro-data" id="relpac-filtro"></div>
+      <div class="stat-grid" id="relpac-stats"></div>
+      <div class="card" id="relpac-tabela" style="padding:0;overflow:auto"></div>
     </section>
 
     <section class="panel" id="pane-conta">
@@ -508,7 +526,7 @@ const rotuloAnam = (t) => (MODELOS[t] && MODELOS[t].rotulo) || t || "—";
 /* ========================= definição dos módulos ===================== */
 const MODULOS = {
   pacientes: { titulo:"Pacientes", novo:"Cadastrar Paciente", busca:true, imprimir:true, historico:true,
-    colunas:[["codigo","Código","numero"],["nome","Nome"],["nascimento","Nascimento","data"],["cpf","CPF"],["celular","Celular"],["convenio_id","Convênio","conv"]],
+    colunas:[["codigo","Código","numero"],["nome","Nome"],["nascimento","Nascimento","data"],["cpf","CPF"],["celular","Celular"],["convenio_id","Convênio","conv"],["ativo","Situação","situacaopac"]],
     campos:[
       ["foto","Foto do paciente","foto",{full:1}],
       ["_ident","Identificação","titulo",{full:1}],
@@ -558,6 +576,8 @@ const MODULOS = {
       ["avisos","Recebe avisos e lembretes","checkbox"],
       ["observacao","Observação","textarea",{full:1}],
       ["consentimento","Termo de consentimento assinado / aceito","checkbox",{full:1}],
+      ["ativo","Situação","select",{opcoes:[["1","Ativo"],["0","Inativo (não aparece nas telas de escolha)"]],padrao:"1",full:1,
+        dica:"Inativar não apaga nada: ficha, prontuários e histórico continuam. É diferente da alta, que vale para um prontuário só."}],
     ]},
   convenios: { titulo:"Convênios", novo:"Novo convênio", busca:true,
     colunas:[["nome","Convênio"],["registro","Registro/ANS"],["contato","Contato"],["ativo","Ativo","bool"]],
@@ -675,7 +695,7 @@ const PERFIL_ROTULO = { admin:"Administrador", secretaria:"Secretaria", profissi
 const PERM_CLIENTE = {
   admin: null,
   // recepção: cadastros, agenda e relatórios — sem prontuário nem anamnese
-  secretaria: new Set(["painel","pacientes","profissionais","convenios","procedimentos","salas","atendimentos","documentos_gestao","relatorios","conta"]),
+  secretaria: new Set(["painel","pacientes","profissionais","convenios","procedimentos","salas","atendimentos","documentos_gestao","relatorios","relatorios_pacientes","conta"]),
   // profissional: sua agenda, seus prontuários e as anamneses
   profissional: new Set(["atendimentos","prontuario","anamneses","conta"]),
 };
@@ -734,6 +754,7 @@ document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("
   if(nav==="painel"){ $("#pane-painel").classList.add("on"); carregarPainel(); }
   else if(nav==="conta"){ $("#pane-conta").classList.add("on"); }
   else if(nav==="relatorios"){ $("#pane-relatorios").classList.add("on"); carregarRelatorios(); }
+  else if(nav==="relatorios_pacientes"){ $("#pane-relpac").classList.add("on"); carregarRelacaoPacientes(); }
   else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }
   fecharDropdowns(); marcarTriggers();
 }));
@@ -862,7 +883,7 @@ function mostrarModulo(){
   const ehAgenda = MOD==="atendimentos";
   $("#mod-vistas").hidden=!ehAgenda;
   $("#mod-imprimir").hidden=!ehAgenda;
-  $("#mod-prof").hidden=!(ehAgenda || MOD==="prontuario");
+  $("#mod-prof").hidden=!(ehAgenda || MOD==="prontuario" || MOD==="pacientes");
   // filtro de período nos módulos em que a data manda (anamneses e agenda)
   const temPeriodo = COM_PERIODO.has(MOD);
   $("#mod-periodo").hidden = !temPeriodo;
@@ -870,6 +891,7 @@ function mostrarModulo(){
   if(temPeriodo) renderPeriodoInfo();
   if(ehAgenda) montarFiltroProfissional();
   else if(MOD==="prontuario") montarFiltroSituacao();
+  else if(MOD==="pacientes") montarFiltroPaciente();
   if(ehAgenda){ agendaYM=null; if(!preservarFiltro) filtroAgenda=null; preservarFiltro=false; document.querySelectorAll("#mod-vistas .vbtn").forEach((b)=>b.classList.toggle("on",b.dataset.v===vistaAgenda)); }
   else { $("#mod-tabela").hidden=false; $("#mod-agenda").hidden=true; $("#mod-kanban").hidden=true; }
   carregarLista();
@@ -894,6 +916,11 @@ function celula(row,[chave,,tipo]){
   if(tipo==="situacao") return Number(v)!==0
     ? '<span class="tag tag-Ativo">Ativo</span>'
     : '<span class="tag tag-Faltou">Bloqueado</span>';
+  /* Paciente não é "bloqueado" — é inativo. Sem valor gravado (fichas antigas)
+     conta como ativo, que é o padrão da coluna. */
+  if(tipo==="situacaopac") return (v===null||v===undefined||Number(v)!==0)
+    ? '<span class="tag tag-Ativo">Ativo</span>'
+    : '<span class="tag tag-nao">Inativo</span>';
   if(tipo==="tag"&&v) return `<span class="tag tag-${escA(v)}">${escA(v)}</span>`;
   if(tipo==="pac") return escA(nomePac(v));
   if(tipo==="prof") return escA(nomeProf(v));
@@ -964,6 +991,49 @@ function montarFiltroSituacao(){
 }
 function trocarSituacao(v){ filtroSituacao=v; montarFiltroSituacao(); carregarLista(); }
 
+/* Relação de pacientes ATIVOS e INATIVOS — mesma leitura do filtro de
+   prontuários, para a recepção não ter de aprender duas coisas diferentes. */
+let filtroPaciente = "";
+function montarFiltroPaciente(){
+  const box=$("#mod-prof"); if(!box) return;
+  const bt=(v,r)=>`<button class="vbtn${filtroPaciente===v?" on":""}" onclick="trocarFiltroPaciente('${v}')">${r}</button>`;
+  box.innerHTML=`<span style="font-weight:600;color:var(--muted);font-size:.85rem">Situação:</span>
+    <span class="vista-toggle" style="margin:0">${bt("","Todos")}${bt("1","Ativos")}${bt("0","Inativos")}</span>
+    <button class="btn btn-ghost btn-sm" onclick="imprimirRelacaoPacientes()">🖨 Imprimir relação</button>
+    <span style="color:var(--dim);font-size:.8rem" id="pac-contagem"></span>`;
+}
+function trocarFiltroPaciente(v){ filtroPaciente=v; montarFiltroPaciente(); carregarLista(); }
+
+/* Ativa/inativa direto da lista, sem abrir o cadastro. */
+async function alternarAtivoPaciente(id, estaAtivo){
+  const p=acha("pacientes",id), nome=p?p.nome:"este paciente";
+  if(estaAtivo){
+    const motivo=prompt(`Inativar ${nome}?\n\nEle sai das telas de escolha (agenda, anamnese, prontuário) e da lista de ativos.\nNADA é apagado: ficha, prontuários e histórico continuam, e dá para reativar quando quiser.\n\nMotivo (opcional):`,"");
+    if(motivo===null) return;
+    try{
+      const r=await api(`pacientes/${id}/inativar`,"POST",{motivo});
+      await recarregarCache(); carregarLista();
+      toast(r.prontuariosAbertos
+        ? `${nome} inativado — atenção: ${r.prontuariosAbertos} prontuário(s) ainda em tratamento.`
+        : `${nome} inativado.`);
+    }catch(e){ toast(e.message,true); }
+    return;
+  }
+  if(!confirm(`Reativar ${nome}?\n\nEle volta a aparecer nas telas de escolha e na lista de ativos.`)) return;
+  try{ await api(`pacientes/${id}/reativar`,"POST",{}); await recarregarCache(); carregarLista(); toast(`${nome} reativado.`); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* Da lista de Pacientes, o botão "Imprimir relação" leva à mesma tela de
+   relatório — assim existe UMA relação de pacientes no sistema, não duas que
+   podem divergir. Leva junto o filtro que já estava escolhido. */
+function imprimirRelacaoPacientes(){
+  relpacFiltro = filtroPaciente;
+  const btn=document.querySelector('.navbtn[data-nav="relatorios_pacientes"]');
+  if(btn && btn.style.display!=="none") btn.click();
+  else toast("Seu perfil não tem acesso aos relatórios.",true);
+}
+
 /* Relação impressa de prontuários conforme o filtro atual. */
 async function imprimirRelacaoProntuarios(){
   const dados=dadosVisiveis();
@@ -1015,6 +1085,12 @@ function dadosVisiveis(){
     return l;
   }
   if(MOD==="documentos_gestao") return filtrarPorPaciente(LISTA,(d,q)=>String(d.titulo||"").toLowerCase().includes(q));
+  if(MOD==="pacientes"){
+    const ehAtivo=(x)=> x.ativo===null||x.ativo===undefined||Number(x.ativo)!==0;
+    const l = filtroPaciente==="" ? LISTA : LISTA.filter((x)=> filtroPaciente==="1" ? ehAtivo(x) : !ehAtivo(x));
+    const c=$("#pac-contagem"); if(c) c.textContent = `${l.length} paciente(s)`;
+    return l;
+  }
   if(MOD==="prontuario"){
     let l = filtroSituacao ? LISTA.filter((x)=>(x.status||"Ativo")===filtroSituacao) : LISTA;
     const c=$("#sit-contagem"); if(c) c.textContent = `${l.length} prontuário(s)`;
@@ -1054,6 +1130,8 @@ function renderTabela(){
            : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
     }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
     }${MOD==="profissionais"?`<button class="btn btn-ghost btn-sm" onclick="alternarBloqueio(${row.id},${Number(row.ativo)!==0?1:0})">${Number(row.ativo)!==0?"Bloquear":"Desbloquear"}</button> `:""
+    }${MOD==="pacientes"?(()=>{const at=row.ativo===null||row.ativo===undefined||Number(row.ativo)!==0;
+        return `<button class="btn btn-ghost btn-sm" onclick="alternarAtivoPaciente(${row.id},${at?1:0})">${at?"Inativar":"Reativar"}</button> `;})():""
     }<button class="btn btn-ghost btn-sm" onclick="${anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`}">Abrir</button></td></tr>`).join("");
 }
 
@@ -1472,6 +1550,14 @@ function cbxFiltrar(id){
     if(wrap.dataset.filtraprof==="1"){ const allow=procedimentosPermitidos(); if(allow) base=base.filter((r)=>allow.has(rotuloProc(r))); }
   }
   if(wrap.dataset.tab==="convenios"||wrap.dataset.tab==="salas") base=base.filter((r)=>Number(r.ativo)!==0);
+  /* Paciente inativo não aparece para ser escolhido — mas continua no CACHE,
+     senão o nome dele sumiria dos agendamentos e prontuários antigos.
+     O já gravado no campo também continua visível: editar um registro velho
+     não pode perder o paciente. */
+  if(wrap.dataset.tab==="pacientes"){
+    const atual=($("#"+id)||{}).value||"";
+    base=base.filter((r)=>r.ativo===null||r.ativo===undefined||Number(r.ativo)!==0||String(r.id)===String(atual));
+  }
 
   /* Paciente pode ser achado por NOME, CPF ou código. O CPF casa digitado com ou
      sem máscara: comparamos só os dígitos dos dois lados. */
@@ -2340,6 +2426,7 @@ function blocoPacienteCard(p, titulo){
   const item=(r,v)=> v?`<div><span style="color:var(--dim);font-size:.72rem">${escA(r)}</span><br><b style="font-weight:600">${escA(v)}</b></div>`:"";
   // alertas que o profissional precisa ver antes de atender
   const alertas=[];
+  if(!(p.ativo===null||p.ativo===undefined||Number(p.ativo)!==0)) alertas.push("Paciente INATIVO — reative a ficha para registrar novos atendimentos");
   if(p.prioridade && p.prioridade!=="Nenhuma") alertas.push(p.prioridade);
   if(idade!==null && idade<18) alertas.push("Menor de idade" + (p.resp_nome?` · responsável: ${p.resp_nome}`:" · SEM responsável cadastrado"));
   if(!Number(p.consentimento)) alertas.push("Termo de consentimento não registrado");
@@ -2498,6 +2585,7 @@ function blocoDadosPessoais(p, convNome){
     <div class="grade">
       <table class="d">
         ${L("Código", p.codigo)}
+        ${L("Situação", (p.ativo===null||p.ativo===undefined||Number(p.ativo)!==0) ? "Ativo" : "Inativo")}
         ${L("Nome", p.nome)}
         ${L("Nascimento", p.nascimento ? dataBR(p.nascimento) + (idade!==null?` (${idade} anos)`:"") : "")}
         ${L("CPF", p.cpf)}${L("RG", p.rg)}${L("Sexo", sexo)}
@@ -2823,6 +2911,68 @@ async function carregarRelatorios(){
   }catch(e){ toast(e.message,true); }
 }
 function aplicarPeriodoRelatorio(){ lerPeriodo("relatorios"); carregarRelatorios(); }
+
+/* ==========================================================================
+   RELAÇÃO DE PACIENTES ATIVOS / INATIVOS
+   Serve para a clínica ligar, convidar de volta ou visitar: nome, endereço
+   completo, WhatsApp, quem assiste e em quê. Sai em PAISAGEM — o endereço não
+   cabe em retrato sem virar três linhas por paciente.
+   ========================================================================== */
+let relpacFiltro = "0";          // começa nos INATIVOS: é a relação que a clínica pede para retomar contato
+let RELPAC = { pacientes: [], total: 0, ativos: 0 };
+
+async function carregarRelacaoPacientes(){
+  const bt=(v,r)=>`<button class="vbtn${relpacFiltro===v?" on":""}" onclick="trocarRelpac('${v}')">${r}</button>`;
+  $("#relpac-filtro").innerHTML=`<span style="font-weight:600;color:var(--muted);font-size:.85rem">Mostrar:</span>
+    <span class="vista-toggle" style="margin:0">${bt("1","Ativos")}${bt("0","Inativos")}${bt("","Todos")}</span>
+    <span class="pd-info" id="relpac-info"></span>`;
+  $("#relpac-tabela").innerHTML=`<p class="vazio">Carregando…</p>`;
+  try{
+    RELPAC = await api("relatorios/pacientes"+(relpacFiltro?`?ativo=${relpacFiltro}`:""));
+  }catch(e){ $("#relpac-tabela").innerHTML=`<p class="vazio">${escA(e.message)}</p>`; return; }
+  const d=RELPAC.pacientes||[];
+  $("#relpac-stats").innerHTML=[["Na relação",d.length],["Ativos",RELPAC.ativos],["Inativos",RELPAC.total-RELPAC.ativos],
+    ["Em tratamento",d.filter((x)=>x.emTratamento>0).length]]
+    .map(([r,n])=>`<div class="stat"><b>${n}</b><span>${r}</span></div>`).join("");
+  $("#relpac-info").textContent = d.length ? `${d.length} paciente(s)` : "";
+  if(!d.length){ $("#relpac-tabela").innerHTML=`<p class="vazio">Nenhum paciente nesta situação.</p>`; return; }
+  $("#relpac-tabela").innerHTML=`<table>
+    <thead><tr><th>Paciente</th><th>Endereço</th><th style="width:130px">WhatsApp</th>
+      <th style="width:180px">Profissional</th><th style="width:190px">Especialidade</th><th style="width:96px">Situação</th></tr></thead>
+    <tbody>${d.map((x)=>`<tr>
+      <td><b>${escA(x.nome)}</b><br><span style="color:var(--dim);font-size:.76rem">${escA(x.codigo||"")}</span></td>
+      <td>${escA(enderecoCompleto(x)||"—")}</td>
+      <td>${escA(x.celular||x.telefone||"—")}</td>
+      <td>${x.profissionais.length?x.profissionais.map(escA).join("<br>"):"—"}</td>
+      <td>${x.especialidades.length?x.especialidades.map(escA).join("<br>"):"—"}</td>
+      <td>${relpacAtivo(x)?'<span class="tag tag-Ativo">Ativo</span>':'<span class="tag tag-nao">Inativo</span>'}</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+const relpacAtivo = (x) => x.ativo===null||x.ativo===undefined||Number(x.ativo)!==0;
+function trocarRelpac(v){ relpacFiltro=v; carregarRelacaoPacientes(); }
+
+function imprimirRelPacientes(){
+  const d=RELPAC.pacientes||[];
+  if(!d.length) return toast("Nada para imprimir.",true);
+  const rot = relpacFiltro==="1" ? "Relação de pacientes ativos"
+            : relpacFiltro==="0" ? "Relação de pacientes inativos" : "Relação de pacientes";
+  const ativos=d.filter(relpacAtivo).length;
+  const corpo=`<div class="cards">
+      <div class="kpi"><b>${d.length}</b><span>Na relação</span></div>
+      <div class="kpi"><b>${ativos}</b><span>Ativos</span></div>
+      <div class="kpi"><b>${d.length-ativos}</b><span>Inativos</span></div>
+    </div>
+    <table class="m"><tr><th>Paciente</th><th>Endereço completo</th><th style="width:110px">WhatsApp</th>
+      <th style="width:150px">Profissional</th><th style="width:160px">Especialidade</th><th style="width:74px">Situação</th></tr>`+
+    d.map((x)=>`<tr>
+      <td>${escA(x.nome)}${x.codigo?`<br><span style="color:#9aa0ad;font-size:.9em">${escA(x.codigo)}</span>`:""}</td>
+      <td>${escA(enderecoCompleto(x)||"—")}</td>
+      <td>${escA(x.celular||x.telefone||"—")}</td>
+      <td>${x.profissionais.length?x.profissionais.map(escA).join("<br>"):"—"}</td>
+      <td>${x.especialidades.length?x.especialidades.map(escA).join("<br>"):"—"}</td>
+      <td>${relpacAtivo(x)?"Ativo":"Inativo"}</td></tr>`).join("")+`</table>`;
+  abrirImpressao(rot, corpo, { subtitulo:`${d.length} paciente(s)`, paisagem:true });
+}
 function barras(rows,filtro){ if(!rows||!rows.length) return "";
   const max=Math.max(...rows.map((r)=>r.total),1);
   return rows.map((r)=>{

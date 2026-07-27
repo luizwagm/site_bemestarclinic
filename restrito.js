@@ -28,7 +28,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.15.0";
+const SISTEMA_VERSION = "1.17.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -70,7 +70,13 @@ db.exec(`
     celular TEXT, telefone TEXT, email TEXT, canal TEXT,
     mae TEXT, pai TEXT, tag TEXT, indicacao TEXT, avisos INTEGER DEFAULT 1,
     resp_nome TEXT, resp_cpf TEXT, resp_rg TEXT, resp_nascimento TEXT,
-    consentimento INTEGER DEFAULT 0, observacao TEXT, criado TEXT);
+    consentimento INTEGER DEFAULT 0, observacao TEXT, criado TEXT,
+    -- ativo: o paciente ainda frequenta a clínica. Inativo some das telas de
+    -- escolha (agenda, anamnese, prontuário) mas NUNCA é excluído: a ficha, o
+    -- histórico e os prontuários continuam inteiros e ele volta com um clique.
+    -- Não confundir com a ALTA, que é de um prontuário só (o paciente pode ter
+    -- alta da ozonioterapia e seguir na psicanálise).
+    ativo INTEGER DEFAULT 1, inativo_em TEXT, inativo_motivo TEXT);
 
   -- Convênios aceitos (Particular, Cartão BemEstarClinic, System Saúde…)
   CREATE TABLE IF NOT EXISTS convenios (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,7 +215,18 @@ for (const alt of [
   "ALTER TABLE procedimentos ADD COLUMN anamnese_modelo TEXT",
   // marca de edição do lançamento clínico (o histórico guarda o que mudou)
   "ALTER TABLE prontuario_registros ADD COLUMN atualizado TEXT",
+  // paciente ativo/inativo (some das telas de escolha, nunca é excluído)
+  "ALTER TABLE pacientes ADD COLUMN ativo INTEGER DEFAULT 1",
+  "ALTER TABLE pacientes ADD COLUMN inativo_em TEXT",
+  "ALTER TABLE pacientes ADD COLUMN inativo_motivo TEXT",
 ]) { try { db.exec(alt); } catch { /* já existe */ } }
+
+/* Fichas criadas antes desta versão não têm `ativo` preenchido — ficariam
+   invisíveis nos seletores, que filtram por ativo<>0. Todas nascem ATIVAS. */
+try {
+  const n = db.prepare("UPDATE pacientes SET ativo=1 WHERE ativo IS NULL").run().changes;
+  if (n) console.log(`  · /restrito: ${n} paciente(s) marcados como ativos.`);
+} catch { /* coluna ainda não existe num banco muito antigo */ }
 
 /* ------------------------- senha (scrypt) e config ------------------------ */
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
@@ -538,6 +555,14 @@ function nomeProcedimento(linha) {
   }
   return (linha && linha.especialidade) || "";
 }
+/* Barra o registro NOVO em nome de quem já saiu da clínica. Devolve a mensagem
+   de erro, ou "" se pode seguir. Editar o que já existe continua liberado — o
+   passado não se mexe por causa da situação de hoje. */
+function pacienteInativo(pacienteId) {
+  const pc = db.prepare("SELECT nome, ativo FROM pacientes WHERE id=?").get(pacienteId);
+  if (!pc || Number(pc.ativo) !== 0) return "";
+  return `${pc.nome} está INATIVO. Reative a ficha dele em Cadastros → Pacientes para voltar a registrar atendimentos.`;
+}
 function prontuarioDoPar(pacienteId, procedimento) {
   if (!pacienteId || !procedimento) return null;
   return db.prepare("SELECT id,numero,especialidade,status FROM prontuario WHERE paciente_id=? AND especialidade=?")
@@ -595,7 +620,7 @@ const TAB = {
     "nascimento", "naturalidade", "estado_civil", "convenio_id", "religiao", "profissao", "escolaridade",
     "altura", "peso", "cor_pele", "prioridade", "sangue", "cep", "endereco", "numero", "bairro", "cidade",
     "complemento", "celular", "telefone", "email", "canal", "mae", "pai", "tag", "indicacao", "avisos",
-    "resp_nome", "resp_cpf", "resp_rg", "resp_nascimento", "consentimento", "observacao"],
+    "resp_nome", "resp_cpf", "resp_rg", "resp_nascimento", "consentimento", "observacao", "ativo"],
   convenios: ["nome", "registro", "contato", "observacao", "ativo", "sort"],
   procedimentos: ["nome", "tipo", "valor", "duracao", "cor", "anamnese_modelo", "ativo", "sort"],
   salas: ["nome", "ativo", "sort"],
@@ -1078,6 +1103,52 @@ async function rotaApi(req, res, p) {
     });
   }
 
+  /* ==========================================================================
+     RELAÇÃO DE PACIENTES ATIVOS / INATIVOS
+     Uma linha por paciente com o que a clínica precisa para ligar ou visitar:
+     nome, endereço completo, WhatsApp, quem o assiste e em quê.
+
+     "Quem assiste" vem de dois lugares e é somado: o profissional RESPONSÁVEL
+     por cada prontuário e quem de fato ATENDEU na agenda — um paciente pode ter
+     sido atendido por alguém que não é o responsável pela pasta, e para uma
+     relação de contato os dois importam.
+     A "especialidade" é o procedimento: dos prontuários e também dos
+     atendimentos, senão quem ainda não tem pasta aberta sairia sem nada.
+     ?ativo=1|0 recorta; sem o parâmetro, vêm todos.
+     ========================================================================== */
+  if (p === "relatorios/pacientes") {
+    if (!pode(s.perfil, "relatorios")) return json(res, 403, { error: "Sem permissão." });
+    const q = new URL(req.url, "http://x").searchParams;
+    const at = (q.get("ativo") || "").trim();
+    const cond = at === "1" ? " WHERE COALESCE(ativo,1)<>0" : at === "0" ? " WHERE COALESCE(ativo,1)=0" : "";
+    const pacs = db.prepare(`SELECT * FROM pacientes${cond} ORDER BY nome`).all();
+
+    const pastasDe = db.prepare("SELECT numero, especialidade, profissional, status FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade");
+    const profsDe = db.prepare(`SELECT DISTINCT pf.nome FROM atendimentos a JOIN profissionais pf ON pf.id=a.profissional_id
+                                 WHERE a.paciente_id=? AND pf.nome<>''`);
+    const procsDe = db.prepare(`SELECT DISTINCT COALESCE(NULLIF(pr.nome,''), a.especialidade) nome FROM atendimentos a
+                                 LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
+                                 WHERE a.paciente_id=? AND COALESCE(NULLIF(pr.nome,''), a.especialidade) IS NOT NULL`);
+    const conv = db.prepare("SELECT nome FROM convenios WHERE id=?");
+    const juntar = (lista) => [...new Set(lista.filter((x) => x && String(x).trim()))].sort();
+
+    for (const pc of pacs) {
+      const pastas = pastasDe.all(pc.id);
+      pc.prontuarios = pastas;
+      pc.especialidades = juntar([...pastas.map((x) => x.especialidade), ...procsDe.all(pc.id).map((x) => x.nome)]);
+      pc.profissionais = juntar([...pastas.map((x) => x.profissional), ...profsDe.all(pc.id).map((x) => x.nome)]);
+      pc.convenio_nome = pc.convenio_id ? (conv.get(pc.convenio_id) || {}).nome || "" : "";
+      // em tratamento = tem pasta sem alta; serve para a coluna Situação da relação
+      pc.emTratamento = pastas.filter((x) => x.status !== "Alta").length;
+    }
+    return json(res, 200, {
+      filtro: at === "1" ? "Ativos" : at === "0" ? "Inativos" : "Todos",
+      total: pacs.length,
+      ativos: pacs.filter((x) => Number(x.ativo ?? 1) !== 0).length,
+      pacientes: pacs,
+    });
+  }
+
   // upload de arquivo/foto (fica no diretório privado do /restrito)
   if (p === "upload" && req.method === "POST") {
     const { name, dataUrl } = await readBody(req);
@@ -1214,6 +1285,34 @@ async function rotaApi(req, res, p) {
       anotar("prontuario", id, "Prontuário reaberto", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
       anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
     }
+    return json(res, 200, { ok: true });
+  }
+
+  /* ---------------- Ativar / inativar o PACIENTE -----------------------
+     Inativar é o "arquivar" da ficha: o paciente some das telas de escolha
+     (agenda, anamnese, prontuário) e para de aparecer na lista de ativos, mas
+     nada é apagado — ficha, prontuários e histórico continuam inteiros.
+     É diferente da ALTA, que vale para UM prontuário: quem tem alta da
+     ozonioterapia pode seguir ativo na psicanálise. Inativar é a pessoa
+     deixando a clínica. */
+  const pm3 = p.match(/^pacientes\/(\d+)\/(inativar|reativar)$/);
+  if (pm3 && req.method === "POST") {
+    if (!pode(s.perfil, "pacientes")) return json(res, 403, { error: "Sem permissão." });
+    const id = pm3[1], inativar = pm3[2] === "inativar";
+    const pac = db.prepare("SELECT id,nome,codigo FROM pacientes WHERE id=?").get(id);
+    if (!pac) return json(res, 404, { error: "Paciente não encontrado." });
+    const b = await readBody(req);
+    if (inativar) {
+      const abertos = conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=? AND status<>'Alta'", id);
+      db.prepare("UPDATE pacientes SET ativo=0, inativo_em=?, inativo_motivo=? WHERE id=?")
+        .run(agora(), b.motivo || "", id);
+      anotar("paciente", id, "Paciente inativado", b.motivo || "", s);
+      /* Avisa se ficou tratamento em aberto — não impede (a pessoa pode
+         simplesmente ter parado de vir), mas quem inativa precisa saber. */
+      return json(res, 200, { ok: true, prontuariosAbertos: abertos });
+    }
+    db.prepare("UPDATE pacientes SET ativo=1, inativo_em=NULL, inativo_motivo=NULL, reativado_em=? WHERE id=?").run(agora(), id);
+    anotar("paciente", id, "Paciente reativado", b.motivo || "", s);
     return json(res, 200, { ok: true });
   }
 
@@ -1429,6 +1528,11 @@ async function rotaApi(req, res, p) {
       // relação de ativos / inativos (com alta)
       const st = (q.get("status") || "").trim();
       if (st && COLS[tabela].has("status")) { cond.push("status=?"); args.push(st); }
+      // ?ativo=1|0 — relação de pacientes ativos ou inativos
+      const at = (q.get("ativo") || "").trim();
+      if ((at === "0" || at === "1") && COLS[tabela].has("ativo")) {
+        cond.push(at === "1" ? "COALESCE(ativo,1)<>0" : "COALESCE(ativo,1)=0");
+      }
       if (donoCol) { cond.push(donoCol + "=?"); args.push(donoVal); }
       if (cond.length) sql += " WHERE " + cond.join(" AND ");
       /* Ordem de cada lista:
@@ -1462,6 +1566,8 @@ async function rotaApi(req, res, p) {
          de segurança caso duas telas salvem ao mesmo tempo. */
       if (tabela === "prontuario") {
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente." });
+        const e0 = pacienteInativo(b.paciente_id);
+        if (e0) return json(res, 400, { error: e0 });
         if (!b.especialidade) return json(res, 400, { error: "Selecione o procedimento deste prontuário." });
         const ja = db.prepare("SELECT numero FROM prontuario WHERE paciente_id=? AND especialidade=?")
           .get(b.paciente_id, b.especialidade);
@@ -1477,11 +1583,15 @@ async function rotaApi(req, res, p) {
       if (tabela === "atendimentos") {
         // só se agenda para quem tem ficha: é o que garante código e histórico
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente. Só é possível agendar para paciente cadastrado." });
+        const e0 = pacienteInativo(b.paciente_id);
+        if (e0) return json(res, 400, { error: e0 });
         const e = validarAgenda(b.profissional_id, b.data, b.hora, null, b.hora_fim, b.sala_id);
         if (e) return json(res, 400, { error: e });
       }
       if (tabela === "anamneses") {
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente." });
+        const e0 = pacienteInativo(b.paciente_id);
+        if (e0) return json(res, 400, { error: e0 });
         if (!MODELOS_ANAMNESE[b.tipo]) return json(res, 400, { error: "Tipo de anamnese inválido." });
         if (typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
       }
