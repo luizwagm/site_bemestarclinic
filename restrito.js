@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.25.1";
+const SISTEMA_VERSION = "1.26.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +48,12 @@ const SISTEMA_VERSION = "1.25.1";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.26.0", data: "2026-07-28", titulo: "Prontuário e anamnese só do profissional", mudancas: [
+    "O profissional passa a ver apenas os prontuários e as anamneses dele",
+    "Vale em todas as telas, no prontuário completo impresso e no histórico",
+    "Dar alta, reabrir e finalizar só na própria pasta",
+    "Administrador e secretaria seguem com o acesso de antes",
+  ] },
   { versao: "1.24.0", data: "2026-07-28", titulo: "Atalho para o painel do site", mudancas: [
     "Novo menu de atalhos no topo, ao lado do menu da conta",
     "Painel do site abre em nova aba, já autenticado (só administrador)",
@@ -282,6 +288,47 @@ function proteger(tabela, obj) {
   if (!campos || !obj) return obj;
   for (const c of campos) if (c in obj) obj[c] = cifrar(obj[c]);
   return obj;
+}
+
+/* ==========================================================================
+   O QUE O PROFISSIONAL PODE VER
+
+   REGRA DA CLÍNICA: o profissional vê APENAS os prontuários e as anamneses
+   dele. Nunca, em nenhuma tela, os de outro profissional.
+
+   Antes desta versão o recorte era mais frouxo: a PASTA do prontuário era
+   visível a todos (só os lançamentos eram privados) e a anamnese era visível a
+   todos os profissionais. A clínica reviu isso.
+
+   TODA decisão de "isto é dele?" passa por aqui — e não espalhada por dezenas
+   de consultas. São oito caminhos que entregam prontuário ou anamnese (lista,
+   registro, histórico do paciente, vínculos, atendimentos disponíveis, chips
+   da pasta, prontuário completo impresso e relatórios). Se cada um tivesse a
+   sua própria versão da regra, bastaria um ficar para trás — e um vazamento de
+   prontuário não avisa, não dá erro, e ninguém descobre até ser tarde.
+
+   `admin` e `secretaria` não são afetados: a secretaria já não abre prontuário
+   nem anamnese (barrado por PERM), e o admin vê tudo por função.
+   ========================================================================== */
+const soDoProfissional = (s) => s && s.perfil === "profissional";
+
+/* Condição SQL. Quando não há profissional vinculado ao login, devolve algo
+   que não casa com nada: sem vínculo não há como dizer o que é dele, e o lado
+   seguro do erro é não mostrar nada. */
+function filtroDono(s, coluna = "profissional_id") {
+  if (!soDoProfissional(s)) return { sql: "", args: [] };
+  if (!s.profissionalId) return { sql: ` AND 1=0`, args: [] };
+  return { sql: ` AND ${coluna}=?`, args: [s.profissionalId] };
+}
+
+/* Guarda de UM registro já lido. Devolve a mensagem de recusa ou null. */
+function recusaPorDono(s, registro) {
+  if (!soDoProfissional(s)) return null;
+  if (!registro) return null;                       // quem trata "não existe" é o chamador
+  if (!s.profissionalId) return "Seu acesso não está vinculado a um profissional. Fale com o administrador.";
+  if (String(registro.profissional_id || "") !== String(s.profissionalId))
+    return "Este registro pertence a outro profissional.";
+  return null;
 }
 
 /* ==========================================================================
@@ -959,10 +1006,13 @@ const TAB = {
     "nome_agenda", "celular", "data", "hora", "hora_fim", "valor", "primeira", "encaixe", "lembrete", "nps",
     "status", "observacoes"],
   // "numero", "status", "alta_*" NÃO entram: são do servidor, nunca do cliente
-  prontuario: ["paciente_id", "especialidade", "profissional", "aberto_em", "observacao", "usuario_id"],
+  /* "profissional_id" entra porque é o DONO do registro — é por ele que o
+     recorte do perfil profissional funciona. O servidor o preenche a partir do
+     nome escolhido (ou do próprio profissional logado); não é campo de tela. */
+  prontuario: ["paciente_id", "especialidade", "profissional", "profissional_id", "aberto_em", "observacao", "usuario_id"],
   prontuario_registros: ["prontuario_id", "tipo", "texto", "data", "profissional", "anexo", "usuario_id"],
   // "status"/"finalizada_em"/"prontuario_id" são do fluxo de finalizar, no servidor
-  anamneses: ["paciente_id", "tipo", "dados", "procedimento", "profissional", "data", "usuario_id"],
+  anamneses: ["paciente_id", "tipo", "dados", "procedimento", "profissional", "profissional_id", "data", "usuario_id"],
   documentos_gestao: ["paciente_id", "tipo", "titulo", "arquivo", "data"],
 };
 
@@ -1816,8 +1866,13 @@ async function rotaApi(req, res, p) {
     const conv = paciente.convenio_id ? await Q.get("SELECT nome FROM convenios WHERE id=?", paciente.convenio_id) : null;
     // o profissional só vê os lançamentos que ele mesmo escreveu
     const sóMeus = s.perfil === "profissional" ? " AND r.usuario_id=" + Number(s.userId) : "";
-    // as pastas do paciente e, dentro de cada uma, os lançamentos em ordem
-    const pastas = await Q.all("SELECT * FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade, id", pid);
+    /* …e só as PASTAS dele. Este endpoint alimenta o "prontuário completo"
+       impresso — se o recorte falhasse aqui, o profissional imprimiria o
+       histórico clínico inteiro do paciente, incluindo o de outros
+       profissionais. É o caminho mais perigoso dos oito. */
+    const dono = filtroDono(s);
+    const pastas = await Q.all(`SELECT * FROM prontuario WHERE paciente_id=?${dono.sql}
+       ORDER BY status, especialidade, id`, pid, ...dono.args);
     for (const pasta of pastas) {
       pasta.registros = await Q.all(`SELECT r.* FROM prontuario_registros r WHERE r.prontuario_id=?${sóMeus}
          ORDER BY COALESCE(NULLIF(r.data,''),r.criado), r.id`, pasta.id);
@@ -1833,8 +1888,13 @@ async function rotaApi(req, res, p) {
     return json(res, 200, {
       paciente: { ...paciente, convenio_nome: conv ? conv.nome : "" },
       prontuarios: pastas,
-      historico: await Q.all("SELECT * FROM historico WHERE entidade='paciente' AND entidade_id=? ORDER BY criado, id", pid),
-      anamneses: await Q.all("SELECT * FROM anamneses WHERE paciente_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id", pid),
+      /* O histórico do paciente narra o que aconteceu nas pastas — inclusive
+         trechos de evolução (ver `anotar`). Para o profissional ele fica de
+         fora: seria a porta dos fundos do recorte que acabamos de aplicar. */
+      historico: soDoProfissional(s) ? []
+        : await Q.all("SELECT * FROM historico WHERE entidade='paciente' AND entidade_id=? ORDER BY criado, id", pid),
+      anamneses: await Q.all(`SELECT * FROM anamneses WHERE paciente_id=?${dono.sql}
+        ORDER BY COALESCE(NULLIF(data,''),criado), id`, pid, ...dono.args),
       atendimentos: await Q.all(`SELECT a.*, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome, cv.nome convenio_nome
         FROM atendimentos a
         LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
@@ -1854,6 +1914,10 @@ async function rotaApi(req, res, p) {
     const id = am[1], acao = am[2];
     const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", id);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    /* Dar alta ou reabrir é MEXER no tratamento de alguém. Sem esta guarda, um
+       profissional encerraria o acompanhamento conduzido por outro. */
+    const recusaAlta = recusaPorDono(s, pr);
+    if (recusaAlta) return json(res, 403, { error: recusaAlta });
     const b = await readBody(req);
     if (acao === "alta") {
       const quando = b.data || new Date().toISOString().slice(0, 10);
@@ -1925,6 +1989,10 @@ async function rotaApi(req, res, p) {
     const id = fm[1];
     const an = await Q.get("SELECT * FROM anamneses WHERE id=?", id);
     if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
+    /* Finalizar ABRE o prontuário. Feito na anamnese de outro profissional,
+       criaria uma pasta clínica em nome dele. */
+    const recusaFin = recusaPorDono(s, an);
+    if (recusaFin) return json(res, 403, { error: recusaFin });
     const b = await readBody(req);
     const procedimento = String(b.procedimento || an.procedimento || "").trim();
     if (!an.paciente_id) return json(res, 400, { error: "Anamnese sem paciente." });
@@ -1937,7 +2005,12 @@ async function rotaApi(req, res, p) {
       /* Q.inserir (e não Q.run) porque o id novo é preciso na hora. No SQLite
          vinha de lastInsertRowid; no Postgres só existe com RETURNING, que o
          Q.inserir acrescenta. */
-      const novoId = await Q.inserir("INSERT INTO prontuario(paciente_id,especialidade,profissional,status,aberto_em,usuario_id,criado) VALUES(?,?,?,'Ativo',?,?,?)", an.paciente_id, procedimento, prof, (an.data || new Date().toISOString().slice(0, 10)), s.userId, agora());
+      /* A pasta nasce com o MESMO dono da anamnese que a abriu — é o vínculo
+         que faz o profissional continuar vendo o que acabou de criar. */
+      const donoId = an.profissional_id || (soDoProfissional(s) ? s.profissionalId : null);
+      const novoId = await Q.inserir(
+        "INSERT INTO prontuario(paciente_id,especialidade,profissional,profissional_id,status,aberto_em,usuario_id,criado) VALUES(?,?,?,?,'Ativo',?,?,?)",
+        an.paciente_id, procedimento, prof, donoId, (an.data || new Date().toISOString().slice(0, 10)), s.userId, agora());
       const numero = await emitirNumeroProntuario(novoId);
       pasta = { id: novoId, numero, especialidade: procedimento, status: "Ativo" };
       criada = true;
@@ -1958,6 +2031,8 @@ async function rotaApi(req, res, p) {
     if (!pode(s.perfil, "anamneses")) return json(res, 403, { error: "Sem permissão." });
     const an = await Q.get("SELECT * FROM anamneses WHERE id=?", rvm[1]);
     if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
+    const recusaReab = recusaPorDono(s, an);
+    if (recusaReab) return json(res, 403, { error: recusaReab });
     await Q.run("UPDATE anamneses SET status='Rascunho', atualizado=? WHERE id=?", agora(), rvm[1]);
     if (an.prontuario_id) await anotar("prontuario", an.prontuario_id, "Anamnese reaberta para correção", rotuloModelo(an.tipo), s);
     return json(res, 200, { ok: true });
@@ -1972,6 +2047,9 @@ async function rotaApi(req, res, p) {
     const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", vm[1]);
     const at = await Q.get("SELECT * FROM atendimentos WHERE id=?", vm[2]);
     if (!pr || !at) return json(res, 404, { error: "Prontuário ou agendamento não encontrado." });
+    /* Vincular ou soltar um agendamento é mexer no conteúdo da pasta. */
+    const recusaVinc = recusaPorDono(s, pr);
+    if (recusaVinc) return json(res, 403, { error: recusaVinc });
     if (req.method === "POST") {
       // a pasta é do paciente: não se pendura o atendimento de outra pessoa
       if (String(at.paciente_id) !== String(pr.paciente_id))
@@ -1992,6 +2070,8 @@ async function rotaApi(req, res, p) {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
     const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", dm[1]);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    const recusa = recusaPorDono(s, pr);
+    if (recusa) return json(res, 403, { error: recusa });
     return json(res, 200, await Q.all(`SELECT a.*, p.nome procedimento_nome, pf.nome profissional_nome
          FROM atendimentos a
          LEFT JOIN procedimentos p ON p.id = a.procedimento_id
@@ -2018,6 +2098,18 @@ async function rotaApi(req, res, p) {
   const hm2 = p.match(/^historico\/(paciente|prontuario)\/(\d+)$/);
   if (hm2 && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    /* O histórico guarda TRECHOS do que foi escrito nas evoluções (ver
+       `anotar`). Para o profissional, só o da pasta DELE — e o do paciente
+       fica fora por inteiro, porque reúne o que aconteceu em todas as pastas,
+       de todos os profissionais. Sem isto, o recorte teria uma porta dos
+       fundos: bastaria pedir o histórico para ler o que a tela escondeu. */
+    if (soDoProfissional(s)) {
+      if (hm2[1] === "paciente") return json(res, 200, []);
+      const pr = await Q.get("SELECT profissional_id FROM prontuario WHERE id=?", hm2[2]);
+      if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+      const recusa = recusaPorDono(s, pr);
+      if (recusa) return json(res, 403, { error: recusa });
+    }
     return json(res, 200, await Q.all("SELECT * FROM historico WHERE entidade=? AND entidade_id=? ORDER BY criado DESC, id DESC", hm2[1], hm2[2]));
   }
 
@@ -2027,11 +2119,12 @@ async function rotaApi(req, res, p) {
   const pm2 = p.match(/^pacientes\/(\d+)\/prontuarios$/);
   if (pm2 && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
+    const dono = filtroDono(s, "pr.profissional_id");
     return json(res, 200, await Q.all(`SELECT pr.*,
         (SELECT COUNT(*) FROM prontuario_registros r WHERE r.prontuario_id=pr.id AND r.arquivado=0) lancamentos,
         (SELECT COUNT(*) FROM anamneses an WHERE an.prontuario_id=pr.id) anamneses,
         (SELECT COUNT(*) FROM atendimentos at WHERE at.prontuario_id=pr.id) atendimentos
-      FROM prontuario pr WHERE pr.paciente_id=? ORDER BY pr.status, pr.especialidade`, pm2[1]));
+      FROM prontuario pr WHERE pr.paciente_id=?${dono.sql} ORDER BY pr.status, pr.especialidade`, pm2[1], ...dono.args));
   }
 
   /* ------- O que está pendurado numa pasta (tela do prontuário) --------- */
@@ -2040,6 +2133,8 @@ async function rotaApi(req, res, p) {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
     const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", vlm[1]);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+    const recusa = recusaPorDono(s, pr);
+    if (recusa) return json(res, 403, { error: recusa });
     return json(res, 200, {
       prontuario: pr,
       anamneses: await Q.all("SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado) DESC, id DESC", pr.id),
@@ -2067,13 +2162,23 @@ async function rotaApi(req, res, p) {
     /* Recorte do profissional: só os SEUS registros. No prontuário "seu" = quem
        criou (usuario_id); na agenda "seu" = para quem o atendimento é marcado
        (profissional_id, ligado ao usuário). Fora esses dois casos, sem recorte. */
-    /* Recorte do profissional. A PASTA do prontuário é visível a todos (ele
-       precisa achar o paciente), mas os LANÇAMENTOS só o autor lê — é ali que
-       está a anotação clínica. Na agenda, só os atendimentos dele. */
+    /* Recorte do profissional — o que é "dele" em cada tabela:
+         · prontuario e anamneses  → profissional_id (o responsável)
+         · prontuario_registros    → usuario_id (o AUTOR do lançamento; um
+           lançamento é a anotação de quem escreveu, e continua privada mesmo
+           dentro de uma pasta compartilhada)
+         · atendimentos            → profissional_id (para quem foi marcado)
+       Fora dessas quatro, sem recorte.
+
+       O profissional SEM vínculo a um cadastro de profissional não vê nada
+       dessas tabelas: sem o vínculo não há como dizer o que é dele, e o lado
+       seguro do erro é não mostrar. O `-1` nunca casa com um id real. */
     let donoCol = null, donoVal = null;
     if (s.perfil === "profissional") {
       if (tabela === "prontuario_registros") { donoCol = "usuario_id"; donoVal = s.userId; }
-      else if (tabela === "atendimentos") { donoCol = "profissional_id"; donoVal = s.profissionalId; }
+      else if (tabela === "prontuario" || tabela === "anamneses" || tabela === "atendimentos") {
+        donoCol = "profissional_id"; donoVal = s.profissionalId || -1;
+      }
     }
 
     if (req.method === "GET" && !id) {
@@ -2208,6 +2313,17 @@ async function rotaApi(req, res, p) {
     if (req.method === "POST" && !id) {
       const b = await readBody(req);
       if (tabela === "prontuario" || tabela === "anamneses" || tabela === "prontuario_registros") b.usuario_id = s.userId;
+      /* Carimba o DONO. Sem isto o profissional criaria a pasta e, no instante
+         seguinte, deixaria de enxergá-la — o recorte da leitura não acharia
+         dono nenhum. Ele nunca escolhe outro profissional: o registro é dele.
+         Admin e secretaria continuam definindo pelo campo do formulário. */
+      if (tabela === "prontuario" || tabela === "anamneses") {
+        if (soDoProfissional(s)) { b.profissional_id = s.profissionalId; b.profissional = s.nome; }
+        else if (b.profissional && !b.profissional_id) {
+          const pf = await Q.get("SELECT id FROM profissionais WHERE LOWER(TRIM(nome))=LOWER(TRIM(?))", b.profissional);
+          if (pf) b.profissional_id = pf.id;
+        }
+      }
       /* Um prontuário por paciente + especialidade. A checagem aqui devolve uma
          mensagem que o recepcionista entende; o índice único no banco é a rede
          de segurança caso duas telas salvem ao mesmo tempo. */
