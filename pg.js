@@ -36,9 +36,32 @@
    Ambas as traduções pulam o que está dentro de aspas e de comentários: um
    texto que contenha "?" ou a palavra LIKE não é tocado.
    ========================================================================== */
-const pg = require("pg");
-const { Pool } = pg;
 const { AsyncLocalStorage } = require("node:async_hooks");
+
+/* ==========================================================================
+   O require do 'pg' NÃO PODE DERRUBAR O PROCESSO.
+
+   Este arquivo é carregado pelo server.js, que também serve o site público e o
+   /admin — e esses dois vivem no SQLite, sem nenhuma relação com o Postgres.
+   Um `require("pg")` cru no topo faz o processo INTEIRO morrer quando o pacote
+   falta (servidor sem `npm ci`, deploy pela metade). Foi assim que a produção
+   caiu na virada: faltava a dependência e o site saiu do ar junto.
+
+   Com o require dentro do try, a falta do pacote vira um erro claro na PRIMEIRA
+   consulta do /restrito — e só ali. O site continua no ar.
+   ========================================================================== */
+let pg = null;
+let ERRO_DRIVER = "";
+try {
+  pg = require("pg");
+} catch {
+  ERRO_DRIVER = "o pacote 'pg' não está instalado — rode: npm ci --omit=dev";
+}
+
+const exigirDriver = () => {
+  if (!pg) throw new Error(ERRO_DRIVER);
+  return pg;
+};
 
 /* ==========================================================================
    COUNT(*) PRECISA VOLTAR COMO NÚMERO — e por padrão não volta.
@@ -57,10 +80,12 @@ const { AsyncLocalStorage } = require("node:async_hooks");
    comportamento que o SQLite tinha. O limite seguro é 9 quatrilhões — a
    clínica conta pacientes e atendimentos, não estrelas.
    ========================================================================== */
-pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
-/* NUMERIC (1700) tem o mesmo dilema. Aqui ele só aparece em soma de valores,
-   que o sistema já trata como texto — converter mantém a aritmética simples. */
-pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
+if (pg) {
+  pg.types.setTypeParser(20, (v) => (v === null ? null : Number(v)));
+  /* NUMERIC (1700) tem o mesmo dilema. Aqui ele só aparece em soma de valores,
+     que o sistema já trata como texto — converter mantém a aritmética simples. */
+  pg.types.setTypeParser(1700, (v) => (v === null ? null : Number(v)));
+}
 
 /* ------------------------------ conexão ---------------------------------- */
 /* Em produção as credenciais vêm do systemd (EnvironmentFile=/etc/bemestar.env)
@@ -81,6 +106,7 @@ function config() {
 let pool = null;
 function obterPool() {
   if (!pool) {
+    const { Pool } = exigirDriver();
     pool = new Pool({
       ...config(),
       max: Number(process.env.PGPOOL_MAX) || 10,

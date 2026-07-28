@@ -1,6 +1,6 @@
 {
   "name": "bemestarclinic",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "private": true,
   "description": "Site, painel administrativo (/admin, SQLite) e sistema de gestão clínica (/restrito, PostgreSQL) da BemEstarClinic.",
   "main": "server.js",

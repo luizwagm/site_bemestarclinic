@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.12.0";
+const APP_VERSION = "1.12.1";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -1306,6 +1306,36 @@ const servidor = http.createServer(async (req, res) => {
   if (req.headers["x-forwarded-proto"] === "https")
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
+  /* Se o banco da gestão não inicializou, o /restrito responde 503 com um
+     recado claro — em vez de estourar uma exceção diferente a cada clique,
+     deixando a equipe sem entender se o problema é a senha dela.
+     O site e o /admin, que são SQLite, seguem o fluxo normal logo abaixo. */
+  if (ERRO_GESTAO && (p === "/restrito" || p.startsWith("/restrito/"))) {
+    const api = p.startsWith("/restrito/api/");
+    res.writeHead(503, {
+      "Content-Type": api ? "application/json; charset=utf-8" : "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+      "Retry-After": "300",
+    });
+    return res.end(api
+      ? JSON.stringify({ error: "O sistema de gestão está indisponível: o banco de dados não respondeu. Avise o suporte." })
+      : `<!doctype html><meta charset="utf-8"><title>Sistema indisponível</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#F8F7FC;color:#2b2b3a;
+display:grid;place-items:center;min-height:100vh;margin:0;padding:1.5rem}
+.c{max-width:34rem;background:#fff;border:1px solid #e6e3f2;border-radius:16px;padding:2rem;
+box-shadow:0 10px 30px rgba(91,79,216,.08)}h1{font-size:1.3rem;margin:0 0 .8rem;color:#5B4FD8}
+p{line-height:1.6;margin:.6rem 0}small{color:#7a7a8c}</style>
+<div class="c"><h1>Sistema de gestão indisponível</h1>
+<p>O banco de dados do sistema não respondeu. <b>Nenhum dado foi perdido</b> — o sistema volta
+assim que a conexão for restabelecida.</p>
+<p>Se você é da equipe, avise o suporte técnico. O site da clínica continua funcionando
+normalmente.</p>
+<p><small>Detalhe para o suporte: falha ao conectar no PostgreSQL no boot do serviço.
+Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
+  }
+
   /* Sistema de gestão da clínica (/restrito) — app independente, banco próprio.
      Vem ANTES do modo manutenção de propósito: a equipe precisa continuar
      atendendo mesmo com o site fechado para o público. */
@@ -1537,29 +1567,42 @@ const servidor = http.createServer(async (req, res) => {
    SUBIDA DO SERVIDOR
 
    A porta só abre DEPOIS que o sistema de gestão terminou de inicializar
-   (conectar no PostgreSQL, aplicar migrations, semear cadastros).
-
-   Antes isso não era preciso: o SQLite abria de forma síncrona, durante o
-   `require`, então quando o listen acontecia tudo já estava pronto. Conectar
-   no Postgres é assíncrono — sem este await, a clínica poderia entrar no
-   sistema durante a migração e receber "relation does not exist" numa tela de
+   (conectar no PostgreSQL, aplicar migrations, semear cadastros). Conectar no
+   Postgres é assíncrono — sem este await, a clínica poderia entrar no sistema
+   durante a migração e receber "relation does not exist" numa tela de
    prontuário.
 
-   E se a inicialização FALHAR, o processo não sobe. Um sistema no ar sem banco
-   é pior que um sistema fora do ar: o segundo o cliente percebe na hora.
+   MAS UMA FALHA NO POSTGRES NÃO DERRUBA O SITE.
+
+   Eu tinha feito o processo inteiro sair com exit(1) quando o /restrito não
+   inicializava. Estava errado, e derrubou a produção na virada: o site público
+   e o /admin vivem no SQLite (data/site.db) e continuam perfeitamente
+   funcionais sem o Postgres. Não há razão para o cliente perder o site — e a
+   clínica perder o telefone que toca — porque uma variável de ambiente do
+   sistema interno ficou faltando.
+
+   O que vale é o RECORTE: quem depende do Postgres é só o /restrito, e é só
+   ele que sai do ar, com uma mensagem que diz o que aconteceu. O resto atende
+   normalmente.
    ========================================================================== */
+let ERRO_GESTAO = null;
+
 (async () => {
   try {
     await iniciarRestrito();
   } catch (e) {
-    console.error("\n  ✖ NÃO CONSEGUI INICIAR O SISTEMA DE GESTÃO (/restrito).");
+    ERRO_GESTAO = e;
+    console.error("\n  ✖ O SISTEMA DE GESTÃO (/restrito) NÃO INICIALIZOU.");
     console.error("    " + e.message);
-    console.error("\n    O /restrito usa PostgreSQL. Verifique:");
+    console.error("\n    O SITE E O /admin CONTINUAM NO AR (usam o SQLite, não o Postgres).");
+    console.error("    Só o /restrito está indisponível. Verifique:");
     console.error("      · o serviço está no ar?   systemctl status postgresql");
-    console.error("      · as credenciais estão no ambiente? (PGHOST/PGUSER/PGPASSWORD/PGDATABASE)");
-    console.error("        em produção vêm de /etc/bemestar.env, lido pelo systemd");
-    console.error("      · o banco existe e o usuário tem acesso?  psql -U bemestar -d bemestar_gestao -c '\\dt'\n");
-    process.exit(1);
+    console.error("      · as credenciais chegaram? (PGHOST/PGUSER/PGPASSWORD/PGDATABASE)");
+    console.error("        em produção vêm de /etc/bemestar.env, via EnvironmentFile do systemd:");
+    console.error("        systemctl show bemestar -p EnvironmentFiles");
+    console.error("      · o banco existe e o usuário tem acesso?");
+    console.error("        psql -U bemestar -d bemestar_gestao -c '\\dt'");
+    console.error("\n    Depois de corrigir:  systemctl restart bemestar\n");
   }
 
   // Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
@@ -1570,10 +1613,14 @@ const servidor = http.createServer(async (req, res) => {
     console.log(`  · Site:   http://localhost:${PORT}/`);
     console.log(`  · Painel: http://localhost:${PORT}/admin/`);
     console.log(`  · Banco do site:    ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""} (data/site.db)`);
-    try {
-      const v = await Q.versao();
-      console.log(`  · Banco da gestão:  PostgreSQL — ${v.d} (usuário ${v.u})`);
-    } catch { /* não chega aqui: iniciarRestrito já teria falhado */ }
+    if (ERRO_GESTAO) {
+      console.log(`  · Banco da gestão:  ✖ INDISPONÍVEL — /restrito fora do ar (site e /admin OK)`);
+    } else {
+      try {
+        const v = await Q.versao();
+        console.log(`  · Banco da gestão:  PostgreSQL — ${v.d} (usuário ${v.u})`);
+      } catch (e) { console.log(`  · Banco da gestão:  ✖ ${e.message.split("\n")[0]}`); }
+    }
 
     /* Backup automático dos DOIS bancos: o do site (cópia do arquivo) e o da
        gestão (dump SQL do Postgres). Roda aqui, no processo do site, porque é

@@ -103,6 +103,10 @@ function dumparPostgres(cfg, destinoDir) {
   const { spawnSync } = require("node:child_process");
   const pg = cfg.postgres;
   if (!pg || !pg.database) return { ok: false, erro: "postgres não configurado" };
+  /* Sem senha no ambiente o pg_dump abriria um prompt e ficaria PENDURADO —
+     travando o deploy inteiro sem dizer por quê. Melhor recusar na hora, com
+     um recado que aponta o arquivo que falta. */
+  if (!pg.password) return { ok: false, erro: "sem PGPASSWORD no ambiente (confira /etc/bemestar.env)" };
 
   fs.mkdirSync(destinoDir, { recursive: true });
   const carimbo = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
