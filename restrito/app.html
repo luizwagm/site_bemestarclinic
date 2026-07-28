@@ -102,6 +102,82 @@
     .tag-Remarcado{background:#fdf4e6;color:var(--ambar)}.tag-Ativo{background:#e7f6ee;color:var(--verde)}.tag-Inativo{background:#eef1f6;color:var(--muted)}
     .vazio{color:var(--dim);padding:1.5rem;text-align:center}
 
+    /* ------------------------ Mini editor de texto ---------------------- */
+    .ed-caixa{border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff}
+    .ed-caixa:focus-within{border-color:var(--celeste);box-shadow:0 0 0 3px rgba(91,79,216,.12)}
+    .ed-barra{display:flex;flex-wrap:wrap;gap:.15rem;padding:.35rem;background:#f7f9fc;border-bottom:1px solid var(--line)}
+    .ed-bt{min-width:30px;height:28px;border:1px solid transparent;border-radius:6px;background:none;
+      cursor:pointer;font:inherit;font-size:.85rem;color:var(--muted);line-height:1}
+    .ed-bt:hover:not(:disabled){background:#fff;border-color:var(--line2);color:var(--marinho)}
+    .ed-bt:disabled{opacity:.4;cursor:not-allowed}
+    .ed-sep{width:1px;background:var(--line2);margin:.2rem .25rem}
+    .ed-area{min-height:230px;max-height:52vh;overflow:auto;padding:.8rem .9rem;line-height:1.6;
+      font-size:.95rem;color:var(--text);outline:none}
+    .ed-area:empty::before{content:"Escreva aqui…";color:var(--dim)}
+    .ed-off .ed-area{background:#f7f9fc;color:var(--muted)}
+
+    /* Como o texto formatado aparece — na tela e no papel. Sem isto, o <ul>
+       herdaria o reset `*{margin:0}` lá de cima e a lista sairia sem recuo
+       nenhum, colada na margem. */
+    .texto-rico{line-height:1.6;overflow-wrap:anywhere}
+    .texto-rico p{margin:0 0 .6rem}
+    .texto-rico p:last-child{margin-bottom:0}
+    .texto-rico ul,.texto-rico ol{margin:.4rem 0 .7rem;padding-left:1.5rem}
+    .texto-rico li{margin:.15rem 0}
+    .texto-rico b,.texto-rico strong{font-weight:700}
+    .ed-area p{margin:0 0 .6rem}
+    .ed-area ul,.ed-area ol{margin:.4rem 0 .7rem;padding-left:1.5rem}
+
+    /* ------------------- Botão ocupado (espera visível) ----------------- */
+    /* O giro entra ANTES do rótulo e o texto continua legível: quem clicou em
+       "Salvar" precisa continuar vendo que era Salvar. Trocar o texto por
+       "Aguarde…" faria o botão mudar de largura e a barra de ações pular. */
+    button.ocupado, .btn.ocupado{position:relative;padding-left:2.1rem!important;cursor:progress}
+    button.ocupado::before, .btn.ocupado::before{
+      content:"";position:absolute;left:.85rem;top:50%;width:13px;height:13px;margin-top:-6.5px;
+      border:2px solid currentColor;border-right-color:transparent;border-radius:50%;
+      animation:girando .6s linear infinite;opacity:.9}
+    @keyframes girando{to{transform:rotate(360deg)}}
+    /* Desabilitado pela espera: some a cor de ação, fica claro que não adianta
+       clicar. `not(.ocupado)` para o botão clicado manter o destaque. */
+    button:disabled:not(.ocupado), .btn:disabled:not(.ocupado){opacity:.5;cursor:not-allowed}
+    @media (prefers-reduced-motion: reduce){
+      button.ocupado::before, .btn.ocupado::before{animation-duration:2s}
+    }
+
+    /* --------------------- Ações das linhas da tabela ------------------- */
+    .col-acoes{text-align:right;white-space:nowrap}
+
+    /* Lupa: uma cor só, como pedido. O significado vem da forma, não da cor. */
+    .acao-lupa{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+      border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--muted);
+      cursor:pointer;transition:border-color var(--t,.15s),color .15s;vertical-align:middle}
+    .acao-lupa:hover{border-color:var(--celeste);color:var(--celeste)}
+    .acao-lupa:focus-visible{outline:2px solid var(--celeste);outline-offset:2px}
+
+    /* Menu de três pontos */
+    .acao-menu{position:relative;display:inline-block;text-align:left}
+    .acao-trigger{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;
+      border:1px solid transparent;border-radius:8px;background:none;color:var(--muted);cursor:pointer}
+    .acao-trigger:hover{background:#f0f3f8;color:var(--text)}
+    .acao-menu.aberto .acao-trigger{background:#f0f3f8;border-color:var(--line);color:var(--text)}
+    .acao-trigger:focus-visible{outline:2px solid var(--celeste);outline-offset:2px}
+    .acao-trigger svg{fill:currentColor}
+
+    .acao-lista{position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:210px;
+      background:#fff;border:1px solid var(--line2);border-radius:10px;padding:.3rem;
+      box-shadow:0 12px 28px rgba(37,50,130,.16);display:none}
+    .acao-menu.aberto .acao-lista{display:block}
+    /* perto do rodapé, abre para cima (ver abrirMenuLinha) */
+    .acao-lista.acima{top:auto;bottom:calc(100% + 4px)}
+    .acao-lista button{display:block;width:100%;text-align:left;border:0;background:none;
+      padding:.5rem .65rem;border-radius:7px;cursor:pointer;font:inherit;font-size:.87rem;color:var(--text)}
+    .acao-lista button:hover{background:#f0f3f8;color:var(--marinho)}
+
+    /* A tabela recorta o menu quando ela tem rolagem própria. Sem isto, o menu
+       da última linha aparece cortado pela borda do cartão. */
+    .tab-wrap{overflow:visible}
+
     /* ------------------------------- Auditoria -------------------------- */
     .au-rolagem{overflow-x:auto}
     #au-tabela td,#au-tabela th{vertical-align:top}
@@ -582,7 +658,79 @@ const soDig = (s) => String(s ?? "").replace(/\D/g, "");
 let toastT;
 function toast(m, err) { const t = $("#toast"); t.textContent = m; t.classList.toggle("err", !!err); t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3000); }
 
+/* ==========================================================================
+   ESPERA VISÍVEL — o botão diz que está trabalhando, e o resto trava
+
+   Antes, clicar em Salvar não dava sinal nenhum: quem não visse a tela mudar
+   clicava de novo. Em cadastro isso vira registro duplicado; em agendamento,
+   dois horários marcados.
+
+   Como funciona, sem precisar mexer em nenhum dos ~80 onclick existentes:
+
+     1. Um ouvinte na fase de CAPTURA anota qual botão foi clicado. Captura, e
+        não bolha, porque o handler do próprio botão roda antes da bolha chegar
+        aqui — anotar tarde demais não serviria de nada.
+     2. Qualquer chamada ao servidor feita a partir dali marca ESSE botão como
+        ocupado (com um giro) e desabilita TODOS os outros.
+     3. Quando a última chamada termina, tudo volta ao normal.
+
+   O contador existe porque uma ação costuma disparar várias chamadas em
+   sequência (salvar, recarregar a lista, repintar). Sem ele, a primeira a
+   terminar liberaria a tela enquanto as outras ainda estivessem correndo.
+   ========================================================================== */
+let BOTAO_ATIVO = null, CHAMADAS_ABERTAS = 0;
+
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button, .btn");
+  /* Só botões de AÇÃO. Navegar entre telas, abrir um menu ou paginar não é
+     operação que precise travar a tela — e travá-la deixaria o sistema com
+     cara de lento sem motivo. */
+  if (!b || b.disabled) return;
+  if (b.classList.contains("navbtn") || b.classList.contains("tn-trigger")
+      || b.classList.contains("side-head") || b.closest(".acao-menu")
+      || b.closest("#au-paginacao") || b.closest(".paginacao")) return;
+  BOTAO_ATIVO = b;
+  // se nenhuma chamada começar logo em seguida, o clique não era de servidor
+  setTimeout(() => { if (!CHAMADAS_ABERTAS) BOTAO_ATIVO = null; }, 0);
+}, true);
+
+function travarTela(botao) {
+  CHAMADAS_ABERTAS++;
+  if (CHAMADAS_ABERTAS > 1) return;                 // já está travado
+  document.querySelectorAll("button, .btn").forEach((b) => {
+    if (b.disabled) return;
+    b.dataset.travado = "1";                        // marca só o que NÓS desabilitamos
+    b.disabled = true;
+  });
+  if (botao) { botao.classList.add("ocupado"); botao.setAttribute("aria-busy", "true"); }
+}
+
+function destravarTela(botao) {
+  CHAMADAS_ABERTAS = Math.max(0, CHAMADAS_ABERTAS - 1);
+  if (CHAMADAS_ABERTAS) return;                     // ainda há chamada em curso
+  /* Só reabilita o que foi desabilitado por nós. Um botão que já estava
+     desabilitado por regra de negócio (anamnese finalizada, por exemplo)
+     precisa continuar desabilitado. */
+  document.querySelectorAll('[data-travado="1"]').forEach((b) => {
+    b.disabled = false; delete b.dataset.travado;
+  });
+  if (botao) { botao.classList.remove("ocupado"); botao.removeAttribute("aria-busy"); }
+  BOTAO_ATIVO = null;
+}
+
 async function api(url, method = "GET", body) {
+  const botao = BOTAO_ATIVO;
+  travarTela(botao);
+  try {
+    return await apiCrua(url, method, body);
+  } finally {
+    /* finally: se a chamada falhar, a tela TEM de destravar do mesmo jeito —
+       senão um erro de rede deixaria o sistema inutilizável até recarregar. */
+    destravarTela(botao);
+  }
+}
+
+async function apiCrua(url, method = "GET", body) {
   const r = await fetch("/restrito/api/" + url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
@@ -802,7 +950,7 @@ const MODULOS = {
       ["especialidade","Procedimento","especialidade_pront",{req:1,travaSeSalvo:1,dica:"Um prontuário por paciente e procedimento. Consulta e Sessão do mesmo tratamento usam a mesma pasta."}],
       ["profissional","Profissional responsável","busca",{tabela:"profissionais",valor:"nome"}],
       ["aberto_em","Aberto em","date"],
-      ["observacao","Observação da pasta","textarea",{full:1}],
+      ["observacao","Observação da pasta","rico",{full:1}],
     ]},
   documentos_gestao: { titulo:"Documentos", novo:"Novo documento", busca:true,
     colunas:[["data","Data","data"],["tipo","Tipo"],["titulo","Título"],["paciente_id","Paciente","pac"],["arquivo","Arquivo","arq"]],
@@ -864,6 +1012,94 @@ async function entrar(){ $("#lg-erro").textContent="";
   try { const j=await api("login","POST",{usuario:$("#lg-user").value,senha:$("#lg-pass").value}); iniciarApp(j); }
   catch(e){ $("#lg-erro").textContent=e.message; } }
 async function sair(){ try{ await api("logout","POST"); }catch{} location.reload(); }
+
+/* ==========================================================================
+   MINI EDITOR DE TEXTO (prontuário)
+
+   Registro clínico não é texto corrido: tem lista de sintomas, item em negrito,
+   parágrafo separando sessões. Os campos do prontuário passaram a aceitar HTML
+   e ganharam esta barra de formatação.
+
+   POR QUE contenteditable + execCommand, e não uma biblioteca:
+   o sistema inteiro é uma página só, sem framework e sem dependência de front.
+   Trazer um editor pronto significaria carregar centenas de KB de terceiros
+   numa tela que exibe prontuário — e a CSP daqui não libera script externo.
+   O execCommand é antigo e marcado como obsoleto, mas funciona em todos os
+   navegadores atuais e cobre exatamente o que a clínica precisa: negrito,
+   itálico, sublinhado, listas e desfazer.
+
+   O QUE ELE NÃO FAZ: colar formatação de fora. Texto colado do Word entra
+   como TEXTO PURO (ver o handler de paste). Colar HTML de fora traria estilos
+   inline, fontes e, no pior caso, conteúdo perigoso — e o servidor descartaria
+   quase tudo na higienização, deixando o usuário sem entender por que o que
+   ele colou "sumiu".
+   ========================================================================== */
+const EDITOR_BOTOES = [
+  ["bold", "N", "Negrito (Ctrl+B)", "font-weight:800"],
+  ["italic", "I", "Itálico (Ctrl+I)", "font-style:italic"],
+  ["underline", "S", "Sublinhado (Ctrl+U)", "text-decoration:underline"],
+  ["|", "", "", ""],
+  ["insertUnorderedList", "•—", "Lista com marcadores", ""],
+  ["insertOrderedList", "1—", "Lista numerada", ""],
+  ["|", "", "", ""],
+  ["removeFormat", "T̶", "Limpar formatação", ""],
+  ["undo", "↶", "Desfazer (Ctrl+Z)", ""],
+  ["redo", "↷", "Refazer (Ctrl+Y)", ""],
+];
+
+/* Monta o editor. `id` é o do campo oculto que guarda o HTML — assim o resto
+   do código continua lendo o valor por $("#lc-texto").value, como sempre fez. */
+function editorRico(id, html, desabilitado){
+  const barra = EDITOR_BOTOES.map(([cmd, rot, titulo, estilo]) =>
+    cmd === "|" ? '<span class="ed-sep"></span>'
+      : `<button type="button" class="ed-bt" title="${escA(titulo)}" aria-label="${escA(titulo)}"
+           onmousedown="event.preventDefault()" onclick="edCmd('${id}','${cmd}')"
+           ${desabilitado?"disabled":""} style="${estilo}">${rot}</button>`).join("");
+  return `<div class="ed-caixa${desabilitado?" ed-off":""}">
+    <div class="ed-barra" role="toolbar" aria-label="Formatação">${barra}</div>
+    <div class="ed-area" id="${id}-ed" ${desabilitado?"":'contenteditable="true"'}
+         role="textbox" aria-multiline="true"
+         oninput="edSincronizar('${id}')" onblur="edSincronizar('${id}')"
+         onpaste="edColar(event)">${html||""}</div>
+    <input type="hidden" id="${id}" value="${escA(html||"")}">
+  </div>`;
+}
+
+function edCmd(id, cmd){
+  const area = document.getElementById(id+"-ed");
+  area.focus();
+  document.execCommand(cmd, false, null);
+  edSincronizar(id);
+}
+
+/* Espelha o conteúdo editado no campo oculto. É ele que o salvar lê. */
+function edSincronizar(id){
+  const area = document.getElementById(id+"-ed");
+  const campo = document.getElementById(id);
+  if(!area || !campo) return;
+  const html = area.innerHTML.trim();
+  /* O navegador deixa "<br>" sozinho quando o usuário apaga tudo. Isso não é
+     conteúdo — e salvo assim faria um lançamento vazio passar pela validação
+     de "escreva o conteúdo". */
+  campo.value = (html === "<br>" || html === "<div><br></div>") ? "" : html;
+}
+
+/* Colar sempre como texto puro (ver o comentário do bloco). */
+function edColar(ev){
+  ev.preventDefault();
+  const texto = (ev.clipboardData || window.clipboardData).getData("text/plain");
+  document.execCommand("insertText", false, texto);
+}
+
+/* O texto sem marcação nenhuma, para onde só cabe uma linha (listas, resumos).
+   Usa o próprio navegador para interpretar o HTML: mais confiável que tentar
+   remover tags com expressão regular, que erra em atributo com ">" dentro. */
+function semHtml(html){
+  if(!html) return "";
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  return (d.textContent || "").replace(/\s+/g, " ").trim();
+}
 
 /* ==========================================================================
    AUDITORIA — a trilha de tudo que acontece no sistema
@@ -1640,16 +1876,81 @@ function renderTabela(){
   barraPaginacao("mod-paginacao", MOD, info);
   const anam=!!m.anamnese;
   tb.innerHTML=dados.map((row)=>`<tr>${m.colunas.map((c)=>`<td>${celula(row,c)}</td>`).join("")}
-    <td style="text-align:right;white-space:nowrap">${
-      anam ? `<button class="btn btn-ghost btn-sm" onclick="imprimirAnamnese(${row.id})">Imprimir</button> `
-           : m.prontuarioPasta ? `<button class="btn btn-ghost btn-sm" onclick="imprimirPasta(${row.id})">Imprimir</button> `
-           : (m.imprimir?`<button class="btn btn-ghost btn-sm" onclick="imprimirFicha(${row.id})">Imprimir</button> `:"")
-    }${m.historico?`<button class="btn btn-ghost btn-sm" onclick="imprimirHistorico(${row.id})">Prontuário</button> `:""
-    }${MOD==="profissionais"?`<button class="btn btn-ghost btn-sm" onclick="alternarBloqueio(${row.id},${Number(row.ativo)!==0?1:0})">${Number(row.ativo)!==0?"Bloquear":"Desbloquear"}</button> `:""
-    }${MOD==="pacientes"?(()=>{const at=row.ativo===null||row.ativo===undefined||Number(row.ativo)!==0;
-        return `<button class="btn btn-ghost btn-sm" onclick="alternarAtivoPaciente(${row.id},${at?1:0})">${at?"Inativar":"Reativar"}</button> `;})():""
-    }<button class="btn btn-ghost btn-sm" onclick="${anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`}">Abrir</button></td></tr>`).join("");
+    <td class="col-acoes">${acoesDaLinha(m, row, anam)}</td></tr>`).join("");
 }
+
+/* ==========================================================================
+   AÇÕES DA LINHA
+
+   Três módulos (Pacientes, Prontuário e Anamneses) acumulam várias ações por
+   linha — imprimir, prontuário completo, inativar, abrir. Enfileirados, os
+   botões empurravam a tabela para o lado e ainda mudavam de largura de linha
+   para linha (o rótulo alterna entre "Inativar" e "Reativar"), fazendo a
+   coluna dançar. Ali as ações vão para um menu de três pontos.
+
+   Nos demais módulos existe uma ação só, e um menu para um item seria um
+   clique a mais para nada: fica o ícone de lupa.
+   ========================================================================== */
+const MENU_TRES_PONTOS = new Set(["pacientes", "prontuario", "anamneses"]);
+
+function acoesDaLinha(m, row, anam){
+  const itens=[];
+  if(anam) itens.push(["Imprimir anamnese", `imprimirAnamnese(${row.id})`]);
+  else if(m.prontuarioPasta) itens.push(["Imprimir prontuário", `imprimirPasta(${row.id})`]);
+  else if(m.imprimir) itens.push(["Imprimir ficha", `imprimirFicha(${row.id})`]);
+  if(m.historico) itens.push(["Prontuário completo", `imprimirHistorico(${row.id})`]);
+  if(MOD==="profissionais"){
+    const at=Number(row.ativo)!==0;
+    itens.push([at?"Bloquear acesso":"Desbloquear acesso", `alternarBloqueio(${row.id},${at?1:0})`]);
+  }
+  if(MOD==="pacientes"){
+    const at=row.ativo===null||row.ativo===undefined||Number(row.ativo)!==0;
+    itens.push([at?"Inativar paciente":"Reativar paciente", `alternarAtivoPaciente(${row.id},${at?1:0})`]);
+  }
+  const abrir=anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`;
+
+  if(MENU_TRES_PONTOS.has(MOD)){
+    itens.unshift(["Abrir", abrir]);
+    return `<div class="acao-menu">
+      <button type="button" class="acao-trigger" aria-haspopup="true" aria-expanded="false"
+              title="Ações" aria-label="Ações desta linha" onclick="abrirMenuLinha(this,event)">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+      </button>
+      <div class="acao-lista" role="menu">${
+        itens.map(([rot,fn])=>`<button type="button" role="menuitem" onclick="${escA(fn)}">${escA(rot)}</button>`).join("")
+      }</div></div>`;
+  }
+  /* Fora desses módulos, as ações extras (se houver) continuam como botões e a
+     de abrir vira a lupa. */
+  return itens.map(([rot,fn])=>`<button class="btn btn-ghost btn-sm" onclick="${escA(fn)}">${escA(rot)}</button> `).join("")
+    + `<button type="button" class="acao-lupa" title="Abrir" aria-label="Abrir" onclick="${escA(abrir)}">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+      </button>`;
+}
+
+/* Um menu aberto por vez, e fecha ao clicar fora ou apertar Esc. Sem isso,
+   percorrer a lista deixaria um rastro de menus abertos pela tela. */
+function fecharMenusLinha(){ document.querySelectorAll(".acao-menu.aberto").forEach((d)=>{
+  d.classList.remove("aberto"); d.querySelector(".acao-trigger")?.setAttribute("aria-expanded","false"); }); }
+
+function abrirMenuLinha(botao, ev){
+  ev.stopPropagation();
+  const caixa=botao.closest(".acao-menu");
+  const abrindo=!caixa.classList.contains("aberto");
+  fecharMenusLinha();
+  if(!abrindo) return;
+  caixa.classList.add("aberto");
+  botao.setAttribute("aria-expanded","true");
+  /* Perto do rodapé da tabela o menu sairia para fora da tela. Quando não há
+     espaço embaixo, ele abre para cima. */
+  const lista=caixa.querySelector(".acao-lista");
+  lista.classList.remove("acima");
+  const r=lista.getBoundingClientRect();
+  if(r.bottom > window.innerHeight - 8) lista.classList.add("acima");
+}
+document.addEventListener("click", fecharMenusLinha);
+document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") fecharMenusLinha(); });
 
 /* -------------------- vista Agenda (calendário do mês) ------------------ */
 const MESES_PT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
@@ -1735,7 +2036,11 @@ function campoHTML(campo, val){
   if(tipo==="checkbox")
     return wrap(`<label style="display:flex;gap:.5rem;align-items:center;margin-top:1.1rem;cursor:pointer;color:var(--text)"><input type="checkbox" id="${id}" style="width:auto" ${Number(val)?"checked":""}> ${lab}</label>`,op.full);
   let ctrl;
-  if(tipo==="textarea") ctrl=`<textarea id="${id}">${escA(val||"")}</textarea>`;
+  /* "rico" é o textarea com barra de formatação. Como o editor guarda o valor
+     num <input type=hidden> com o mesmo id, tudo que lê o formulário por
+     $("#f-campo").value continua funcionando sem saber da diferença. */
+  if(tipo==="rico") ctrl=editorRico(id, val||"", false);
+  else if(tipo==="textarea") ctrl=`<textarea id="${id}">${escA(val||"")}</textarea>`;
   else if(tipo==="password") ctrl=`<input id="${id}" type="password" autocomplete="new-password" value="">`;
   else if(tipo==="select"){
     const opts=op.bool?[["0","Não"],["1","Sim"]]:(op.opcoes||[]).map((o)=>Array.isArray(o)?o:[o,o]);
@@ -2397,7 +2702,7 @@ function pintarArea(tipo, itens, prontId){
   el.innerHTML=`<table class="anam-m"><tr><th style="width:104px">Data</th><th>Registro</th><th style="width:150px">Profissional</th><th style="width:190px"></th></tr>`+
     itens.map((r)=>`<tr${Number(r.arquivado)?' class="arquivado"':""}>
       <td>${escA(dataBR(r.data))}${Number(r.arquivado)?'<br><span class="tag tag-nao" style="font-size:.66rem">arquivado</span>':""}</td>
-      <td>${escA((r.texto||"").slice(0,110))}${(r.texto||"").length>110?"…":""}
+      <td>${escA(semHtml(r.texto).slice(0,110))}${semHtml(r.texto).length>110?"…":""}
         ${r.atualizado?`<br><span class="marca-edicao" title="O que mudou fica no Histórico da pasta">editado em ${escA(dataHoraBR(r.atualizado))}</span>`:""}</td>
       <td>${escA(r.profissional||"—")}</td>
       <td style="text-align:right;white-space:nowrap">
@@ -2427,7 +2732,7 @@ function editorLancamento({ id, tipo, prontId, reg }){
           </div></div>
       </div>
       <label>${escA(rot)}</label>
-      <textarea id="lc-texto" class="lc-texto"${arquivado?" disabled":""}>${escA((reg&&reg.texto)||"")}</textarea>
+      ${editorRico("lc-texto", (reg&&reg.texto)||"", arquivado)}
       ${reg&&reg.criado?`<p class="hint" style="color:var(--dim)">Registrado em ${escA(dataHoraBR(reg.criado))}${reg.arquivado_em?` · arquivado em ${escA(dataHoraBR(reg.arquivado_em))}`:""}</p>`:""}
       <div id="lc-erro"></div>
     </div>
@@ -2445,8 +2750,12 @@ async function abrirLancamento(id, prontId){
   catch(e){ toast(e.message,true); }
 }
 async function salvarLancamento(id, tipo, prontId){
+  edSincronizar("lc-texto");                       // pega o que está na tela agora
   const texto=($("#lc-texto").value||"").trim();
-  if(!texto){ $("#lc-erro").innerHTML=`<div class="erros">Escreva o conteúdo do lançamento.</div>`; return; }
+  /* Valida pelo TEXTO, não pelo HTML: "<p><br></p>" tem 11 caracteres e nenhum
+     conteúdo — passaria numa checagem de string vazia e gravaria um lançamento
+     em branco no prontuário. */
+  if(!semHtml(texto)){ $("#lc-erro").innerHTML=`<div class="erros">Escreva o conteúdo do lançamento.</div>`; return; }
   const body={ prontuario_id:prontId, tipo, texto, data:$("#lc-data").value, profissional:$("#lc-prof").value };
   try{
     if(id) await api("prontuario_registros/"+id,"PUT",body); else await api("prontuario_registros","POST",body);
@@ -3259,7 +3568,7 @@ function blocoLancamentos(registros, incluirArquivados){
       html+=`<div class="evo">
         <div class="cab">${i+1}. ${escA(dataBR(r.data))}${Number(r.arquivado)?' <span class="num-inline">arquivado</span>':""}</div>
         <div class="met">${escA(r.profissional||"—")}${r.criado?` · registrado em ${escA(dataHoraBR(r.criado))}`:""}</div>
-        <p style="white-space:pre-wrap">${escA(r.texto||"")}</p>
+        <div class="texto-rico">${r.texto||""}</div>
       </div>`;
     });
   }

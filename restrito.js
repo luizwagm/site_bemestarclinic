@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.22.0";
+const SISTEMA_VERSION = "1.23.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +48,14 @@ const SISTEMA_VERSION = "1.22.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.23.0", data: "2026-07-28", titulo: "Editor de texto e melhorias de uso", mudancas: [
+    "Editor com formatação (negrito, itálico, listas) nos textos do prontuário",
+    "Observação da pasta, avaliações, evoluções, planos e encaminhamentos aceitam formatação",
+    "A formatação aparece também nas impressões",
+    "Botões mostram que estão trabalhando e travam a tela até concluir, evitando duplicidade",
+    "Ações das tabelas de Pacientes, Prontuário e Anamneses reunidas num menu",
+    "Nas demais telas, o botão Abrir virou ícone de lupa",
+  ] },
   { versao: "1.22.0", data: "2026-07-28", titulo: "Auditoria", mudancas: [
     "Nova tela com a trilha de tudo que acontece no sistema",
     "Registra entradas, saídas, telas abertas, cadastros, edições e exclusões",
@@ -202,6 +210,62 @@ const CAMPOS_PROTEGIDOS = {
   // de prontuário. Cifrado pelo mesmo motivo do histórico.
   auditoria: ["resumo", "detalhe"],
 };
+
+/* ==========================================================================
+   HIGIENIZAÇÃO DO HTML DO PRONTUÁRIO
+
+   Os campos de registro clínico passaram a aceitar formatação. Isso significa
+   que o sistema GRAVA HTML e depois o DEVOLVE para dentro da página e da
+   janela de impressão — que é a definição de XSS armazenado se ninguém filtrar.
+
+   O perigo aqui não é teórico nem é só "invasor": basta alguém colar um trecho
+   de página da internet dentro de uma evolução para entrar script, iframe e
+   estilo que quebram a impressão do prontuário.
+
+   A regra é LISTA DE PERMITIDOS, e não lista de proibidos: só o que está aqui
+   passa, o resto vira texto. Lista de proibidos sempre esquece alguma coisa —
+   e a que esquecer é justamente a que vai ser usada.
+
+   Nada de atributo: sem `style`, sem `class`, sem `on*`, sem `href`. Para
+   negrito, itálico, sublinhado e lista, atributo nenhum é necessário — e é
+   dentro deles que mora quase todo ataque.
+   ========================================================================== */
+const TAGS_PERMITIDAS = new Set(["p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li", "div", "span"]);
+
+function htmlLimpo(valor) {
+  if (valor === null || valor === undefined) return valor;
+  let s = String(valor);
+  if (!s.includes("<")) return s;                    // texto puro: nada a fazer
+
+  /* Fora antes de tudo: o conteúdo destas tags some junto com elas. Remover só
+     a tag deixaria o código do script solto como texto visível na tela. */
+  s = s.replace(/<(script|style|iframe|object|embed|form|link|meta|base|svg|math)\b[\s\S]*?<\/\1\s*>/gi, "");
+  s = s.replace(/<(script|style|iframe|object|embed|form|link|meta|base|svg|math)\b[^>]*\/?>/gi, "");
+  s = s.replace(/<!--[\s\S]*?-->/g, "");
+
+  /* Agora cada tag restante: se estiver na lista, volta SEM atributo nenhum;
+     se não estiver, é descartada (o texto interno permanece). */
+  s = s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (tag, nome) => {
+    const n = nome.toLowerCase();
+    if (!TAGS_PERMITIDAS.has(n)) return "";
+    return tag.startsWith("</") ? `</${n}>` : (n === "br" ? "<br>" : `<${n}>`);
+  });
+  return s;
+}
+
+/* Onde o HTML é aceito. Só o registro clínico — em nome, CPF ou endereço,
+   marcação não tem função nenhuma e só serviria para esconder conteúdo. */
+const CAMPOS_HTML = {
+  prontuario: ["observacao"],
+  prontuario_registros: ["texto"],
+};
+
+function limparHtmlDoRegistro(tabela, obj) {
+  const campos = CAMPOS_HTML[tabela];
+  if (!campos || !obj) return obj;
+  for (const c of campos) if (c in obj) obj[c] = htmlLimpo(obj[c]);
+  return obj;
+}
 
 /* Cifra os campos protegidos de um objeto ANTES de gravar. Recebe e devolve o
    objeto com os mesmos nomes de campo — quem chama não precisa saber quais são
@@ -2136,6 +2200,7 @@ async function rotaApi(req, res, p) {
       /* Cópia em texto claro ANTES de cifrar — é o que a auditoria registra.
          Depois de proteger(), `b` carrega texto cifrado, e a trilha guardaria
          um monte de "enc:1:..." em vez do que foi realmente cadastrado. */
+      limparHtmlDoRegistro(tabela, b);     // HTML do prontuário sai higienizado
       const comoVeio = {}; for (const c of use) comoVeio[c] = b[c];
       /* Cifra os campos sensíveis logo antes de montar os valores. Feito aqui,
          no CRUD, porque é por onde passam TODAS as gravações de paciente,
@@ -2206,6 +2271,7 @@ async function rotaApi(req, res, p) {
       /* Estado ANTES da edição, já decifrado (o Q devolve em claro). É a metade
          de trás do que a auditoria vai mostrar no modal: de X para Y. */
       const antesTudo = await Q.get(`SELECT * FROM ${tabela} WHERE id=?`, id) || {};
+      limparHtmlDoRegistro(tabela, b);     // HTML do prontuário sai higienizado
       const comoVeio = {}; for (const c of use) comoVeio[c] = b[c];
 
       proteger(tabela, b);          // mesma cifragem do INSERT
