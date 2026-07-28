@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.23.0";
+const SISTEMA_VERSION = "1.23.1";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -53,8 +53,8 @@ const HISTORICO_VERSOES = [
     "Observação da pasta, avaliações, evoluções, planos e encaminhamentos aceitam formatação",
     "A formatação aparece também nas impressões",
     "Botões mostram que estão trabalhando e travam a tela até concluir, evitando duplicidade",
-    "Ações das tabelas de Pacientes, Prontuário e Anamneses reunidas num menu",
-    "Nas demais telas, o botão Abrir virou ícone de lupa",
+    "Ações das tabelas com mais de um botão reunidas num menu de três pontos",
+    "Nas telas de ação única, o botão Abrir virou ícone de lupa",
   ] },
   { versao: "1.22.0", data: "2026-07-28", titulo: "Auditoria", mudancas: [
     "Nova tela com a trilha de tudo que acontece no sistema",

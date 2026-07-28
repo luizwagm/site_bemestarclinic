@@ -164,19 +164,25 @@
     .acao-trigger:focus-visible{outline:2px solid var(--celeste);outline-offset:2px}
     .acao-trigger svg{fill:currentColor}
 
-    .acao-lista{position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:210px;
-      background:#fff;border:1px solid var(--line2);border-radius:10px;padding:.3rem;
-      box-shadow:0 12px 28px rgba(37,50,130,.16);display:none}
-    .acao-menu.aberto .acao-lista{display:block}
-    /* perto do rodapé, abre para cima (ver abrirMenuLinha) */
-    .acao-lista.acima{top:auto;bottom:calc(100% + 4px)}
-    .acao-lista button{display:block;width:100%;text-align:left;border:0;background:none;
-      padding:.5rem .65rem;border-radius:7px;cursor:pointer;font:inherit;font-size:.87rem;color:var(--text)}
-    .acao-lista button:hover{background:#f0f3f8;color:var(--marinho)}
+    /* POSITION: FIXED, e não absolute.
 
-    /* A tabela recorta o menu quando ela tem rolagem própria. Sem isto, o menu
-       da última linha aparece cortado pela borda do cartão. */
-    .tab-wrap{overflow:visible}
+       A tabela vive num cartão com `overflow:auto` (ele precisa disso para
+       rolar na horizontal em tela estreita). Qualquer filho posicionado de
+       forma ABSOLUTA é recortado por esse overflow — foi o que aconteceu: o
+       menu abria com 162px de altura dentro de um cartão que terminava 104px
+       acima, e metade dele sumia.
+
+       `fixed` sai do fluxo do cartão e se posiciona em relação à JANELA, então
+       nenhum ancestral consegue recortá-lo. O preço é que ele não acompanha a
+       rolagem sozinho — por isso o menu fecha ao rolar (ver o listener). */
+    .acao-lista{position:fixed;z-index:200;min-width:210px;
+      background:#fff;border:1px solid var(--line2);border-radius:10px;padding:.3rem;
+      box-shadow:0 12px 28px rgba(37,50,130,.18);display:none}
+    .acao-menu.aberto .acao-lista{display:block}
+    .acao-lista button{display:block;width:100%;text-align:left;border:0;background:none;
+      padding:.5rem .65rem;border-radius:7px;cursor:pointer;font:inherit;font-size:.87rem;
+      color:var(--text);white-space:nowrap}
+    .acao-lista button:hover{background:#f0f3f8;color:var(--marinho)}
 
     /* ------------------------------- Auditoria -------------------------- */
     .au-rolagem{overflow-x:auto}
@@ -1882,16 +1888,17 @@ function renderTabela(){
 /* ==========================================================================
    AÇÕES DA LINHA
 
-   Três módulos (Pacientes, Prontuário e Anamneses) acumulam várias ações por
-   linha — imprimir, prontuário completo, inativar, abrir. Enfileirados, os
-   botões empurravam a tabela para o lado e ainda mudavam de largura de linha
-   para linha (o rótulo alterna entre "Inativar" e "Reativar"), fazendo a
-   coluna dançar. Ali as ações vão para um menu de três pontos.
+   Quatro módulos (Pacientes, Prontuário, Anamneses e Profissionais) têm MAIS
+   DE UMA ação por linha — imprimir, prontuário completo, inativar, bloquear,
+   abrir. Enfileirados, os botões empurravam a tabela para o lado e ainda
+   mudavam de largura de linha para linha (o rótulo alterna entre "Inativar" e
+   "Reativar", entre "Bloquear" e "Desbloquear"), fazendo a coluna dançar. Ali
+   as ações vão para um menu de três pontos, e "Abrir" é o primeiro item.
 
-   Nos demais módulos existe uma ação só, e um menu para um item seria um
-   clique a mais para nada: fica o ícone de lupa.
+   Nos demais existe uma ação só, e um menu para um item seria um clique a mais
+   para nada: fica o ícone de lupa.
    ========================================================================== */
-const MENU_TRES_PONTOS = new Set(["pacientes", "prontuario", "anamneses"]);
+const MENU_TRES_PONTOS = new Set(["pacientes", "prontuario", "anamneses", "profissionais"]);
 
 function acoesDaLinha(m, row, anam){
   const itens=[];
@@ -1942,15 +1949,41 @@ function abrirMenuLinha(botao, ev){
   if(!abrindo) return;
   caixa.classList.add("aberto");
   botao.setAttribute("aria-expanded","true");
-  /* Perto do rodapé da tabela o menu sairia para fora da tela. Quando não há
-     espaço embaixo, ele abre para cima. */
-  const lista=caixa.querySelector(".acao-lista");
-  lista.classList.remove("acima");
-  const r=lista.getBoundingClientRect();
-  if(r.bottom > window.innerHeight - 8) lista.classList.add("acima");
+  posicionarMenuLinha(botao, caixa.querySelector(".acao-lista"));
 }
+
+/* Coloca o menu ao lado do botão usando coordenadas de JANELA (o menu é
+   `position:fixed` — ver o comentário no CSS). Precisa medir DEPOIS de exibir:
+   um elemento com display:none tem largura e altura zero. */
+function posicionarMenuLinha(botao, lista){
+  const b=botao.getBoundingClientRect();
+  const m=lista.getBoundingClientRect();
+  const folga=6;
+
+  // alinhado pela direita do botão; se não couber, encosta na borda da janela
+  let esq=b.right-m.width;
+  esq=Math.min(Math.max(esq, 8), window.innerWidth-m.width-8);
+
+  /* Abaixo do botão por padrão. Sem espaço embaixo, abre para cima — é o caso
+     das últimas linhas da tabela, onde antes o menu saía da tela. */
+  let topo=b.bottom+folga;
+  if(topo+m.height > window.innerHeight-8){
+    const acima=b.top-m.height-folga;
+    topo = acima >= 8 ? acima : Math.max(8, window.innerHeight-m.height-8);
+  }
+  lista.style.left=Math.round(esq)+"px";
+  lista.style.top=Math.round(topo)+"px";
+}
+
 document.addEventListener("click", fecharMenusLinha);
 document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") fecharMenusLinha(); });
+/* Fecha ao rolar ou redimensionar. Um menu `fixed` fica parado enquanto a
+   tabela rola por baixo, e em segundos estaria apontando para a linha errada —
+   num sistema onde a ação é "excluir paciente", isso é perigoso, não só feio.
+   `true` na captura porque a rolagem acontece DENTRO do cartão da tabela e
+   esse evento não sobe até o document. */
+window.addEventListener("scroll", fecharMenusLinha, true);
+window.addEventListener("resize", fecharMenusLinha);
 
 /* -------------------- vista Agenda (calendário do mês) ------------------ */
 const MESES_PT=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
