@@ -92,23 +92,37 @@ sudo ufw status | grep 5432    # não deve haver regra nenhuma para 5432
 
 ## 3. Entregar as credenciais ao serviço
 
-A senha **não entra no repositório**. Ela vive num arquivo lido pelo systemd:
+Além da senha do banco, é preciso a **chave que cifra os dados sensíveis**.
+Gere-a agora:
+
+```bash
+openssl rand -base64 32
+```
+
+> **Guarde essa chave fora do servidor.** Sem ela, CPF, RG, endereço, telefone,
+> e-mail, anamneses e prontuários ficam ilegíveis — inclusive nos backups.
+> Perder a chave é perder os dados, mesmo tendo o banco inteiro na mão.
+
+Nada disso entra no repositório. As duas vivem num arquivo lido pelo systemd:
 
 ```bash
 sudo tee /etc/bemestar.env >/dev/null <<'ENV'
 PGHOST=127.0.0.1
 PGPORT=5432
 PGUSER=bemestar
-PGPASSWORD=COLE_A_SENHA_AQUI
+PGPASSWORD=COLE_A_SENHA_DO_BANCO
 PGDATABASE=bemestar_gestao
+DADOS_CHAVE=COLE_A_CHAVE_DE_32_BYTES
 ENV
 
-sudo chown root:root /etc/bemestar.env
-sudo chmod 600 /etc/bemestar.env
+sudo chown root:deploy /etc/bemestar.env
+sudo chmod 640 /etc/bemestar.env
 ```
 
-`chmod 600` importa: sem ele, qualquer usuário da máquina lê a senha do banco de
-prontuários.
+`640 root:deploy` e não `600 root:root`: o serviço roda como `deploy`, e com
+`600` você não conseguiria rodar `verificar.sh`, `migrar-dados.js` nem
+`cifrar-dados.js` sem `sudo`. Continua fechado para os demais usuários da
+máquina.
 
 Ligue o arquivo ao serviço:
 
@@ -176,7 +190,30 @@ O script aplica as migrations, copia tabela por tabela **numa transação só**
 contadores de sequência e no fim **confere**: conta as linhas dos dois lados e
 compara o conteúdo de uma amostra. Divergência é erro, não aviso.
 
-Suba:
+## 5b. Proteger os dados sensíveis
+
+Com os dados já no Postgres, cifre o que é sensível. Primeiro veja o que falta
+(não escreve nada):
+
+```bash
+node cifrar-dados.js --conferir
+```
+
+Depois proteja:
+
+```bash
+node cifrar-dados.js
+```
+
+Ele cifra CPF, RG, endereço, telefone, e-mail, contatos, anamneses, lançamentos
+do prontuário e o histórico. É **seguro rodar de novo**: o que já está cifrado
+é pulado, e uma execução interrompida continua de onde parou. No fim ele
+confere, lendo pelos dois caminhos, que o banco guarda cifrado e que o sistema
+lê corretamente.
+
+Depois disso o sistema já grava cifrado sozinho — não é preciso repetir.
+
+## 6. Subir e conferir
 
 ```bash
 sudo systemctl start bemestar
@@ -185,6 +222,11 @@ journalctl -u bemestar -n 40 --no-pager
 ```
 
 No log deve aparecer `Banco da gestão: PostgreSQL — bemestar_gestao`.
+
+Se aparecer `chave dos dados sensíveis ausente ou inválida`, falta o
+`DADOS_CHAVE` no `/etc/bemestar.env`. O serviço **se recusa a subir** sem ela de
+propósito: subir sem a chave significaria voltar a gravar prontuário em texto
+puro com a clínica trabalhando normalmente e ninguém percebendo.
 
 ---
 
@@ -232,16 +274,35 @@ node server.js --backup           # força uma cópia agora
 node server.js --backup-status    # quando foi a última, quantas existem
 ```
 
+Os dumps saem **cifrados**: os dados sensíveis dentro deles só são legíveis num
+servidor que tenha a mesma `DADOS_CHAVE`. Um backup que vaze não entrega
+prontuário nenhum — mas, pelo mesmo motivo, **um backup sem a chave não serve
+para restaurar**. Guarde as duas coisas, em lugares separados.
+
 ### Restaurar
 
 ```bash
-sudo systemctl stop bemestar
+sudo ./restaurar.sh gestao
+```
+
+Ele confere o dump, guarda o estado atual antes de sobrescrever e pede
+confirmação. À mão, se preferir:
+
+```bash
 psql "postgresql://bemestar@127.0.0.1/bemestar_gestao" -f backups/bemestar_gestao.AAAAMMDD-HHMMSS.sql
-sudo systemctl start bemestar
 ```
 
 O dump é gerado com `--clean --if-exists`, então ele apaga o que existe antes de
 recriar: restaurar substitui o banco inteiro, não mistura com o que está lá.
+Os dados voltam cifrados e o sistema volta a lê-los normalmente — desde que o
+`DADOS_CHAVE` seja o mesmo de quando foram gravados.
+
+### Trocar a chave
+
+Ponha a chave atual em `DADOS_CHAVE_ANTERIOR`, a nova em `DADOS_CHAVE`,
+reinicie e rode `node cifrar-dados.js`. O sistema continua **lendo** o que foi
+escrito com a antiga enquanto **grava** com a nova. Quando o script terminar,
+remova a linha `DADOS_CHAVE_ANTERIOR`.
 
 ### Mudar o esquema
 

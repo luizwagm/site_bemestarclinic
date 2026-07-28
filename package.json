@@ -12,7 +12,9 @@
     "migrar": "node migrar.js",
     "migrar:status": "node migrar.js --status",
     "migrar:dados": "node migrar-dados.js",
-    "migrar:conferir": "node migrar-dados.js --conferir"
+    "migrar:conferir": "node migrar-dados.js --conferir",
+    "proteger": "node cifrar-dados.js",
+    "proteger:conferir": "node cifrar-dados.js --conferir"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",

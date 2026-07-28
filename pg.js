@@ -189,10 +189,40 @@ function traduzir(sql) {
 const ctx = new AsyncLocalStorage();
 const executor = () => ctx.getStore() || obterPool();
 
+/* ==========================================================================
+   DECIFRAGEM AUTOMÁTICA NA LEITURA
+
+   Os campos sensíveis (CPF, endereço, anamnese, prontuário…) são gravados
+   cifrados. Decifrar aqui, no ÚNICO caminho por onde toda leitura passa, e não
+   em cada consulta, é o que garante que nenhuma tela mostre texto cifrado: são
+   mais de 40 pontos que leem essas tabelas, e bastaria esquecer um.
+
+   Como o valor cifrado se identifica sozinho pelo prefixo "enc:", não é
+   preciso saber de qual tabela ou coluna ele veio — o que também faz isto
+   funcionar em consultas com JOIN, apelido de coluna e subconsulta.
+
+   Só strings são inspecionadas, e só as que começam com o prefixo. Texto comum
+   passa direto, sem custo perceptível.
+   ========================================================================== */
+const { decifrar, PREFIXO } = require("./cripto");
+
+function revelarLinhas(linhas) {
+  if (!linhas || !linhas.length) return linhas;
+  for (const linha of linhas) {
+    for (const chave in linha) {
+      const v = linha[chave];
+      if (typeof v === "string" && v.startsWith(PREFIXO)) linha[chave] = decifrar(v);
+    }
+  }
+  return linhas;
+}
+
 async function consultar(sql, args) {
   const texto = traduzir(sql);
   try {
-    return await executor().query(texto, args);
+    const r = await executor().query(texto, args);
+    if (r.rows) revelarLinhas(r.rows);
+    return r;
   } catch (e) {
     /* A mensagem do Postgres sozinha ("relation X does not exist") não diz de
        ONDE veio. Anexar o SQL aqui é o que transforma meia hora de caça em
@@ -228,6 +258,14 @@ const Q = {
   /* DDL e vários comandos de uma vez (sem parâmetros) */
   async exec(sql) {
     await executor().query(traduzir(sql));
+  },
+  /* Lê SEM decifrar — devolve o que está gravado, tal e qual.
+     Só dois usos legítimos: o script que cifra os dados antigos (precisa saber
+     o que ainda está em texto puro) e a conferência que PROVA que o banco
+     guarda texto cifrado. Nunca use isto para alimentar tela. */
+  async bruto(sql, ...args) {
+    const texto = traduzir(sql);
+    return (await executor().query(texto, args)).rows;
   },
   /* Transação. Tudo que rodar dentro do callback usa o mesmo cliente. */
   async tx(fn) {

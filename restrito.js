@@ -20,6 +20,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { Q, config: configPg } = require("./pg");
+const { cifrar, chaveConfigurada, erroChave, digitos: soDigitos } = require("./cripto");
 const { migrar: migrarEsquema } = require("./migrar");
 
 const ROOT = __dirname;
@@ -29,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.20.0";
+const SISTEMA_VERSION = "1.21.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -47,6 +48,13 @@ const SISTEMA_VERSION = "1.20.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.21.0", data: "2026-07-28", titulo: "Dados sensíveis criptografados", mudancas: [
+    "CPF, RG, endereço, telefone, e-mail e contatos gravados cifrados no banco",
+    "Anamneses, lançamentos do prontuário e histórico também cifrados",
+    "Backup sai cifrado: só é legível em servidor com a chave",
+    "Tela e impressões continuam mostrando tudo por extenso",
+    "Busca por nome, código e CPF funciona como antes, inclusive por parte do número",
+  ] },
   { versao: "1.20.0", data: "2026-07-28", titulo: "Tela Sobre o sistema", mudancas: [
     "Nova tela com versão, histórico de atualizações, tecnologias e banco ativo",
     "Histórico de versões anteriores em sanfona",
@@ -147,6 +155,53 @@ const HISTORICO_VERSOES = [
   ] },
 ];
 
+/* ==========================================================================
+   O QUE É GRAVADO CIFRADO
+
+   Estes campos vão para o banco em texto cifrado (ver cripto.js) e voltam
+   decifrados na leitura. Na tela e na impressão nada muda; no banco, num dump
+   ou num backup vazado, não há nada legível.
+
+   POR QUE `nome` E `codigo` FICAM DE FORA — é uma escolha, não um esquecimento:
+   são as chaves de BUSCA e de ORDENAÇÃO das listas. Cifrados, o banco não
+   conseguiria mais ordenar por nome nem procurar por parte dele, e cada
+   listagem teria de trazer a clínica inteira para a memória antes de mostrar a
+   primeira linha. O que protege de verdade é o conjunto: um nome sozinho, sem
+   CPF, sem endereço, sem telefone e sem prontuário, é o que já aparece na
+   agenda impressa em cima do balcão.
+
+   Também ficam de fora as colunas que o SQL precisa comparar: datas usadas em
+   filtro de período, status, ids e os liga/desliga.
+   ========================================================================== */
+const CAMPOS_PROTEGIDOS = {
+  pacientes: ["cpf", "rg", "nascimento", "naturalidade", "estado_civil", "religiao",
+    "profissao", "escolaridade", "altura", "peso", "cor_pele", "sangue",
+    "cep", "endereco", "numero", "bairro", "cidade", "complemento",
+    "celular", "telefone", "email", "canal", "mae", "pai", "indicacao",
+    "nome_contato", "foto", "observacao", "inativo_motivo",
+    "resp_nome", "resp_cpf", "resp_rg", "resp_nascimento"],
+  // as respostas da anamnese (queixa, medicamentos, histórico de saúde)
+  anamneses: ["dados"],
+  // o registro clínico em si — avaliação, evolução, plano, encaminhamento
+  prontuario_registros: ["texto", "anexo"],
+  prontuario: ["observacao", "alta_motivo"],
+  // o histórico guarda TRECHOS do que foi editado no prontuário
+  historico: ["detalhe"],
+  atendimentos: ["nome_agenda", "celular", "observacoes"],
+  documentos_gestao: ["titulo", "arquivo"],
+  profissionais: ["contato", "registro"],
+};
+
+/* Cifra os campos protegidos de um objeto ANTES de gravar. Recebe e devolve o
+   objeto com os mesmos nomes de campo — quem chama não precisa saber quais são
+   sensíveis. */
+function proteger(tabela, obj) {
+  const campos = CAMPOS_PROTEGIDOS[tabela];
+  if (!campos || !obj) return obj;
+  for (const c of campos) if (c in obj) obj[c] = cifrar(obj[c]);
+  return obj;
+}
+
 /* As tecnologias do SISTEMA DE GESTÃO. O site da clínica é outro projeto, com
    outra pilha (e outro banco) — não entra aqui. */
 const TECNOLOGIAS = [
@@ -198,7 +253,14 @@ function confereSenha(senha, guardado) {
    ========================================================================== */
 async function anotar(entidade, entidadeId, evento, detalhe, sessao) {
   if (!entidadeId) return;
-  await Q.run("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)", entidade, entidadeId, evento, detalhe || "", sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
+  /* `detalhe` é cifrado: ele carrega TRECHOS do que foi escrito no prontuário
+     (a v1.15.0 passou a registrar o que mudou numa evolução). Sem isto, o
+     histórico viraria a porta dos fundos do registro clínico — o texto estaria
+     protegido no lançamento e em claro aqui do lado.
+     O `evento` fica legível: são rótulos fixos ("Alta", "Prontuário aberto"),
+     sem conteúdo de paciente, e é por ele que a tela agrupa a linha do tempo. */
+  await Q.run("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)",
+    entidade, entidadeId, evento, cifrar(detalhe || ""), sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
 }
 
 /* ==========================================================================
@@ -375,6 +437,21 @@ const PROCEDIMENTOS_SEED = [
 const COLS = {};
 
 async function iniciarRestrito() {
+  /* 0. a chave dos dados sensíveis.
+
+     Sem ela o sistema NÃO sobe. A alternativa seria subir e gravar CPF,
+     endereço e prontuário em texto puro — com a clínica trabalhando normal e
+     ninguém percebendo que a proteção parou de existir. Uma falha silenciosa
+     aqui é pior que o serviço fora do ar: o primeiro a notar seria quem
+     recebesse o vazamento. */
+  if (!chaveConfigurada()) {
+    throw new Error(
+      "chave dos dados sensíveis ausente ou inválida — " + erroChave() +
+      "\n    Gere com: openssl rand -base64 32" +
+      "\n    E grave como DADOS_CHAVE em /etc/bemestar.env" +
+      "\n    ATENÇÃO: perder essa chave torna os dados já gravados ilegíveis.");
+  }
+
   /* 1. esquema em dia. As migrations rodam antes de qualquer consulta. */
   await migrarEsquema({ silencioso: true });
 
@@ -1658,23 +1735,53 @@ async function rotaApi(req, res, p) {
          também da coluna, então "123.456.789-00" acha "12345678900".
          Mínimo de 3 dígitos (mesma regra do combobox): com um só, qualquer CPF
          casaria e a busca devolveria a clínica inteira. */
-      const digitos = busca.replace(/\D+/g, "");
-      const buscaPorDigitos = digitos.length >= 3;
-      const CPF_LIMPO = "REPLACE(REPLACE(REPLACE(cpf,'.',''),'-',''),' ','')";
+      /* ====================================================================
+         BUSCA POR CPF DEPOIS DA CRIPTOGRAFIA
+
+         Antes, o CPF era comparado no SQL (`cpf LIKE ?`, com e sem máscara).
+         Isso deixou de funcionar: cada CPF é gravado cifrado com um vetor
+         aleatório próprio, então o mesmo número tem texto diferente em cada
+         linha — não há o que comparar no banco.
+
+         A busca por CPF passou a acontecer na APLICAÇÃO, depois de decifrar.
+         Isso preserva o comportamento exato que a recepção já conhece,
+         inclusive a busca por PARTE do número (o que uma "impressão digital"
+         de igualdade não permitiria). É viável porque estas listas já eram
+         devolvidas inteiras — quem pagina é a tela, não o SQL.
+
+         O nome e o código continuam filtrados no banco, que é onde estão os
+         volumes. Só o recorte por CPF sobe para cá.
+         ==================================================================== */
+      const digitos = soDigitos(busca);
+      const buscaPorDigitos = digitos.length >= 3;   // com 1 dígito, qualquer CPF casa
+      let filtrarCpfNaMemoria = false;
+      let idsPorCpf = null;
+
       if (busca && tabela === "pacientes") {
-        const ors = ["nome LIKE ?", "codigo LIKE ?", "cpf LIKE ?"];
-        args.push("%" + busca + "%", "%" + busca + "%", "%" + busca + "%");
-        if (buscaPorDigitos) { ors.push(`${CPF_LIMPO} LIKE ?`); args.push("%" + digitos + "%"); }
-        cond.push("(" + ors.join(" OR ") + ")");
+        /* Sem condição de CPF no SQL: as linhas cujo ÚNICO casamento fosse o
+           CPF seriam descartadas aqui e nunca chegariam ao filtro em memória.
+           Por isso a busca de paciente é resolvida inteira na aplicação. */
+        filtrarCpfNaMemoria = true;
       }
-      /* Prontuário se acha pelo NÚMERO da pasta, pelo procedimento, pelo
-         profissional — e também pelo PACIENTE (nome, código ou CPF), que é como
-         a recepção procura na prática. */
       else if (busca && tabela === "prontuario") {
-        const ors = ["numero LIKE ?", "especialidade LIKE ?", "profissional LIKE ?",
-          "paciente_id IN (SELECT id FROM pacientes WHERE nome LIKE ? OR codigo LIKE ? OR cpf LIKE ?)"];
-        for (let i = 0; i < 6; i++) args.push("%" + busca + "%");
-        if (buscaPorDigitos) { ors.push(`paciente_id IN (SELECT id FROM pacientes WHERE ${CPF_LIMPO} LIKE ?)`); args.push("%" + digitos + "%"); }
+        /* Aqui dá para manter o SQL fazendo o trabalho: primeiro descobrimos
+           QUAIS pacientes casam (nome, código ou CPF), o que é uma lista curta,
+           e só então filtramos as pastas por esses ids. */
+        const todos = await Q.all("SELECT id, nome, codigo, cpf FROM pacientes");
+        const alvo = busca.toLowerCase();
+        idsPorCpf = todos.filter((p) =>
+          String(p.nome || "").toLowerCase().includes(alvo) ||
+          String(p.codigo || "").toLowerCase().includes(alvo) ||
+          String(p.cpf || "").toLowerCase().includes(alvo) ||
+          (buscaPorDigitos && soDigitos(p.cpf).includes(digitos))
+        ).map((p) => Number(p.id));
+
+        const ors = ["numero LIKE ?", "especialidade LIKE ?", "profissional LIKE ?"];
+        for (let i = 0; i < 3; i++) args.push("%" + busca + "%");
+        if (idsPorCpf.length) {
+          ors.push(`paciente_id IN (${idsPorCpf.map(() => "?").join(",")})`);
+          args.push(...idsPorCpf);
+        }
         cond.push("(" + ors.join(" OR ") + ")");
       }
       else if (busca && COLS[tabela].has("nome")) { cond.push("nome LIKE ?"); args.push("%" + busca + "%"); }
@@ -1704,7 +1811,22 @@ async function rotaApi(req, res, p) {
            : tabela === "prontuario" ? " ORDER BY status, especialidade, id"
            : tabela === "prontuario_registros" ? " ORDER BY data DESC, id DESC"
            : " ORDER BY id DESC";
-      const linhas = await Q.all(sql, ...args);
+      let linhas = await Q.all(sql, ...args);
+
+      /* Recorte por nome / código / CPF do paciente, agora que as linhas já
+         voltaram decifradas. Mesmas regras de antes: casa em qualquer parte do
+         texto, ignora maiúsculas, e o CPF casa com ou sem máscara nos dois
+         lados (compara só os dígitos). */
+      if (filtrarCpfNaMemoria) {
+        const alvo = busca.toLowerCase();
+        linhas = linhas.filter((p) =>
+          String(p.nome || "").toLowerCase().includes(alvo) ||
+          String(p.codigo || "").toLowerCase().includes(alvo) ||
+          String(p.cpf || "").toLowerCase().includes(alvo) ||
+          (buscaPorDigitos && soDigitos(p.cpf).includes(digitos))
+        );
+      }
+
       /* Promise.all e não forEach: `forEach` ignora o valor devolvido pelo
          callback, então com uma função assíncrona ele dispara todas e segue em
          frente sem esperar nenhuma — a resposta sairia antes de os logins serem
@@ -1768,6 +1890,10 @@ async function rotaApi(req, res, p) {
         if (typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
       }
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
+      /* Cifra os campos sensíveis logo antes de montar os valores. Feito aqui,
+         no CRUD, porque é por onde passam TODAS as gravações de paciente,
+         anamnese, prontuário e agenda. */
+      proteger(tabela, b);
       const temCriado = COLS[tabela].has("criado");
       const campos = temCriado ? use.concat("criado") : use;
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
@@ -1827,6 +1953,7 @@ async function rotaApi(req, res, p) {
         antesReg = await Q.get("SELECT prontuario_id,tipo,texto,data,profissional FROM prontuario_registros WHERE id=?", id) || null;
 
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
+      proteger(tabela, b);          // mesma cifragem do INSERT
       if (use.length) await Q.run(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`, ...use.map((c) => b[c]), id);
       if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) await Q.run("UPDATE anamneses SET atualizado=? WHERE id=?", agora(), id);
 
@@ -1922,4 +2049,4 @@ async function rotaApi(req, res, p) {
 }
 
 
-module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION };
+module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS };
