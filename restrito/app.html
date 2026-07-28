@@ -119,7 +119,7 @@
     /* Como o texto formatado aparece — na tela e no papel. Sem isto, o <ul>
        herdaria o reset `*{margin:0}` lá de cima e a lista sairia sem recuo
        nenhum, colada na margem. */
-    .texto-rico{line-height:1.6;overflow-wrap:anywhere}
+    .texto-rico{line-height:1.6;overflow-wrap:break-word}
     .texto-rico p{margin:0 0 .6rem}
     .texto-rico p:last-child{margin-bottom:0}
     .texto-rico ul,.texto-rico ol{margin:.4rem 0 .7rem;padding-left:1.5rem}
@@ -191,7 +191,7 @@
     #au-tabela .au-ip{white-space:nowrap;color:var(--dim);font-size:.8rem}
     /* o resumo é o que mais ocupa: deixa quebrar e limita para a linha não
        virar um parágrafo dentro da tabela */
-    #au-tabela .au-resumo{overflow-wrap:anywhere;min-width:260px}
+    #au-tabela .au-resumo{overflow-wrap:break-word;min-width:260px}
     .au-tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:.74rem;
       font-weight:700;white-space:nowrap;background:#eef1f6;color:var(--muted)}
     .au-tag.entrada{background:#e7f6ee;color:var(--verde)}
@@ -219,7 +219,7 @@
     .au-meta b{overflow-wrap:anywhere}
     .au-dif{width:100%;border-collapse:collapse;font-size:.86rem}
     .au-dif th{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);color:var(--muted);font-size:.78rem}
-    .au-dif td{padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+    .au-dif td{padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:break-word}
     .au-de{color:var(--red)}
     .au-para{color:var(--verde)}
     .au-json{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:.7rem;
@@ -350,7 +350,7 @@
        ("Protocolo Integrativo — Ozônio e Detox") precisa ser lido inteiro */
     .proc-tag-cheia{display:inline-block;max-width:100%;padding:.16rem .55rem;border-radius:999px;
       font-size:.78rem;font-weight:600;line-height:1.5;vertical-align:middle;
-      white-space:normal;overflow-wrap:anywhere}
+      white-space:normal;overflow-wrap:break-word}
     /* grupos por tipo dentro da lista de busca (Consulta / Sessão / Procedimento) */
     .cbx-grupo{position:sticky;top:0;background:#f3f0fb;color:var(--marinho);font-weight:700;
       font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;padding:.3rem .7rem;border-bottom:1px solid var(--line)}
@@ -371,9 +371,24 @@
        Fica FORA de `.num-pront`, `.chip-pront` e `.proc-tag-cheia`, que são
        códigos curtos e devem permanecer inteiros.
        --------------------------------------------------------------------- */
+    /* break-word e NÃO anywhere.
+
+       Os dois quebram uma palavra longa que estouraria a caixa — é o que se
+       queria aqui (e-mail e endereço não têm onde quebrar sozinhos). A
+       diferença está no CÁLCULO DA LARGURA MÍNIMA: com `anywhere`, o
+       navegador passa a considerar CADA LETRA um ponto de quebra válido, então
+       a largura mínima de uma célula vira UM CARACTERE — e numa tabela, que
+       distribui o espaço pelas larguras mínimas, as colunas desabam em tiras de
+       uma letra. Foi exatamente o que aconteceu em Profissionais e nas
+       impressões.
+
+       `break-word` protege igual contra o estouro, mas não entra nessa conta:
+       a coluna nunca fica menor que a maior palavra. Quando não couber, a
+       tabela fica mais larga que o cartão e ele rola — que é para isso que ele
+       tem `overflow:auto`. */
     .card, .card b, .card div,
     #mod-tbody td, .anam-m td, .tabela td,
-    .vinc-ok, .vinc-falta, .faixa-final{overflow-wrap:anywhere}
+    .vinc-ok, .vinc-falta, .faixa-final{overflow-wrap:break-word}
     .anam-m th,.anam-m td{border:1px solid var(--line);padding:.32rem .5rem;text-align:left}
     .anam-m th{background:#f7f5fd;color:var(--muted);font-weight:600;font-size:.78rem}
     .anam-m td input[type=text],.anam-m td input:not([type]){width:100%}
@@ -3072,7 +3087,7 @@ function timbreHTML(titulo, corpo, opc){
    .timbre .doc{margin-left:auto;text-align:right;color:#7a7f92;font-size:.68rem;line-height:1.5}
    .faixa{height:3.5px;background:linear-gradient(90deg,#5B4FD8 0%,#5136d6 55%,#C9A86A 100%);margin:0 0 1.15rem}
    .rod{margin-top:1.1rem;border-top:1px solid #eceaf6;padding-top:.45rem;color:#9aa0ad;font-size:.66rem;
-        display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;overflow-wrap:anywhere}
+        display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;overflow-wrap:break-word}
    /* cabeçalho: CNPJ, e-mail, telefone e site, um por linha. O nowrap impede
       que o número do telefone se parta ao meio.
       (ATENÇÃO: este CSS vive dentro de um template literal — nada de crase
@@ -3084,12 +3099,37 @@ function timbreHTML(titulo, corpo, opc){
    .sec{margin:1.25rem 0 .45rem;color:#5B4FD8;font-size:.7rem;font-weight:700;letter-spacing:.09em;
         text-transform:uppercase;border-bottom:1px solid #eceaf6;padding-bottom:.22rem;page-break-after:avoid}
    table.d{width:100%;border-collapse:collapse}
-   table.d th{text-align:left;width:190px;color:#5a6172;font-weight:600;vertical-align:top;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa}
-   table.d td{padding:.34rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top}
+   /* O RÓTULO ocupa a largura do próprio texto, e o VALOR fica com o resto.
+
+      Antes o rótulo tinha 190px fixos. Numa coluna do grid (a ficha tem duas
+      lado a lado, e ainda desconta a foto que flutua à direita) sobravam menos
+      de 90px para o valor — e nomes, CPF e e-mail saíam picados em tiras
+      verticais de uma ou duas letras.
+
+      width:1% + nowrap é o jeito de dizer "encolha até o conteúdo": o
+      navegador respeita o nowrap e o 1% vira apenas a ordem de prioridade na
+      distribuição. O td com 100% pede todo o espaço que sobrar. */
+   table.d th{text-align:left;width:1%;white-space:nowrap;color:#5a6172;font-weight:600;vertical-align:top;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa}
+   table.d td{width:100%;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top}
    /* e-mail e endereço não têm onde quebrar sozinhos e estouram a coluna no
       papel, que é mais estreito que a tela — aqui o corte é obrigatório */
-   table.d td,table.m td,.grade{overflow-wrap:anywhere}
-   .grade{display:grid;grid-template-columns:1fr 1fr;gap:0 1.4rem}
+   table.d td,table.m td,.grade{overflow-wrap:break-word}
+   /* Duas colunas SÓ SE cada uma couber em 260px. Senão, uma só.
+
+      Com "1fr 1fr" fixo, o navegador é obrigado a criar as duas mesmo sem
+      espaço — e, faltando largura, ele as encolhe até o mínimo do conteúdo,
+      saindo desiguais (medi 180px e 374px). Na coluna de 180px o rótulo já
+      consumia quase tudo e o valor era espremido em tiras verticais.
+
+      A foto flutua à direita e estreita a grade ainda mais, o que agrava tudo
+      justamente na primeira página, que é a que o cliente viu.
+
+      auto-fit + minmax garante o piso: ou cabem duas colunas dignas, ou a
+      ficha vira uma coluna larga.
+
+      (ATENÇÃO: este CSS vive dentro de um template literal — nada de crase
+      aqui, nem em comentário: ela fecha a string e derruba o arquivo inteiro.) */
+   .grade{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 1.4rem}
    .foto{width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid #e6e2f5;float:right;margin:0 0 .6rem 1rem}
    .cards{display:flex;flex-wrap:wrap;gap:.55rem;margin:.4rem 0}
    .kpi{border:1px solid #eceaf6;border-radius:10px;padding:.55rem .85rem;min-width:118px}
