@@ -102,6 +102,47 @@
     .tag-Remarcado{background:#fdf4e6;color:var(--ambar)}.tag-Ativo{background:#e7f6ee;color:var(--verde)}.tag-Inativo{background:#eef1f6;color:var(--muted)}
     .vazio{color:var(--dim);padding:1.5rem;text-align:center}
 
+    /* ------------------------------- Auditoria -------------------------- */
+    .au-rolagem{overflow-x:auto}
+    #au-tabela td,#au-tabela th{vertical-align:top}
+    #au-tabela .au-quando{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.84rem}
+    #au-tabela .au-ip{white-space:nowrap;color:var(--dim);font-size:.8rem}
+    /* o resumo é o que mais ocupa: deixa quebrar e limita para a linha não
+       virar um parágrafo dentro da tabela */
+    #au-tabela .au-resumo{overflow-wrap:anywhere;min-width:260px}
+    .au-tag{display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:.74rem;
+      font-weight:700;white-space:nowrap;background:#eef1f6;color:var(--muted)}
+    .au-tag.entrada{background:#e7f6ee;color:var(--verde)}
+    .au-tag.saida{background:#eef1f6;color:var(--muted)}
+    .au-tag.criar{background:#e8f0fd;color:#2c5fb3}
+    .au-tag.editar{background:#fdf4e6;color:var(--ambar)}
+    .au-tag.excluir{background:#fdecef;color:var(--red)}
+    .au-tag.alerta{background:#fdecef;color:var(--red)}
+    /* a linha só é clicável quando existe detalhe para abrir — cursor de mão
+       numa linha que não faz nada é promessa quebrada */
+    .au-clicavel{cursor:pointer}
+    .au-clicavel:hover{background:#f7f9fc}
+    .au-lupa{color:var(--celeste);font-size:.8rem;white-space:nowrap}
+    .au-pag{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;
+      margin-top:.9rem;font-size:.85rem;color:var(--muted)}
+    .au-pag button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:.3rem .65rem;
+      cursor:pointer;font:inherit;color:var(--text)}
+    .au-pag button:hover:not(:disabled){border-color:var(--celeste);color:var(--celeste)}
+    .au-pag button:disabled{opacity:.45;cursor:default}
+    .au-pag .atual{font-weight:700;color:var(--text)}
+
+    /* Modal do detalhe */
+    .au-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem}
+    .au-meta span{display:block;font-size:.74rem;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+    .au-meta b{overflow-wrap:anywhere}
+    .au-dif{width:100%;border-collapse:collapse;font-size:.86rem}
+    .au-dif th{text-align:left;padding:.4rem .5rem;border-bottom:1px solid var(--line);color:var(--muted);font-size:.78rem}
+    .au-dif td{padding:.45rem .5rem;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+    .au-de{color:var(--red)}
+    .au-para{color:var(--verde)}
+    .au-json{background:#f7f9fc;border:1px solid var(--line);border-radius:8px;padding:.7rem;
+      font-family:ui-monospace,Consolas,monospace;font-size:.78rem;white-space:pre-wrap;overflow-wrap:anywhere;max-height:50vh;overflow:auto}
+
     /* ---------------------------- Sobre o sistema ---------------------- */
     .sb-atual{background:linear-gradient(135deg,var(--marinho),var(--celeste));color:#fff;border:0}
     .sb-atual h2,.sb-atual h3{color:#fff}
@@ -374,6 +415,7 @@
           <hr class="tn-sep" id="sep-backup" hidden>
           <a class="navbtn" href="/" target="_blank">↗ Ver o site</a>
           <hr class="tn-sep">
+          <button class="navbtn" data-nav="auditoria">Auditoria</button>
           <button class="navbtn" data-nav="sobre">Sobre o sistema</button>
           <button class="navbtn" onclick="sair()">Sair</button>
           <p class="tn-versao">Versão do Sistema v{{VERSAO}}</p>
@@ -464,6 +506,31 @@
         <label>Senha atual</label><input id="ct-atual" type="password">
         <label>Nova senha (mín. 8 caracteres)</label><input id="ct-nova" type="password">
         <div style="margin-top:1rem"><button class="btn btn-navy" onclick="trocarSenha()">Salvar</button></div>
+      </div>
+    </section>
+
+    <!-- Auditoria: tudo o que acontece no sistema. Só o admin. -->
+    <section class="panel" id="pane-auditoria">
+      <div class="topbar">
+        <h1>Auditoria</h1>
+        <button class="btn btn-ghost btn-sm" onclick="carregarAuditoria(1)">↻ Atualizar</button>
+      </div>
+      <div class="card">
+        <div class="formgrid">
+          <div><label>De</label><input type="date" id="au-de"></div>
+          <div><label>Até</label><input type="date" id="au-ate"></div>
+          <div><label>Quem</label><select id="au-usuario"><option value="">Todos</option></select></div>
+          <div><label>Ação</label><select id="au-acao"><option value="">Todas</option></select></div>
+          <div><label>Tela</label><select id="au-modulo"><option value="">Todas</option></select></div>
+          <div style="display:flex;align-items:flex-end;gap:.5rem">
+            <button class="btn btn-navy btn-sm" onclick="carregarAuditoria(1)">Filtrar</button>
+            <button class="btn btn-ghost btn-sm" onclick="limparAuditoria()">Limpar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="au-rolagem"><table id="au-tabela"></table></div>
+        <div id="au-paginacao" class="au-pag"></div>
       </div>
     </section>
 
@@ -799,6 +866,167 @@ async function entrar(){ $("#lg-erro").textContent="";
 async function sair(){ try{ await api("logout","POST"); }catch{} location.reload(); }
 
 /* ==========================================================================
+   AUDITORIA — a trilha de tudo que acontece no sistema
+
+   É a única tela que pagina no SERVIDOR. As demais recebem a lista inteira e
+   fatiam aqui, porque são listas de tamanho humano. A auditoria ganha uma linha
+   por ação de cada pessoa, todo dia, para sempre — trazê-la inteira travaria o
+   navegador e carregaria dado sensível à toa para a memória do cliente.
+   ========================================================================== */
+let AU_PAGINA = 1, AU_POR = 30, AU_FILTROS_MONTADOS = false;
+
+const AU_CLASSE = {           // cor da etiqueta por tipo de ação
+  login:"entrada", logout:"saida", login_falhou:"alerta",
+  criar:"criar", editar:"editar", excluir:"excluir",
+  inativar:"editar", reativar:"criar", alta:"editar", reabrir:"criar",
+  backup:"alerta", senha:"alerta", bloquear:"alerta",
+};
+
+async function carregarAuditoria(pagina){
+  if(pagina) AU_PAGINA = pagina;
+  const corpo = $("#au-tabela");
+  const p = new URLSearchParams({ pagina: AU_PAGINA, por: AU_POR });
+  for(const [campo, chave] of [["au-de","de"],["au-ate","ate"],["au-usuario","usuario"],["au-acao","acao"],["au-modulo","modulo"]]){
+    const v = $("#"+campo)?.value; if(v) p.set(chave, v);
+  }
+  corpo.innerHTML = '<tr><td class="vazio">Carregando…</td></tr>';
+  try{
+    const d = await api("auditoria?"+p.toString());
+    montarFiltrosAuditoria(d);
+    pintarAuditoria(d);
+  }catch(e){
+    corpo.innerHTML = '<tr><td class="vazio">'+escA(e.message||"Não consegui carregar.")+'</td></tr>';
+    $("#au-paginacao").innerHTML = "";
+  }
+}
+
+/* Os seletores de ação, tela e pessoa vêm do servidor e são montados UMA vez —
+   remontar a cada filtragem perderia a opção que o usuário acabou de escolher. */
+function montarFiltrosAuditoria(d){
+  if(AU_FILTROS_MONTADOS) return;
+  AU_FILTROS_MONTADOS = true;
+  const preencher = (id, itens) => {
+    const s = $("#"+id);
+    s.innerHTML = s.options[0].outerHTML + itens.map(([v,r])=>`<option value="${escA(v)}">${escA(r)}</option>`).join("");
+  };
+  preencher("au-acao", Object.entries(d.rotulos||{}));
+  preencher("au-modulo", Object.entries(d.modulos||{}));
+  preencher("au-usuario", (d.usuarios||[]).map((u)=>[String(u.id), u.nome||("#"+u.id)]));
+}
+
+function pintarAuditoria(d){
+  const linhas = d.linhas || [];
+  if(!linhas.length){
+    $("#au-tabela").innerHTML = '<tr><td class="vazio">Nenhum registro no período.</td></tr>';
+    $("#au-paginacao").innerHTML = "";
+    return;
+  }
+  const quando = (iso) => {
+    const dt = new Date(iso);
+    if(isNaN(dt)) return escA(iso||"");
+    return dt.toLocaleDateString("pt-BR")+"<br>"+dt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  };
+  $("#au-tabela").innerHTML =
+    '<tr><th style="width:96px">Data / hora</th><th style="width:150px">Usuário</th>'
+    + '<th style="width:130px">Ação</th><th style="width:120px">Tela</th>'
+    + '<th>O que foi feito</th><th style="width:118px">Origem</th></tr>'
+    + linhas.map((l)=>{
+        const clicavel = l.tem_detalhe;
+        return `<tr class="${clicavel?"au-clicavel":""}"${clicavel?` onclick="verDetalheAuditoria(${l.id})"`:""}>
+          <td class="au-quando">${quando(l.criado)}</td>
+          <td>${escA(l.usuario_nome||"—")}${l.perfil?`<br><small style="color:var(--dim)">${escA(PERFIL_ROTULO[l.perfil]||l.perfil)}</small>`:""}</td>
+          <td><span class="au-tag ${AU_CLASSE[l.acao]||""}">${escA((d.rotulos||{})[l.acao]||l.acao)}</span></td>
+          <td>${escA(l.modulo?((d.modulos||{})[l.modulo]||l.modulo):"—")}</td>
+          <td class="au-resumo">${escA(l.resumo||"—")}${clicavel?' <span class="au-lupa">· ver detalhes</span>':""}</td>
+          <td class="au-ip">${escA(l.ip||"—")}</td>
+        </tr>`;
+      }).join("");
+
+  const ini = (d.pagina-1)*d.porPagina + 1;
+  const fim = Math.min(d.pagina*d.porPagina, d.total);
+  $("#au-paginacao").innerHTML =
+    `<span>${d.total ? `${ini}–${fim} de ${d.total}` : "nenhum"}</span>`
+    + `<select onchange="AU_POR=Number(this.value);carregarAuditoria(1)" style="width:auto;padding:.3rem .5rem">`
+    + [10,30,50,100,200].map((n)=>`<option value="${n}"${n===d.porPagina?" selected":""}>${n} por página</option>`).join("")
+    + `</select>`
+    + `<button onclick="carregarAuditoria(1)" ${d.pagina<=1?"disabled":""}>« primeira</button>`
+    + `<button onclick="carregarAuditoria(${d.pagina-1})" ${d.pagina<=1?"disabled":""}>‹ anterior</button>`
+    + `<span class="atual">${d.pagina} / ${d.paginas}</span>`
+    + `<button onclick="carregarAuditoria(${d.pagina+1})" ${d.pagina>=d.paginas?"disabled":""}>próxima ›</button>`
+    + `<button onclick="carregarAuditoria(${d.paginas})" ${d.pagina>=d.paginas?"disabled":""}>última »</button>`;
+}
+
+function limparAuditoria(){
+  ["au-de","au-ate","au-usuario","au-acao","au-modulo"].forEach((id)=>{ $("#"+id).value=""; });
+  carregarAuditoria(1);
+}
+
+/* O detalhe é buscado só no clique: ele carrega o antes/depois completo, que
+   pode ser grande e é dado sensível — não faz sentido trafegar isso para as
+   30 linhas da tabela quando o usuário vai olhar uma. */
+async function verDetalheAuditoria(id){
+  const host = $("#modal-host");
+  host.innerHTML = `<div class="modal-bg"><div class="modal" style="width:min(820px,96vw)">
+    <h2>Detalhe da ação</h2><div class="modal-corpo"><p class="vazio">Carregando…</p></div></div></div>`;
+  try{
+    const d = await api("auditoria/"+id);
+    const dt = new Date(d.criado);
+    const meta = [
+      ["Quando", isNaN(dt) ? d.criado : dt.toLocaleString("pt-BR")],
+      ["Usuário", d.usuario_nome || "—"],
+      ["Perfil", PERFIL_ROTULO[d.perfil] || d.perfil || "—"],
+      ["Ação", d.rotulo],
+      ["Tela", d.modulo_rotulo || "—"],
+      ["Registro", d.entidade_id ? "#"+d.entidade_id : "—"],
+      ["IP de origem", d.ip || "—"],
+      ["Rota", (d.metodo||"")+" "+(d.rota||"")],
+    ];
+    host.querySelector(".modal-corpo").innerHTML =
+      `<p style="margin-bottom:1rem"><b>${escA(d.resumo||"")}</b></p>`
+      + `<div class="au-meta">${meta.map(([r,v])=>`<div><span>${escA(r)}</span><b>${escA(String(v))}</b></div>`).join("")}</div>`
+      + corpoDetalheAuditoria(d.detalhe);
+    host.querySelector(".modal").insertAdjacentHTML("beforeend",
+      `<div class="acoes"><button class="btn btn-ghost" onclick="fecharModal()">Fechar</button></div>`);
+  }catch(e){
+    host.querySelector(".modal-corpo").innerHTML = '<p class="vazio">'+escA(e.message||"Não consegui carregar.")+'</p>';
+  }
+}
+
+function corpoDetalheAuditoria(det){
+  if(!det) return '<p class="vazio">Sem detalhes registrados.</p>';
+
+  // EDIÇÃO: mostra campo a campo o que virou o quê
+  if(det.alteracoes){
+    const itens = Object.entries(det.alteracoes);
+    if(!itens.length) return '<p class="vazio">Nada mudou.</p>';
+    return `<h3 style="font-size:.95rem;margin-bottom:.5rem">O que mudou (${itens.length})</h3>`
+      + `<table class="au-dif"><tr><th style="width:150px">Campo</th><th>Antes</th><th>Depois</th></tr>`
+      + itens.map(([campo,v])=>`<tr>
+          <td><b>${escA(campo)}</b>${v.protegido?'<br><small style="color:var(--dim)">protegido</small>':""}</td>
+          <td class="au-de">${escA(v.de||"—")}</td>
+          <td class="au-para">${escA(v.para||"—")}</td>
+        </tr>`).join("")
+      + `</table>`;
+  }
+  // CRIAÇÃO: os campos preenchidos no cadastro
+  if(det.campos) return listaCamposAuditoria("Dados informados", det.campos);
+  // EXCLUSÃO: o registro que deixou de existir
+  if(det.registro_excluido) return listaCamposAuditoria("Registro excluído", det.registro_excluido);
+  // demais ações: o JSON como está
+  return `<h3 style="font-size:.95rem;margin-bottom:.5rem">Detalhes</h3>`
+    + `<div class="au-json">${escA(JSON.stringify(det,null,2))}</div>`;
+}
+
+function listaCamposAuditoria(titulo, obj){
+  const itens = Object.entries(obj).filter(([,v])=>v!==null&&v!==undefined&&v!=="");
+  if(!itens.length) return '<p class="vazio">Nenhum campo preenchido.</p>';
+  return `<h3 style="font-size:.95rem;margin-bottom:.5rem">${escA(titulo)} (${itens.length})</h3>`
+    + `<table class="au-dif"><tr><th style="width:170px">Campo</th><th>Conteúdo</th></tr>`
+    + itens.map(([k,v])=>`<tr><td><b>${escA(k)}</b></td><td>${escA(typeof v==="object"?JSON.stringify(v):String(v))}</td></tr>`).join("")
+    + `</table>`;
+}
+
+/* ==========================================================================
    SOBRE O SISTEMA
 
    Tudo vem do servidor (versão, histórico, tecnologias, banco). Nada é escrito
@@ -959,6 +1187,7 @@ document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("
   if(nav==="painel"){ $("#pane-painel").classList.add("on"); carregarPainel(); }
   else if(nav==="conta"){ $("#pane-conta").classList.add("on"); }
   else if(nav==="sobre"){ $("#pane-sobre").classList.add("on"); carregarSobre(); }
+  else if(nav==="auditoria"){ $("#pane-auditoria").classList.add("on"); carregarAuditoria(1); }
   else if(nav==="relatorios"){ $("#pane-relatorios").classList.add("on"); carregarRelatorios(); }
   else if(nav==="relatorios_pacientes"){ $("#pane-relpac").classList.add("on"); carregarRelacaoPacientes(); }
   else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }

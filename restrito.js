@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.21.0";
+const SISTEMA_VERSION = "1.22.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +48,14 @@ const SISTEMA_VERSION = "1.21.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.22.0", data: "2026-07-28", titulo: "Auditoria", mudancas: [
+    "Nova tela com a trilha de tudo que acontece no sistema",
+    "Registra entradas, saídas, telas abertas, cadastros, edições e exclusões",
+    "Guarda data, hora, IP, quem fez e o que foi feito",
+    "Clique na linha abre o detalhe: em edições, campo a campo o antes e o depois",
+    "Filtros por período, pessoa, ação e tela",
+    "Exclusiva do administrador",
+  ] },
   { versao: "1.21.0", data: "2026-07-28", titulo: "Dados sensíveis criptografados", mudancas: [
     "CPF, RG, endereço, telefone, e-mail e contatos gravados cifrados no banco",
     "Anamneses, lançamentos do prontuário e histórico também cifrados",
@@ -190,6 +198,9 @@ const CAMPOS_PROTEGIDOS = {
   atendimentos: ["nome_agenda", "celular", "observacoes"],
   documentos_gestao: ["titulo", "arquivo"],
   profissionais: ["contato", "registro"],
+  // a trilha de auditoria guarda O QUE foi feito — inclui nome, CPF e trechos
+  // de prontuário. Cifrado pelo mesmo motivo do histórico.
+  auditoria: ["resumo", "detalhe"],
 };
 
 /* Cifra os campos protegidos de um objeto ANTES de gravar. Recebe e devolve o
@@ -200,6 +211,144 @@ function proteger(tabela, obj) {
   if (!campos || !obj) return obj;
   for (const c of campos) if (c in obj) obj[c] = cifrar(obj[c]);
   return obj;
+}
+
+/* ==========================================================================
+   AUDITORIA — quem fez o quê, quando e de onde
+
+   Diferente do `historico`, que conta a vida de UM paciente e aparece para a
+   equipe dentro do prontuário. A auditoria olha o sistema inteiro, do ponto de
+   vista de quem operou, e é exclusiva do administrador.
+
+   TRÊS DECISÕES QUE MOLDAM ESTA FUNÇÃO:
+
+   1. Ela NUNCA derruba a operação auditada. Todo o corpo vive num try/catch
+      que só escreve no log do servidor. Se a auditoria falhar (disco cheio,
+      coluna faltando), o cadastro do paciente tem de ser salvo assim mesmo —
+      perder o atendimento para preservar o registro de que ele existiu seria
+      trocar o certo pelo acessório.
+
+   2. Ela não é esperada (`await`). Gravar a trilha não pode somar latência a
+      cada clique da recepção. A promessa é solta com um catch próprio, porque
+      promessa rejeitada e não tratada derruba o processo no Node.
+
+   3. O `detalhe` guarda JSON com o ANTES e o DEPOIS. É o que a tela abre no
+      modal quando o usuário clica na linha. Vai cifrado (ver CAMPOS_PROTEGIDOS).
+   ========================================================================== */
+const ACOES_ROTULO = {
+  login: "Entrou no sistema", login_falhou: "Tentativa de login sem sucesso",
+  logout: "Saiu do sistema", acesso: "Abriu a tela",
+  criar: "Cadastrou", editar: "Alterou", excluir: "Excluiu",
+  imprimir: "Imprimiu", backup: "Baixou backup do banco",
+  senha: "Trocou a senha", bloquear: "Bloqueou acesso", desbloquear: "Liberou acesso",
+  alta: "Deu alta", reabrir: "Reabriu", finalizar: "Finalizou",
+  inativar: "Inativou", reativar: "Reativou",
+  arquivar: "Arquivou", restaurar: "Restaurou",
+  vincular: "Vinculou", desvincular: "Desvinculou",
+};
+
+/* Nome da tela como o usuário a conhece. A tabela se chama
+   `documentos_gestao`; para quem lê a auditoria, aquilo é "Documentos". */
+const MODULO_ROTULO = {
+  pacientes: "Pacientes", profissionais: "Profissionais", convenios: "Convênios",
+  procedimentos: "Procedimentos", salas: "Salas", atendimentos: "Agendamento",
+  prontuario: "Prontuário", prontuario_registros: "Lançamentos do prontuário",
+  anamneses: "Anamneses", documentos_gestao: "Documentos", historico: "Histórico",
+  usuarios: "Usuários do Sistema", relatorios: "Relatórios",
+  relatorios_pacientes: "Pacientes ativos/inativos", painel: "Painel",
+  auditoria: "Auditoria", sobre: "Sobre o sistema", conta: "Minha conta",
+};
+const rotuloModulo = (t) => MODULO_ROTULO[t] || t;
+
+/* Como identificar o registro numa linha de auditoria. Sem isto a trilha diria
+   "alterou o registro 41", e ninguém saberia de quem se trata sem ir ao banco. */
+function rotuloRegistro(tabela, r) {
+  if (!r) return "";
+  if (tabela === "prontuario") return [r.numero, r.especialidade].filter(Boolean).join(" · ") || `#${r.id || ""}`;
+  if (tabela === "prontuario_registros") return rotuloTipo(r.tipo) + (r.data ? ` de ${r.data}` : "");
+  if (tabela === "anamneses") return [rotuloModelo(r.tipo), r.procedimento].filter(Boolean).join(" · ");
+  if (tabela === "atendimentos") return [r.data, r.hora, r.especialidade].filter(Boolean).join(" ");
+  if (tabela === "documentos_gestao") return r.titulo || r.tipo || `#${r.id || ""}`;
+  return r.nome || r.codigo || r.numero || `#${r.id || ""}`;
+}
+
+function auditar({ req, sessao: s, acao, modulo, entidadeId, resumo, detalhe }) {
+  Promise.resolve().then(async () => {
+    await Q.run(
+      `INSERT INTO auditoria(criado,ip,usuario_id,usuario_nome,perfil,acao,modulo,entidade_id,resumo,detalhe,rota,metodo)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+      agora(),
+      req ? clientIp(req) : null,
+      s ? s.userId : null,
+      s ? s.nome : "",
+      s ? s.perfil : "",
+      acao,
+      modulo || null,
+      entidadeId || null,
+      cifrar(resumo || ""),
+      cifrar(detalhe ? JSON.stringify(detalhe) : ""),
+      req ? String(req.url || "").slice(0, 300) : null,
+      req ? req.method : null,
+    );
+  }).catch((e) => console.error("  ✖ auditoria não gravada:", e.message));
+}
+
+/* ==========================================================================
+   ACESSO DE TELA — registrar sem afogar a trilha
+
+   Uma tela do sistema não faz uma leitura, faz várias: a lista principal, os
+   seletores, o cache de apoio, mais uma releitura a cada busca digitada.
+   Registrar toda leitura encheria a auditoria de milhares de linhas por dia e,
+   pior, esconderia o que importa — um "excluiu paciente" perdido no meio de
+   dez mil "consultou".
+
+   Então guardamos apenas a PRIMEIRA visita de cada pessoa a cada tela dentro de
+   uma janela de tempo. Fica "a recepção abriu Pacientes às 14h03", que é o que
+   alguém realmente vai querer saber, sem o ruído.
+
+   A janela vive em memória: reiniciar o serviço faz o próximo acesso ser
+   registrado de novo. É o comportamento certo — reinício é evento raro, e um
+   registro a mais não atrapalha ninguém.
+   ========================================================================== */
+const ACESSO_JANELA_MIN = 15;
+const acessosRecentes = new Map();     // "userId:modulo" -> timestamp
+
+function registrarAcesso(req, s, modulo) {
+  const chave = `${s.userId}:${modulo}`;
+  const antes = acessosRecentes.get(chave);
+  if (antes && Date.now() - antes < ACESSO_JANELA_MIN * 60_000) return;
+  acessosRecentes.set(chave, Date.now());
+  auditar({ req, sessao: s, acao: "acesso", modulo,
+    resumo: `${s.nome} abriu a tela ${rotuloModulo(modulo)}` });
+}
+/* Sem esta limpeza o mapa cresceria para sempre num servidor que fica meses no
+   ar — pouca coisa por vez, mas é vazamento de memória do mesmo jeito. */
+setInterval(() => {
+  const limite = Date.now() - ACESSO_JANELA_MIN * 60_000;
+  for (const [k, t] of acessosRecentes) if (t < limite) acessosRecentes.delete(k);
+}, 30 * 60_000).unref();
+
+/* Compara o registro antes e depois de uma edição e devolve só o que mudou.
+   É isto que o modal da auditoria mostra — e é o que torna a trilha útil:
+   "alterou o paciente" não diz nada; "trocou o celular de X para Y" diz. */
+function diferencas(antes, depois, tabela) {
+  const mudou = {};
+  if (!antes || !depois) return mudou;
+  const protegidos = new Set(CAMPOS_PROTEGIDOS[tabela] || []);
+  for (const campo of Object.keys(depois)) {
+    if (campo === "id" || campo === "criado") continue;
+    const de = antes[campo], para = depois[campo];
+    if (de === para) continue;
+    // "" e null são a mesma coisa para o usuário: campo em branco
+    if ((de === null || de === undefined || de === "") && (para === null || para === undefined || para === "")) continue;
+    if (String(de ?? "") === String(para ?? "")) continue;
+    mudou[campo] = {
+      de: recortar(de ?? "", 400),
+      para: recortar(para ?? "", 400),
+      protegido: protegidos.has(campo),
+    };
+  }
+  return mudou;
 }
 
 /* As tecnologias do SISTEMA DE GESTÃO. O site da clínica é outro projeto, com
@@ -1175,10 +1324,21 @@ async function rotaApi(req, res, p) {
        errada" em ~100ms — diferença que permite descobrir logins válidos por
        cronômetro antes de atacar a senha. */
     const ok = u ? confereSenha(senha, u.senha_hash) : (confereSenha(senha, HASH_ISCA), false);
-    if (!ok) { erroLogin(ip); return json(res, 401, { error: "Usuário ou senha incorretos." }); }
+    if (!ok) {
+      erroLogin(ip);
+      /* A tentativa SEM SUCESSO é a linha mais importante desta trilha: é ela
+         que revela alguém tentando entrar. Guardamos o login digitado — não a
+         senha, nunca, nem parte dela. */
+      auditar({ req, sessao: null, acao: "login_falhou",
+        resumo: `Tentativa de entrar como "${String(usuario || "").slice(0, 60)}"`,
+        detalhe: { usuario_informado: String(usuario || "").slice(0, 60), existe: !!u } });
+      return json(res, 401, { error: "Usuário ou senha incorretos." });
+    }
     tentativas.delete(ip);
     const rid = novaSessao(u);
     res.setHeader("Set-Cookie", `rid=${rid}; HttpOnly; SameSite=Lax; Path=/restrito; Max-Age=${SESSAO_HORAS * 3600}${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+    auditar({ req, sessao: { userId: u.id, nome: u.nome, perfil: u.perfil }, acao: "login",
+      resumo: `${u.nome} entrou no sistema` });
     return json(res, 200, { ok: true, nome: u.nome, perfil: u.perfil });
   }
 
@@ -1205,6 +1365,7 @@ async function rotaApi(req, res, p) {
      ========================================================================== */
   if (p === "backup/sql" && req.method === "GET") {
     if (s.perfil !== "admin") return json(res, 403, { error: "Só o administrador pode baixar o backup." });
+    auditar({ req, sessao: s, acao: "backup", resumo: `${s.nome} baixou o backup completo do banco` });
     return dumpSql(res, s);
   }
 
@@ -1219,6 +1380,71 @@ async function rotaApi(req, res, p) {
      tela responde "qual banco está rodando" com o que está de fato conectado
      naquele instante, não com o que alguém supôs ao escrever o texto.
      ========================================================================== */
+  /* ==========================================================================
+     AUDITORIA — a trilha completa, só para o administrador
+
+     ESTA É A ÚNICA LISTA DO SISTEMA QUE PAGINA NO SERVIDOR. Todas as outras
+     devolvem tudo e deixam a tela fatiar, porque são listas de tamanho humano:
+     pacientes, procedimentos, salas. A auditoria não — ela ganha uma linha a
+     cada ação de cada pessoa, todos os dias, para sempre. Em um ano são
+     centenas de milhares. Mandar isso inteiro para o navegador travaria a tela
+     e carregaria dado sensível à toa para a memória do cliente.
+     ========================================================================== */
+  if (p === "auditoria" && req.method === "GET") {
+    if (s.perfil !== "admin") return json(res, 403, { error: "A auditoria é exclusiva do administrador." });
+    const q = new URL(req.url, "http://x").searchParams;
+
+    const cond = [], args = [];
+    const soData = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : "");
+    let de = soData(q.get("de")), ate = soData(q.get("ate"));
+    if (de && ate && de > ate) { const t = de; de = ate; ate = t; }   // datas invertidas
+    if (de) { cond.push("substr(criado,1,10) >= ?"); args.push(de); }
+    if (ate) { cond.push("substr(criado,1,10) <= ?"); args.push(ate); }
+
+    const uid = (q.get("usuario") || "").trim();
+    if (/^\d+$/.test(uid)) { cond.push("usuario_id=?"); args.push(Number(uid)); }
+    const acao = (q.get("acao") || "").trim();
+    if (acao && ACOES_ROTULO[acao]) { cond.push("acao=?"); args.push(acao); }
+    const mod = (q.get("modulo") || "").trim();
+    if (mod && /^[a-z_]+$/.test(mod)) { cond.push("modulo=?"); args.push(mod); }
+
+    const onde = cond.length ? " WHERE " + cond.join(" AND ") : "";
+    const total = (await Q.get(`SELECT COUNT(*) c FROM auditoria${onde}`, ...args)).c;
+
+    const porPagina = Math.min(Math.max(Number(q.get("por")) || 30, 5), 200);
+    const pagina = Math.max(Number(q.get("pagina")) || 1, 1);
+    const linhas = await Q.all(
+      `SELECT * FROM auditoria${onde} ORDER BY criado DESC, id DESC LIMIT ? OFFSET ?`,
+      ...args, porPagina, (pagina - 1) * porPagina);
+
+    /* O `detalhe` (o JSON pesado do antes/depois) NÃO vai na listagem — só o
+       resumo. A tela busca o detalhe de uma linha só quando o usuário clica.
+       Assim a tabela é leve e o dado sensível não trafega sem necessidade. */
+    for (const l of linhas) { l.tem_detalhe = !!(l.detalhe && l.detalhe.length > 2); delete l.detalhe; }
+
+    return json(res, 200, {
+      total, pagina, porPagina,
+      paginas: Math.max(Math.ceil(total / porPagina), 1),
+      linhas,
+      rotulos: ACOES_ROTULO,
+      modulos: MODULO_ROTULO,
+      /* Quem já apareceu na trilha — alimenta o filtro por pessoa sem precisar
+         listar usuários excluídos ou que nunca usaram o sistema. */
+      usuarios: await Q.all(`SELECT DISTINCT usuario_id id, usuario_nome nome FROM auditoria
+                              WHERE usuario_id IS NOT NULL ORDER BY usuario_nome`),
+    });
+  }
+
+  const audm = p.match(/^auditoria\/(\d+)$/);
+  if (audm && req.method === "GET") {
+    if (s.perfil !== "admin") return json(res, 403, { error: "A auditoria é exclusiva do administrador." });
+    const linha = await Q.get("SELECT * FROM auditoria WHERE id=?", audm[1]);
+    if (!linha) return json(res, 404, { error: "Registro não encontrado." });
+    let detalhe = null;
+    try { detalhe = linha.detalhe ? JSON.parse(linha.detalhe) : null; } catch { detalhe = { texto: linha.detalhe }; }
+    return json(res, 200, { ...linha, detalhe, rotulo: ACOES_ROTULO[linha.acao] || linha.acao, modulo_rotulo: rotuloModulo(linha.modulo) });
+  }
+
   if (p === "sobre" && req.method === "GET") {
     if (s.perfil !== "admin") return json(res, 403, { error: "Tela exclusiva do administrador." });
 
@@ -1267,6 +1493,7 @@ async function rotaApi(req, res, p) {
   }
 
   if (p === "logout" && req.method === "POST") {
+    auditar({ req, sessao: s, acao: "logout", resumo: `${s.nome} saiu do sistema` });
     sessoes.delete(s.rid);
     res.setHeader("Set-Cookie", "rid=; HttpOnly; Path=/restrito; Max-Age=0");
     return json(res, 200, { ok: true });
@@ -1278,6 +1505,8 @@ async function rotaApi(req, res, p) {
     if (!confereSenha(atual, u.senha_hash)) return json(res, 400, { error: "Senha atual incorreta." });
     if (String(nova || "").length < 8) return json(res, 400, { error: "A nova senha precisa de ao menos 8 caracteres." });
     await Q.run("UPDATE g_usuarios SET senha_hash=? WHERE id=?", hashSenha(nova), s.userId);
+    // a senha em si NUNCA entra na trilha, nem cifrada
+    auditar({ req, sessao: s, acao: "senha", resumo: `${s.nome} trocou a própria senha` });
     for (const [k, v] of sessoes) if (v.userId === s.userId && k !== s.rid) sessoes.delete(k);
     return json(res, 200, { ok: true });
   }
@@ -1521,6 +1750,9 @@ async function rotaApi(req, res, p) {
       const quando = b.data || new Date().toISOString().slice(0, 10);
       await Q.run("UPDATE prontuario SET status='Alta', alta_em=?, alta_motivo=? WHERE id=?", quando, b.motivo || "", id);
       await anotar("prontuario", id, "Alta", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      auditar({ req, sessao: s, acao: "alta", modulo: "prontuario", entidadeId: Number(id),
+        resumo: `Deu alta no prontuário ${pr.numero || ""} · ${pr.especialidade}`,
+        detalhe: { numero: pr.numero, especialidade: pr.especialidade, motivo: b.motivo || "" } });
       await anotar("paciente", pr.paciente_id, "Alta em " + pr.especialidade, pr.numero || "", s);
     } else {
       // reabrir: o paciente voltou. Data de reativação atualizada, histórico intacto.
@@ -1528,6 +1760,9 @@ async function rotaApi(req, res, p) {
       await Q.run("UPDATE prontuario SET status='Ativo', alta_em=NULL, alta_motivo=NULL, reativado_em=? WHERE id=?", quando, id);
       await Q.run("UPDATE pacientes SET reativado_em=? WHERE id=?", quando, pr.paciente_id);
       await anotar("prontuario", id, "Prontuário reaberto", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      auditar({ req, sessao: s, acao: "reabrir", modulo: "prontuario", entidadeId: Number(id),
+        resumo: `Reabriu o prontuário ${pr.numero || ""} · ${pr.especialidade}`,
+        detalhe: { numero: pr.numero, especialidade: pr.especialidade, motivo: b.motivo || "" } });
       await anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
     }
     return json(res, 200, { ok: true });
@@ -1551,12 +1786,17 @@ async function rotaApi(req, res, p) {
       const abertos = await conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=? AND status<>'Alta'", id);
       await Q.run("UPDATE pacientes SET ativo=0, inativo_em=?, inativo_motivo=? WHERE id=?", agora(), b.motivo || "", id);
       await anotar("paciente", id, "Paciente inativado", b.motivo || "", s);
+      auditar({ req, sessao: s, acao: "inativar", modulo: "pacientes", entidadeId: Number(id),
+        resumo: `Inativou o paciente ${pac.nome || ""} (${pac.codigo || ""})`,
+        detalhe: { motivo: b.motivo || "", prontuarios_em_tratamento: abertos } });
       /* Avisa se ficou tratamento em aberto — não impede (a pessoa pode
          simplesmente ter parado de vir), mas quem inativa precisa saber. */
       return json(res, 200, { ok: true, prontuariosAbertos: abertos });
     }
     await Q.run("UPDATE pacientes SET ativo=1, inativo_em=NULL, inativo_motivo=NULL, reativado_em=? WHERE id=?", agora(), id);
     await anotar("paciente", id, "Paciente reativado", b.motivo || "", s);
+    auditar({ req, sessao: s, acao: "reativar", modulo: "pacientes", entidadeId: Number(id),
+      resumo: `Reativou o paciente ${pac.nome || ""} (${pac.codigo || ""})`, detalhe: { motivo: b.motivo || "" } });
     return json(res, 200, { ok: true });
   }
 
@@ -1711,6 +1951,9 @@ async function rotaApi(req, res, p) {
     // qualquer escrita exige acesso pleno ao módulo.
     if (!podeLer(s.perfil, tabela)) return json(res, 403, { error: "Seu perfil não tem acesso a este módulo." });
     if (req.method !== "GET" && !pode(s.perfil, tabela)) return json(res, 403, { error: "Seu perfil não pode alterar este módulo." });
+
+    // abrir uma tela é uma listagem: registra "fulano abriu Pacientes"
+    if (req.method === "GET" && !id) registrarAcesso(req, s, tabela);
 
     /* Recorte do profissional: só os SEUS registros. No prontuário "seu" = quem
        criou (usuario_id); na agenda "seu" = para quem o atendimento é marcado
@@ -1890,6 +2133,10 @@ async function rotaApi(req, res, p) {
         if (typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
       }
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
+      /* Cópia em texto claro ANTES de cifrar — é o que a auditoria registra.
+         Depois de proteger(), `b` carrega texto cifrado, e a trilha guardaria
+         um monte de "enc:1:..." em vez do que foi realmente cadastrado. */
+      const comoVeio = {}; for (const c of use) comoVeio[c] = b[c];
       /* Cifra os campos sensíveis logo antes de montar os valores. Feito aqui,
          no CRUD, porque é por onde passam TODAS as gravações de paciente,
          anamnese, prontuário e agenda. */
@@ -1898,6 +2145,9 @@ async function rotaApi(req, res, p) {
       const campos = temCriado ? use.concat("criado") : use;
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
       const novoId = await Q.inserir(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`, ...valores);
+      auditar({ req, sessao: s, acao: "criar", modulo: tabela, entidadeId: novoId,
+        resumo: `Cadastrou em ${rotuloModulo(tabela)}: ${rotuloRegistro(tabela, comoVeio)}`,
+        detalhe: { campos: comoVeio } });
       // toda pasta de prontuário nasce com o seu número de controle
       if (tabela === "prontuario") {
         const numero = await emitirNumeroProntuario(novoId);
@@ -1953,8 +2203,23 @@ async function rotaApi(req, res, p) {
         antesReg = await Q.get("SELECT prontuario_id,tipo,texto,data,profissional FROM prontuario_registros WHERE id=?", id) || null;
 
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
+      /* Estado ANTES da edição, já decifrado (o Q devolve em claro). É a metade
+         de trás do que a auditoria vai mostrar no modal: de X para Y. */
+      const antesTudo = await Q.get(`SELECT * FROM ${tabela} WHERE id=?`, id) || {};
+      const comoVeio = {}; for (const c of use) comoVeio[c] = b[c];
+
       proteger(tabela, b);          // mesma cifragem do INSERT
       if (use.length) await Q.run(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`, ...use.map((c) => b[c]), id);
+
+      const mudou = diferencas(antesTudo, comoVeio, tabela);
+      const nomesMudados = Object.keys(mudou);
+      /* Salvar sem mexer em nada não vira linha na auditoria — senão a trilha
+         encheria de "alterou" toda vez que alguém abrisse e fechasse a ficha. */
+      if (nomesMudados.length) {
+        auditar({ req, sessao: s, acao: "editar", modulo: tabela, entidadeId: Number(id),
+          resumo: `Alterou em ${rotuloModulo(tabela)}: ${rotuloRegistro(tabela, antesTudo)} — ${nomesMudados.length} campo(s): ${nomesMudados.slice(0, 4).join(", ")}${nomesMudados.length > 4 ? "…" : ""}`,
+          detalhe: { alteracoes: mudou } });
+      }
       if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) await Q.run("UPDATE anamneses SET atualizado=? WHERE id=?", agora(), id);
 
       if (antesReg) {
@@ -2040,7 +2305,14 @@ async function rotaApi(req, res, p) {
             [pr.especialidade, det].filter(Boolean).join(" — "), s);
         }
       }
+      /* Lê o registro INTEIRO antes de apagar. Numa exclusão, a auditoria é a
+         única coisa que sobra: se ninguém guardar o que havia ali, não há como
+         responder depois "o que foi apagado?". */
+      const apagado = await Q.get(`SELECT * FROM ${tabela} WHERE id=?`, id) || {};
       await Q.run(`DELETE FROM ${tabela} WHERE id=?`, id);
+      auditar({ req, sessao: s, acao: "excluir", modulo: tabela, entidadeId: Number(id),
+        resumo: `Excluiu de ${rotuloModulo(tabela)}: ${rotuloRegistro(tabela, apagado)}`,
+        detalhe: { registro_excluido: apagado, soltos: soltos || undefined } });
       return json(res, 200, soltos ? { ok: true, soltos } : { ok: true });
     }
   }
