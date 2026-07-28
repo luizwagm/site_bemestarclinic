@@ -64,10 +64,10 @@ function copiarBanco(origem, destinoDir) {
 }
 
 /* Mantém só as N cópias mais recentes de cada banco. */
-function limparAntigos(destinoDir, nomeBanco, manter) {
+function limparAntigos(destinoDir, nomeBanco, manter, ext = ".db") {
   try {
     const arquivos = fs.readdirSync(destinoDir)
-      .filter((f) => f.startsWith(nomeBanco + ".") && f.endsWith(".db"))
+      .filter((f) => f.startsWith(nomeBanco + ".") && f.endsWith(ext))
       .map((f) => ({ f, t: fs.statSync(path.join(destinoDir, f)).mtimeMs }))
       .sort((a, b) => b.t - a.t);
     let removidos = 0;
@@ -77,17 +77,76 @@ function limparAntigos(destinoDir, nomeBanco, manter) {
 }
 
 /* Quando foi a última cópia de um banco (ms) — 0 se nunca houve. */
-function ultimaCopia(destinoDir, nomeBanco) {
+function ultimaCopia(destinoDir, nomeBanco, ext = ".db") {
   try {
     return fs.readdirSync(destinoDir)
-      .filter((f) => f.startsWith(nomeBanco + ".") && f.endsWith(".db"))
+      .filter((f) => f.startsWith(nomeBanco + ".") && f.endsWith(ext))
       .reduce((max, f) => Math.max(max, fs.statSync(path.join(destinoDir, f)).mtimeMs), 0);
   } catch { return 0; }
+}
+
+/* ==========================================================================
+   DUMP DO POSTGRES (sistema de gestão)
+
+   O site continua em SQLite e é copiado com VACUUM INTO (função acima). A
+   gestão foi para o PostgreSQL, que não é um arquivo — a cópia certa é o
+   pg_dump, que produz um .sql restaurável em qualquer servidor.
+
+   Feito com spawnSync porque a rotina de backup é sequencial e roda fora do
+   caminho de qualquer requisição: ninguém está esperando por ela.
+
+   Se o pg_dump não estiver instalado, o backup do Postgres falha mas o do site
+   continua — e o erro aparece no log. Uma máquina sem postgresql-client não
+   pode fazer o backup ficar em silêncio.
+   ========================================================================== */
+function dumparPostgres(cfg, destinoDir) {
+  const { spawnSync } = require("node:child_process");
+  const pg = cfg.postgres;
+  if (!pg || !pg.database) return { ok: false, erro: "postgres não configurado" };
+
+  fs.mkdirSync(destinoDir, { recursive: true });
+  const carimbo = new Date().toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
+  let arquivo = path.join(destinoDir, `${pg.database}.${carimbo}.sql`);
+  // mesmo cuidado do backup do SQLite: duas cópias no mesmo segundo não se pisam
+  for (let i = 2; fs.existsSync(arquivo) && i < 100; i++)
+    arquivo = path.join(destinoDir, `${pg.database}.${carimbo}-${i}.sql`);
+
+  const r = spawnSync(process.env.PG_DUMP || "pg_dump",
+    ["--no-owner", "--no-privileges", "--clean", "--if-exists",
+     "-h", pg.host || "127.0.0.1", "-p", String(pg.port || 5432),
+     "-U", pg.user, "-d", pg.database, "-f", arquivo],
+    { env: { ...process.env, PGPASSWORD: pg.password || "" }, windowsHide: true, encoding: "utf8" });
+
+  if (r.error) return { ok: false, erro: r.error.code === "ENOENT" ? "pg_dump não instalado (pacote postgresql-client)" : r.error.message };
+  if (r.status !== 0) {
+    try { fs.unlinkSync(arquivo); } catch {}   // dump pela metade não fica no disco
+    return { ok: false, erro: (r.stderr || "").trim().slice(0, 300) || `pg_dump saiu com código ${r.status}` };
+  }
+  /* Um dump de 0 byte é o pior resultado possível: existe, tem nome de backup e
+     não tem nada dentro. Melhor apagar e gritar. */
+  const bytes = fs.statSync(arquivo).size;
+  if (bytes < 100) { try { fs.unlinkSync(arquivo); } catch {} return { ok: false, erro: "dump saiu vazio" }; }
+  return { ok: true, arquivo, bytes };
 }
 
 /* Executa a rodada de backup de todos os bancos configurados. */
 function rodarBackup(cfg, motivo) {
   const feitos = [];
+
+  // 1) o banco da GESTÃO (PostgreSQL) — prontuários, o que mais importa
+  if (cfg.postgres && cfg.postgres.database) {
+    const r = dumparPostgres(cfg, cfg.destino);
+    if (r.ok) {
+      const removidos = limparAntigos(cfg.destino, cfg.postgres.database, cfg.manter, ".sql");
+      const kb = Math.max(1, Math.round(r.bytes / 1024));
+      console.log(`  · backup ${motivo}: ${path.basename(r.arquivo)} (${kb} KB)${removidos ? ` · ${removidos} antigo(s) removido(s)` : ""}`);
+      feitos.push({ banco: cfg.postgres.database, arquivo: r.arquivo, bytes: r.bytes });
+    } else {
+      console.error(`  ✖ backup do PostgreSQL FALHOU: ${r.erro}`);
+    }
+  }
+
+  // 2) o banco do SITE (SQLite)
   for (const origem of cfg.bancos) {
     const nome = path.basename(origem, ".db");
     const r = copiarBanco(origem, cfg.destino);
@@ -105,13 +164,15 @@ function rodarBackup(cfg, motivo) {
 
 /* Situação atual, para o painel e o verificar.sh mostrarem. */
 function statusBackup(cfg) {
-  const bancos = cfg.bancos.map((origem) => {
-    const nome = path.basename(origem, ".db");
-    const t = ultimaCopia(cfg.destino, nome);
+  const olhar = (nome, ext) => {
+    const t = ultimaCopia(cfg.destino, nome, ext);
     let copias = 0;
-    try { copias = fs.readdirSync(cfg.destino).filter((f) => f.startsWith(nome + ".") && f.endsWith(".db")).length; } catch {}
-    return { banco: nome, ultimo: t ? new Date(t).toISOString() : null, horasAtras: t ? (Date.now() - t) / 3600e3 : null, copias };
-  });
+    try { copias = fs.readdirSync(cfg.destino).filter((f) => f.startsWith(nome + ".") && f.endsWith(ext)).length; } catch {}
+    return { banco: nome, motor: ext === ".sql" ? "PostgreSQL" : "SQLite",
+      ultimo: t ? new Date(t).toISOString() : null, horasAtras: t ? (Date.now() - t) / 3600e3 : null, copias };
+  };
+  const bancos = cfg.bancos.map((origem) => olhar(path.basename(origem, ".db"), ".db"));
+  if (cfg.postgres && cfg.postgres.database) bancos.unshift(olhar(cfg.postgres.database, ".sql"));
   return { destino: cfg.destino, intervaloHoras: cfg.intervaloHoras, manter: cfg.manter, bancos };
 }
 
@@ -120,15 +181,19 @@ function agendarBackups(opcoes) {
   const cfg = {
     destino: opcoes.destino,
     bancos: opcoes.bancos.filter(Boolean),
+    postgres: opcoes.postgres || null,
     manter: opcoes.manter || 30,
     intervaloHoras: opcoes.intervaloHoras || 24,
   };
   fs.mkdirSync(cfg.destino, { recursive: true });
 
-  const vencido = () => cfg.bancos.some((origem) => {
-    const t = ultimaCopia(cfg.destino, path.basename(origem, ".db"));
+  const venceu = (nome, ext) => {
+    const t = ultimaCopia(cfg.destino, nome, ext);
     return !t || (Date.now() - t) > cfg.intervaloHoras * 3600e3;
-  });
+  };
+  const vencido = () =>
+    cfg.bancos.some((origem) => venceu(path.basename(origem, ".db"), ".db")) ||
+    (cfg.postgres && cfg.postgres.database ? venceu(cfg.postgres.database, ".sql") : false);
 
   // no boot: se está vencido, copia — mas depois de 20s, para não atrasar a subida
   setTimeout(() => { if (vencido()) rodarBackup(cfg, "de boot"); }, 20_000).unref();
@@ -139,4 +204,4 @@ function agendarBackups(opcoes) {
   return { cfg, rodarAgora: (motivo) => rodarBackup(cfg, motivo || "manual"), status: () => statusBackup(cfg) };
 }
 
-module.exports = { agendarBackups, rodarBackup, statusBackup, copiarBanco };
+module.exports = { agendarBackups, rodarBackup, statusBackup, copiarBanco, dumparPostgres };

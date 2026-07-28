@@ -330,6 +330,9 @@
           <button class="navbtn" data-nav="conta">Minha conta</button>
           <button class="navbtn" data-nav="usuarios">Usuários do Sistema</button>
           <hr class="tn-sep">
+          <!-- Backup: só o admin vê (o JS esconde para os demais perfis) -->
+          <button class="navbtn" id="btn-backup" onclick="baixarBackup(this)" hidden>⬇ Backup do banco</button>
+          <hr class="tn-sep" id="sep-backup" hidden>
           <a class="navbtn" href="/" target="_blank">↗ Ver o site</a>
           <hr class="tn-sep">
           <button class="navbtn" onclick="sair()">Sair</button>
@@ -748,10 +751,55 @@ async function entrar(){ $("#lg-erro").textContent="";
   catch(e){ $("#lg-erro").textContent=e.message; } }
 async function sair(){ try{ await api("logout","POST"); }catch{} location.reload(); }
 
+/* ==========================================================================
+   BACKUP DO BANCO — baixa o dump SQL completo da gestão
+
+   Não uso um <a download> simples porque, se o servidor responder erro, o
+   navegador salvaria o JSON do erro como se fosse o backup — e o usuário
+   guardaria um arquivo inútil achando que está protegido. Buscando por fetch
+   dá para conferir a resposta ANTES de salvar.
+
+   Em compensação o arquivo passa pela memória do navegador. Para o tamanho
+   deste banco (uma clínica, não um hospital) isso é irrelevante.
+   ========================================================================== */
+async function baixarBackup(botao){
+  const rotulo = botao.textContent;
+  botao.disabled = true; botao.textContent = "Gerando backup…";
+  try{
+    const r = await fetch("/restrito/api/backup/sql", { credentials: "same-origin" });
+    if(!r.ok){
+      let msg = "Não consegui gerar o backup.";
+      try{ msg = (await r.json()).error || msg; }catch{}
+      throw new Error(msg);
+    }
+    const blob = await r.blob();
+    // o nome do arquivo vem do Content-Disposition que o servidor mandou
+    const cd = r.headers.get("Content-Disposition") || "";
+    const nome = (/filename="([^"]+)"/.exec(cd) || [])[1] || "bemestar-gestao.sql";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); a.remove();
+    // sem o revoke, o blob (o banco inteiro) fica preso na memória da aba
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    toast("Backup baixado: "+nome);
+  }catch(e){
+    toast(e.message, true);
+  }finally{
+    botao.disabled = false; botao.textContent = rotulo;
+  }
+}
+
 async function iniciarApp(me){
   ME=me;
   $("#login").hidden=true; $("#app").hidden=false;
   $("#quem").textContent=me.nome+" · "+(PERFIL_ROTULO[me.perfil]||me.perfil);
+  /* O backup leva a clínica inteira embora num arquivo — CPF, endereço,
+     anamnese e prontuário de todo mundo. Só o admin. Esconder aqui é conforto:
+     quem barra de verdade é o servidor, que responde 403 para os demais. */
+  const soAdmin = me.perfil === "admin";
+  $("#btn-backup").hidden = !soAdmin;
+  $("#sep-backup").hidden = !soAdmin;
   aplicarPermissoes(me.perfil);
   await recarregarCache();
   // abre o Painel se o perfil o vê; senão, vai ao primeiro módulo visível

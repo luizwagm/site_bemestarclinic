@@ -19,7 +19,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { abrirBanco } = require("./db");
+const { Q, config: configPg } = require("./pg");
+const { migrar: migrarEsquema } = require("./migrar");
 
 const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
@@ -28,7 +29,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.18.1";
+const SISTEMA_VERSION = "1.19.0";
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -37,216 +38,19 @@ const SISTEMA_VERSION = "1.18.1";
 const CSP_GESTAO = "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; " +
   "form-action 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; connect-src 'self'";
-const db = abrirBanco(path.join(ROOT, "data", "gestao.db"));
-
-db.exec(`
-  PRAGMA journal_mode = WAL;
-
-  -- operadores do sistema (login). perfil: admin | profissional | secretaria.
-  -- profissional_id liga um usuário-profissional ao seu registro na tabela
-  -- profissionais — é assim que ele enxerga "a SUA agenda".
-  CREATE TABLE IF NOT EXISTS g_usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL, email TEXT UNIQUE, senha_hash TEXT NOT NULL,
-    perfil TEXT NOT NULL DEFAULT 'admin', ativo INTEGER DEFAULT 1,
-    profissional_id INTEGER, criado TEXT);
-
-  -- configurações internas do sistema (chave/valor)
-  CREATE TABLE IF NOT EXISTS g_config (key TEXT PRIMARY KEY, value TEXT);
-
-  -- Pacientes (clientes da clínica). Campos espelham a ficha de cadastro usada
-  -- hoje pela recepção.
-  -- "codigo" (PAC-AAAA-00000) é o identificador PRÓPRIO do paciente, gerado pelo
-  -- servidor no cadastro e NUNCA digitado. É por ele — além de nome e CPF — que
-  -- se localiza a pessoa no agendamento, prontuário, documentos e anamneses.
-  -- Não confundir com o número do PRONTUÁRIO (PR-AAAA-00000): o paciente tem um
-  -- código só, e um prontuário para cada procedimento que faz.
-  CREATE TABLE IF NOT EXISTS pacientes (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    codigo TEXT, nome TEXT NOT NULL, nome_contato TEXT, foto TEXT,
-    juridica INTEGER DEFAULT 0, estrangeiro INTEGER DEFAULT 0,
-    cpf TEXT, rg TEXT, sexo TEXT, nascimento TEXT, naturalidade TEXT,
-    estado_civil TEXT, convenio_id INTEGER, religiao TEXT, profissao TEXT, escolaridade TEXT,
-    altura TEXT, peso TEXT, cor_pele TEXT, prioridade TEXT, sangue TEXT,
-    cep TEXT, endereco TEXT, numero TEXT, bairro TEXT, cidade TEXT, complemento TEXT,
-    celular TEXT, telefone TEXT, email TEXT, canal TEXT,
-    mae TEXT, pai TEXT, tag TEXT, indicacao TEXT, avisos INTEGER DEFAULT 1,
-    resp_nome TEXT, resp_cpf TEXT, resp_rg TEXT, resp_nascimento TEXT,
-    consentimento INTEGER DEFAULT 0, observacao TEXT, criado TEXT,
-    -- ativo: o paciente ainda frequenta a clínica. Inativo some das telas de
-    -- escolha (agenda, anamnese, prontuário) mas NUNCA é excluído: a ficha, o
-    -- histórico e os prontuários continuam inteiros e ele volta com um clique.
-    -- Não confundir com a ALTA, que é de um prontuário só (o paciente pode ter
-    -- alta da ozonioterapia e seguir na psicanálise).
-    ativo INTEGER DEFAULT 1, inativo_em TEXT, inativo_motivo TEXT);
-
-  -- Convênios aceitos (Particular, Cartão BemEstarClinic, System Saúde…)
-  CREATE TABLE IF NOT EXISTS convenios (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL, registro TEXT, contato TEXT, observacao TEXT,
-    ativo INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, criado TEXT);
-
-  -- Procedimentos: cada linha é "o que se agenda". tipo = Consulta | Sessão |
-  -- Procedimento (a agenda filtra por isso). cor identifica na agenda.
-  -- ATENÇÃO ao par nome/tipo: "Ozonioterapia" existe duas vezes, uma como
-  -- Consulta e outra como Sessão. O que identifica o TRATAMENTO é o "nome" —
-  -- é ele que vira a chave do prontuário, não o id da linha. Se a chave fosse o
-  -- id, a consulta e a sessão da mesma terapia abririam duas pastas.
-  -- anamnese_modelo diz qual formulário de anamnese este procedimento pede
-  -- (psicanalise | ozonio | integrativas | vazio = nenhum). É o que faz o
-  -- agendamento oferecer o atalho para a anamnese certa.
-  CREATE TABLE IF NOT EXISTS procedimentos (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL, tipo TEXT DEFAULT 'Consulta', valor TEXT, duracao INTEGER DEFAULT 40,
-    cor TEXT, anamnese_modelo TEXT, ativo INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, criado TEXT);
-
-  -- Salas / consultórios
-  CREATE TABLE IF NOT EXISTS salas (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL, ativo INTEGER DEFAULT 1, sort INTEGER DEFAULT 0, criado TEXT);
-
-  -- Profissionais. "especialidade" guarda um JSON array de procedimentos que ele
-  -- realiza; "cor" identifica a agenda dele na visão de todos os profissionais.
-  CREATE TABLE IF NOT EXISTS profissionais (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nome TEXT NOT NULL, especialidade TEXT, registro TEXT, contato TEXT,
-    cor TEXT, ativo INTEGER DEFAULT 1, criado TEXT);
-
-  /* Agenda de atendimentos.
-     Só se agenda para paciente CADASTRADO (paciente_id obrigatório) — é o que
-     garante que todo atendimento tenha ficha, código e histórico.
-     prontuario_id: o agendamento NÃO cria prontuário. Ele só se liga a um que
-     JÁ exista para aquele paciente naquele procedimento. No primeiro
-     atendimento não há prontuário ainda; o vínculo acontece depois, quando a
-     anamnese é finalizada e a pasta nasce. */
-  CREATE TABLE IF NOT EXISTS atendimentos (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    paciente_id INTEGER, profissional_id INTEGER, sala_id INTEGER, convenio_id INTEGER,
-    procedimento_id INTEGER, especialidade TEXT, prontuario_id INTEGER,
-    nome_agenda TEXT, celular TEXT,
-    data TEXT, hora TEXT, hora_fim TEXT, valor TEXT,
-    primeira INTEGER DEFAULT 0, encaixe INTEGER DEFAULT 0,
-    lembrete INTEGER DEFAULT 1, nps INTEGER DEFAULT 1,
-    status TEXT DEFAULT 'Agendado', observacoes TEXT, criado TEXT);
-
-  /* PRONTUÁRIO = a PASTA do paciente numa especialidade.
-     Regra da clínica: um prontuário por paciente + especialidade. Quem faz
-     psicanálise e ozonioterapia tem DOIS prontuários; criar um terceiro para a
-     mesma especialidade é impedido (índice único abaixo).
-     numero (PR-AAAA-00000) identifica a pasta — é o que aparece na anamnese, no
-     agendamento e nos documentos daquele paciente.
-     status: Ativo | Alta. A alta é DO PRONTUÁRIO: o paciente pode receber alta
-     da ozonioterapia e continuar na psicanálise. */
-  CREATE TABLE IF NOT EXISTS prontuario (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    numero TEXT, paciente_id INTEGER NOT NULL, especialidade TEXT NOT NULL,
-    profissional TEXT, status TEXT DEFAULT 'Ativo',
-    aberto_em TEXT, alta_em TEXT, alta_motivo TEXT,
-    observacao TEXT, usuario_id INTEGER, criado TEXT, reativado_em TEXT);
-
-  /* LANÇAMENTOS do prontuário. Cada avaliação, evolução, plano ou
-     encaminhamento é uma linha datada — o prontuário de 2 anos de terapia vira
-     uma lista longa, e é assim que tem de ser.
-     arquivado: some das telas mas NUNCA é excluído (pode ser restaurado). */
-  CREATE TABLE IF NOT EXISTS prontuario_registros (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    prontuario_id INTEGER NOT NULL, tipo TEXT NOT NULL, texto TEXT,
-    data TEXT, profissional TEXT, anexo TEXT,
-    arquivado INTEGER DEFAULT 0, arquivado_em TEXT,
-    usuario_id INTEGER, criado TEXT, atualizado TEXT);
-
-  /* HISTÓRICO — linha do tempo de cada paciente e de cada prontuário.
-     É o que sobrevive quando o paciente sai e volta: a data de cadastro é
-     atualizada na reativação, mas tudo o que aconteceu antes continua aqui. */
-  CREATE TABLE IF NOT EXISTS historico (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    entidade TEXT NOT NULL, entidade_id INTEGER NOT NULL,
-    evento TEXT NOT NULL, detalhe TEXT,
-    usuario_id INTEGER, usuario_nome TEXT, criado TEXT);
-
-  /* ANAMNESES. Uma linha por anamnese preenchida. "tipo" diz qual formulário
-     (psicanalise | ozonio | integrativas) e "dados" guarda as respostas em JSON,
-     então acrescentar pergunta no modelo NÃO exige mexer no banco.
-
-     É a anamnese que ABRE o prontuário. Enquanto está sendo preenchida ela fica
-     como Rascunho e não cria nada; ao ser FINALIZADA, o sistema abre (ou
-     reaproveita) a pasta do par paciente + procedimento e guarda o vínculo aqui
-     em prontuario_id. Por isso "procedimento" é obrigatório para finalizar: sem
-     ele não há como saber de qual pasta a anamnese faz parte. */
-  CREATE TABLE IF NOT EXISTS anamneses (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    paciente_id INTEGER NOT NULL, tipo TEXT NOT NULL, dados TEXT,
-    procedimento TEXT, status TEXT DEFAULT 'Rascunho', finalizada_em TEXT, prontuario_id INTEGER,
-    profissional TEXT, data TEXT, usuario_id INTEGER, criado TEXT, atualizado TEXT);
-
-  -- Documentos por paciente
-  CREATE TABLE IF NOT EXISTS documentos_gestao (id INTEGER PRIMARY KEY AUTOINCREMENT,
-    paciente_id INTEGER, tipo TEXT, titulo TEXT, arquivo TEXT, data TEXT, criado TEXT);
-
-  CREATE INDEX IF NOT EXISTS idx_atend_data ON atendimentos(data);
-  CREATE INDEX IF NOT EXISTS idx_atend_pac ON atendimentos(paciente_id);
-  CREATE INDEX IF NOT EXISTS idx_pront_pac ON prontuario(paciente_id);
-  CREATE INDEX IF NOT EXISTS idx_anam_pac ON anamneses(paciente_id);
-  CREATE INDEX IF NOT EXISTS idx_preg_pront ON prontuario_registros(prontuario_id);
-  CREATE INDEX IF NOT EXISTS idx_hist_ent ON historico(entidade, entidade_id);
-`);
-
-
-// Migração leve para bancos criados antes destas colunas (o CREATE IF NOT EXISTS
-// não altera tabela existente). Ignora o erro se a coluna já existir.
-for (const alt of [
-  "ALTER TABLE prontuario ADD COLUMN usuario_id INTEGER",
-  "ALTER TABLE prontuario ADD COLUMN numero TEXT",
-  "ALTER TABLE prontuario ADD COLUMN status TEXT DEFAULT 'Ativo'",
-  "ALTER TABLE prontuario ADD COLUMN aberto_em TEXT",
-  "ALTER TABLE prontuario ADD COLUMN alta_em TEXT",
-  "ALTER TABLE prontuario ADD COLUMN alta_motivo TEXT",
-  "ALTER TABLE prontuario ADD COLUMN observacao TEXT",
-  "ALTER TABLE prontuario ADD COLUMN reativado_em TEXT",
-  "ALTER TABLE pacientes ADD COLUMN reativado_em TEXT",
-  "ALTER TABLE g_usuarios ADD COLUMN profissional_id INTEGER",
-  "ALTER TABLE profissionais ADD COLUMN cor TEXT",
-  "ALTER TABLE profissionais ADD COLUMN criado TEXT",
-  "ALTER TABLE atendimentos ADD COLUMN sala_id INTEGER",
-  "ALTER TABLE atendimentos ADD COLUMN convenio_id INTEGER",
-  "ALTER TABLE atendimentos ADD COLUMN procedimento_id INTEGER",
-  "ALTER TABLE atendimentos ADD COLUMN hora_fim TEXT",
-  "ALTER TABLE atendimentos ADD COLUMN nome_agenda TEXT",
-  "ALTER TABLE atendimentos ADD COLUMN celular TEXT",
-  "ALTER TABLE atendimentos ADD COLUMN primeira INTEGER DEFAULT 0",
-  "ALTER TABLE atendimentos ADD COLUMN encaixe INTEGER DEFAULT 0",
-  "ALTER TABLE atendimentos ADD COLUMN lembrete INTEGER DEFAULT 1",
-  "ALTER TABLE atendimentos ADD COLUMN nps INTEGER DEFAULT 1",
-  // vínculo agendamento → prontuário e o fluxo anamnese → prontuário
-  "ALTER TABLE atendimentos ADD COLUMN prontuario_id INTEGER",
-  "ALTER TABLE anamneses ADD COLUMN procedimento TEXT",
-  "ALTER TABLE anamneses ADD COLUMN status TEXT DEFAULT 'Rascunho'",
-  "ALTER TABLE anamneses ADD COLUMN finalizada_em TEXT",
-  "ALTER TABLE anamneses ADD COLUMN prontuario_id INTEGER",
-  "ALTER TABLE procedimentos ADD COLUMN anamnese_modelo TEXT",
-  // marca de edição do lançamento clínico (o histórico guarda o que mudou)
-  "ALTER TABLE prontuario_registros ADD COLUMN atualizado TEXT",
-  // paciente ativo/inativo (some das telas de escolha, nunca é excluído)
-  "ALTER TABLE pacientes ADD COLUMN ativo INTEGER DEFAULT 1",
-  "ALTER TABLE pacientes ADD COLUMN inativo_em TEXT",
-  "ALTER TABLE pacientes ADD COLUMN inativo_motivo TEXT",
-]) { try { db.exec(alt); } catch { /* já existe */ } }
-
-/* Fichas criadas antes desta versão não têm `ativo` preenchido — ficariam
-   invisíveis nos seletores, que filtram por ativo<>0. Todas nascem ATIVAS. */
-try {
-  const n = db.prepare("UPDATE pacientes SET ativo=1 WHERE ativo IS NULL").run().changes;
-  if (n) console.log(`  · /restrito: ${n} paciente(s) marcados como ativos.`);
-} catch { /* coluna ainda não existe num banco muito antigo */ }
 
 /* ==========================================================================
-   VÍNCULOS ÓRFÃOS — apontam para um prontuário que não existe mais.
-   Versões antigas deixavam apagar a pasta sem soltar o que estava dentro; o
-   resultado é uma anamnese com prontuario_id preenchido apontando para o nada.
-   Na tela isso aparece como "sem prontuário" na lista (a busca não acha) mas
-   com o botão Excluir escondido (o campo está preenchido) — o registro fica
-   impossível de apagar sem motivo visível.
-   Soltar aqui devolve a anamnese para rascunho e o agendamento para a agenda,
-   sem perder nada.
-   ========================================================================== */
-try {
-  const an = db.prepare(`UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL
-     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`).run().changes;
-  const at = db.prepare(`UPDATE atendimentos SET prontuario_id=NULL
-     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`).run().changes;
-  if (an || at) console.log(`  · /restrito: vínculos órfãos soltos — ${an} anamnese(s), ${at} agendamento(s).`);
-} catch (e) { console.error("  ✖ soltar vínculos órfãos:", e.message); }
+   O ESQUEMA NÃO MORA MAIS AQUI.
 
-/* ------------------------- senha (scrypt) e config ------------------------ */
+   Até a v1.18.1 este arquivo abria o SQLite e, a cada boot, executava um
+   CREATE TABLE IF NOT EXISTS gigante seguido de ~30 ALTER TABLE dentro de
+   try/catch vazios. Funcionava, mas escondia erro: um ALTER escrito errado era
+   engolido junto com o "coluna já existe", e ninguém ficava sabendo.
+
+   Agora o esquema vive em migrations/*.sql, aplicadas uma vez cada e
+   registradas em schema_migrations. Mudança de esquema = arquivo novo.
+   Migração que falha PARA o boot, em vez de sumir.
+   ========================================================================== */
 const SCRYPT = { N: 16384, r: 8, p: 1, keylen: 32 };
 function hashSenha(senha) {
   const salt = crypto.randomBytes(16);
@@ -265,10 +69,9 @@ function confereSenha(senha, guardado) {
    É a memória que sobrevive à saída e ao retorno do paciente: a data de
    cadastro é atualizada na reativação, mas a linha do tempo continua inteira.
    ========================================================================== */
-function anotar(entidade, entidadeId, evento, detalhe, sessao) {
+async function anotar(entidade, entidadeId, evento, detalhe, sessao) {
   if (!entidadeId) return;
-  db.prepare("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)")
-    .run(entidade, entidadeId, evento, detalhe || "", sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
+  await Q.run("INSERT INTO historico(entidade,entidade_id,evento,detalhe,usuario_id,usuario_nome,criado) VALUES(?,?,?,?,?,?,?)", entidade, entidadeId, evento, detalhe || "", sessao ? sessao.userId : null, sessao ? sessao.nome : "", agora());
 }
 
 /* ==========================================================================
@@ -316,8 +119,11 @@ function trechoAlterado(antes, depois) {
 /* Hash descartável usado só para gastar o mesmo tempo quando o login digitado
    não existe — ver o comentário no /api/login. Nunca confere com senha alguma. */
 const HASH_ISCA = hashSenha(crypto.randomBytes(16).toString("hex"));
-const getC = (k) => db.prepare("SELECT value FROM g_config WHERE key=?").get(k)?.value;
-const setC = (k, v) => db.prepare("INSERT INTO g_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(k, String(v));
+/* Os parênteses em volta do await NÃO são enfeite: sem eles, `await Q.get()?.value`
+   aplicaria o `?.value` na Promise (que não tem .value) antes de esperar — e o
+   resultado seria undefined em silêncio, que é o pior erro possível aqui. */
+const getC = async (k) => (await Q.get("SELECT value FROM g_config WHERE key=?", k))?.value;
+const setC = (k, v) => Q.run("INSERT INTO g_config(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", k, String(v));
 
 /* ==========================================================================
    NUMERAÇÃO SEQUENCIAL — PR-AAAA-00001 (prontuário) e PAC-AAAA-00001 (paciente)
@@ -330,41 +136,38 @@ const setC = (k, v) => db.prepare("INSERT INTO g_config(key,value) VALUES(?,?) O
    Ele é comparado com o maior do banco a cada emissão, então também se
    recupera sozinho se o g_config for perdido.
 
-   Roda AQUI, depois das migrações (a coluna precisa existir) e depois de
-   getC/setC (o contador depende deles).
+   Os três índices únicos que sustentam essas regras (número do prontuário não
+   repete, um prontuário por paciente+procedimento, código de paciente não
+   repete) saíram daqui e passaram para migrations/001_esquema_inicial.sql —
+   é lá que mora o esquema agora. Antes eles eram criados a cada boot dentro
+   de um try/catch: se o banco já tivesse uma duplicata, o índice simplesmente
+   não nascia e a regra deixava de existir, em silêncio.
    ========================================================================== */
-try {
-  // última linha de defesa: nem um backup restaurado por cima duplica número
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pront_numero ON prontuario(numero) WHERE numero IS NOT NULL");
-  /* A REGRA da clínica gravada no banco: um prontuário por paciente+procedimento.
-     Mesmo que a tela falhe, o banco recusa o segundo.
-     (a coluna se chama `especialidade` por herança; o que ela guarda é o NOME do
-     procedimento — ver o comentário da tabela procedimentos) */
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pront_pac_esp ON prontuario(paciente_id, especialidade)");
-  // o código do paciente também não pode repetir
-  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pac_codigo ON pacientes(codigo) WHERE codigo IS NOT NULL AND codigo <> ''");
-} catch (e) { console.error("  ✖ índices de numeração:", e.message); }
 
 /* O motor por trás dos dois números. `tabela`/`coluna` dizem onde procurar o
    maior já emitido; `chave` é o contador em g_config. */
-function proximoSequencial(prefixo, chave, tabela, coluna, ano) {
+async function proximoSequencial(prefixo, chave, tabela, coluna, ano) {
   const y = ano || new Date().getFullYear();
   const inicio = `${prefixo}-${y}-`;
   const chaveAno = `${chave}_${y}`;
-  const guardado = Number(getC(chaveAno) || 0);
-  const r = db.prepare(`SELECT MAX(CAST(substr(${coluna}, ?) AS INTEGER)) m FROM ${tabela} WHERE ${coluna} LIKE ?`)
-    .get(inicio.length + 1, inicio + "%");
+  const guardado = Number((await getC(chaveAno)) || 0);
+  const r = await Q.get(`SELECT MAX(CAST(substr(${coluna}, ?) AS INTEGER)) m FROM ${tabela} WHERE ${coluna} LIKE ?`, inicio.length + 1, inicio + "%");
   const noBanco = (r && r.m) ? Number(r.m) : 0;
   const seq = Math.max(guardado, noBanco) + 1;
-  setC(chaveAno, seq);                     // marca como usado, mesmo se falhar depois
+  await setC(chaveAno, seq);               // marca como usado, mesmo se falhar depois
   return inicio + String(seq).padStart(5, "0");
 }
 /* Grava o número, tentando de novo se colidir (backup restaurado por cima). */
-function emitirSequencial(prefixo, chave, tabela, coluna, id, ano) {
+async function emitirSequencial(prefixo, chave, tabela, coluna, id, ano) {
   for (let i = 0; i < 20; i++) {
-    const n = proximoSequencial(prefixo, chave, tabela, coluna, ano);
-    try { db.prepare(`UPDATE ${tabela} SET ${coluna}=? WHERE id=?`).run(n, id); return n; }
-    catch (e) { if (!/UNIQUE/i.test(e.message)) throw e; }
+    const n = await proximoSequencial(prefixo, chave, tabela, coluna, ano);
+    try { await Q.run(`UPDATE ${tabela} SET ${coluna}=? WHERE id=?`, n, id); return n; }
+    /* Colisão de número é a ÚNICA falha que se tenta de novo. No SQLite a
+       mensagem trazia "UNIQUE"; o Postgres diz "duplicate key value violates
+       unique constraint" e carrega o código 23505. Testar pelo código é o certo
+       — mensagem muda com a versão e com o idioma do servidor, e se este teste
+       falhar o laço engole um erro real 20 vezes antes de desistir. */
+    catch (e) { if (e.code !== "23505") throw e; }
   }
   throw new Error(`Não consegui gerar o número em ${tabela}.`);
 }
@@ -377,20 +180,6 @@ const rotuloTipo = (t) => ROTULO_TIPO[t] || t;
 
 const emitirNumeroProntuario = (id, ano) => emitirSequencial("PR", "pront_seq", "prontuario", "numero", id, ano);
 const emitirCodigoPaciente   = (id, ano) => emitirSequencial("PAC", "pac_seq", "pacientes", "codigo", id, ano);
-/* Registros anteriores a esta versão recebem número uma única vez, na ordem de
-   cadastro e respeitando o ano de cada um. Vale para os dois números. */
-for (const [tabela, coluna, emitir, rotulo] of [
-  ["prontuario", "numero", emitirNumeroProntuario, "prontuário(s) antigo(s) receberam número"],
-  ["pacientes", "codigo", emitirCodigoPaciente, "paciente(s) antigo(s) receberam código"],
-]) {
-  const antigos = db.prepare(`SELECT id, criado FROM ${tabela} WHERE ${coluna} IS NULL OR ${coluna}='' ORDER BY id`).all();
-  for (const r of antigos) {
-    const ano = Number(String(r.criado || "").slice(0, 4)) || new Date().getFullYear();
-    emitir(r.id, ano);
-  }
-  if (antigos.length) console.log(`  · /restrito: ${antigos.length} ${rotulo}.`);
-}
-
 /* ==========================================================================
    QUAL ANAMNESE CADA PROCEDIMENTO PEDE
    Semeado uma única vez a partir do mapa abaixo e depois EDITÁVEL no cadastro
@@ -411,33 +200,6 @@ const ANAMNESE_POR_PROCEDIMENTO = {
   "Ventosaterapia": "integrativas",
   "Kinesioterapia": "integrativas",
 };
-if (getC("anamnese_modelo_seed") !== "1") {
-  const up = db.prepare("UPDATE procedimentos SET anamnese_modelo=? WHERE nome=? AND (anamnese_modelo IS NULL OR anamnese_modelo='')");
-  let n = 0;
-  for (const [nome, modelo] of Object.entries(ANAMNESE_POR_PROCEDIMENTO)) n += up.run(modelo, nome).changes;
-  setC("anamnese_modelo_seed", "1");
-  if (n) console.log(`  · /restrito: ${n} procedimento(s) ligados ao seu modelo de anamnese.`);
-}
-
-/* Semente: um usuário admin inicial. Senha padrão trocável na primeira entrada. */
-if (db.prepare("SELECT COUNT(*) c FROM g_usuarios").get().c === 0) {
-  db.prepare("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,criado) VALUES(?,?,?,?,1,?)")
-    .run("Administrador", "admin", hashSenha("bemestar-gestao"), "admin", new Date().toISOString());
-  console.log("  · /restrito: sistema de gestão criado. Login: admin · senha: bemestar-gestao");
-}
-
-/* Semente dos cadastros da clínica (listas passadas pela recepção). Só roda com
-   a tabela vazia — o que o cliente editar depois nunca é sobrescrito. */
-const AGORA_SEED = new Date().toISOString();
-if (db.prepare("SELECT COUNT(*) c FROM convenios").get().c === 0) {
-  ["Particular", "Cartão BemEstarClinic", "Efycard", "Forms Fitness Academia",
-   "Pad Saúde", "Prosmed", "São Gabriel", "System Saúde"]
-    .forEach((n, i) => db.prepare("INSERT INTO convenios(nome,ativo,sort,criado) VALUES(?,1,?,?)").run(n, i, AGORA_SEED));
-}
-if (db.prepare("SELECT COUNT(*) c FROM salas").get().c === 0) {
-  ["Consultório 01", "Consultório 02", "Consultório 03"]
-    .forEach((n, i) => db.prepare("INSERT INTO salas(nome,ativo,sort,criado) VALUES(?,1,?,?)").run(n, i, AGORA_SEED));
-}
 /* Cores OFICIAIS da clínica — extraídas do documento "AGENDA PRA O CADASTRO DA
    CLÍNICA.docx", onde cada procedimento estava escrito na sua cor. A cor é por
    FAMÍLIA: consulta e sessão do mesmo procedimento usam a mesma. */
@@ -454,33 +216,143 @@ const CORES_PROCEDIMENTO = {
   "Ventosaterapia": "#FFFF00",
   "Kinesioterapia": "#00CCFF",
 };
-if (db.prepare("SELECT COUNT(*) c FROM procedimentos").get().c === 0) {
-  [["Psicanálise Individual", "Consulta"], ["Psicanálise Individual", "Sessão"],
-   ["Psicanálise Casal", "Consulta"], ["Psicanálise Casal", "Sessão"],
-   ["Protocolo Integrativo — Ozônio e Detox", "Consulta"], ["Protocolo Integrativo — Ozônio e Detox", "Sessão"],
-   ["Ozonioterapia", "Consulta"], ["Ozonioterapia", "Sessão"],
-   ["Detox Iônico", "Consulta"], ["Detox Iônico", "Sessão"],
-   ["Acupuntura", "Consulta"], ["Acupuntura", "Sessão"],
-   ["Aromaterapia", "Consulta"],
-   ["Terapia Floral", "Consulta"],
-   ["Exame de Biorressonância", "Procedimento"],
-   ["Ventosaterapia", "Consulta"], ["Ventosaterapia", "Sessão"],
-   ["Kinesioterapia", "Consulta"], ["Kinesioterapia", "Sessão"]]
-    .forEach((p, i) => db.prepare("INSERT INTO procedimentos(nome,tipo,cor,duracao,ativo,sort,criado) VALUES(?,?,?,40,1,?,?)")
-      .run(p[0], p[1], CORES_PROCEDIMENTO[p[0]] || "#5B4FD8", i, AGORA_SEED));
-}
-/* Bancos que já nasceram com as cores provisórias recebem as oficiais UMA vez.
-   A trava em g_config garante que, se a clínica trocar uma cor depois, o deploy
-   seguinte não desfaça a escolha dela. */
-if (getC("cores_oficiais") !== "1") {
-  const upd = db.prepare("UPDATE procedimentos SET cor=? WHERE nome=?");
-  for (const [nome, cor] of Object.entries(CORES_PROCEDIMENTO)) upd.run(cor, nome);
-  setC("cores_oficiais", "1");
-}
-if (db.prepare("SELECT COUNT(*) c FROM profissionais").get().c === 0) {
-  [["Dr. Ronalldo JM", "#5B4FD8"], ["Dr. Samuel Teixdan", "#0E8F7E"]]
-    .forEach((p) => db.prepare("INSERT INTO profissionais(nome,especialidade,cor,ativo,criado) VALUES(?,'[]',?,1,?)")
-      .run(p[0], p[1], AGORA_SEED));
+const PROCEDIMENTOS_SEED = [
+  ["Psicanálise Individual", "Consulta"], ["Psicanálise Individual", "Sessão"],
+  ["Psicanálise Casal", "Consulta"], ["Psicanálise Casal", "Sessão"],
+  ["Protocolo Integrativo — Ozônio e Detox", "Consulta"], ["Protocolo Integrativo — Ozônio e Detox", "Sessão"],
+  ["Ozonioterapia", "Consulta"], ["Ozonioterapia", "Sessão"],
+  ["Detox Iônico", "Consulta"], ["Detox Iônico", "Sessão"],
+  ["Acupuntura", "Consulta"], ["Acupuntura", "Sessão"],
+  ["Aromaterapia", "Consulta"],
+  ["Terapia Floral", "Consulta"],
+  ["Exame de Biorressonância", "Procedimento"],
+  ["Ventosaterapia", "Consulta"], ["Ventosaterapia", "Sessão"],
+  ["Kinesioterapia", "Consulta"], ["Kinesioterapia", "Sessão"],
+];
+
+/* ==========================================================================
+   INICIALIZAÇÃO — o que antes rodava solto no topo do arquivo
+
+   Com o SQLite, abrir o banco era síncrono: dava para criar tabela e semear
+   dado durante o `require`. Com o Postgres, conectar é assíncrono — não existe
+   "banco pronto" no meio de um require.
+
+   Então todo o boot virou esta função, que o server.js AGUARDA antes de abrir
+   a porta. É melhor assim: enquanto isto não terminar, ninguém entra num
+   sistema meio inicializado. Se falhar, o processo não sobe — em vez de subir
+   e atender errado.
+
+   É seguro rodar a cada boot: cada passo ou é idempotente (só semeia tabela
+   vazia) ou tem trava em g_config.
+   ========================================================================== */
+const COLS = {};
+
+async function iniciarRestrito() {
+  /* 1. esquema em dia. As migrations rodam antes de qualquer consulta. */
+  await migrarEsquema({ silencioso: true });
+
+  /* 2. quais colunas cada tabela tem de verdade.
+     No SQLite isto vinha do `PRAGMA table_info`. O equivalente padrão do
+     Postgres é o information_schema — e é ele que diz o que o CRUD genérico
+     pode gravar. Uma coluna que exista no código mas não no banco é filtrada
+     aqui, e não vira erro de SQL na cara do usuário. */
+  for (const t of Object.keys(TAB)) {
+    const cols = await Q.all(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?", t);
+    COLS[t] = new Set(cols.map((c) => c.column_name));
+    if (!COLS[t].size) console.error(`  ✖ /restrito: a tabela "${t}" não existe no banco — migration faltando?`);
+  }
+
+  /* 3. fichas antigas sem `ativo` ficariam invisíveis nos seletores, que
+     filtram por ativo<>0. Todas nascem ATIVAS. */
+  const nAtivos = (await Q.run("UPDATE pacientes SET ativo=1 WHERE ativo IS NULL")).changes;
+  if (nAtivos) console.log(`  · /restrito: ${nAtivos} paciente(s) marcados como ativos.`);
+
+  /* 4. VÍNCULOS ÓRFÃOS — apontam para um prontuário que não existe mais.
+     Versões antigas deixavam apagar a pasta sem soltar o que estava dentro; o
+     resultado é uma anamnese com prontuario_id preenchido apontando para o
+     nada. Na tela isso aparecia como "sem prontuário" na lista MAS com o botão
+     Excluir escondido — registro impossível de apagar, sem motivo visível.
+     Soltar aqui devolve a anamnese para rascunho e o agendamento para a
+     agenda, sem perder nada. */
+  const an = (await Q.run(`UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL
+     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`)).changes;
+  const at = (await Q.run(`UPDATE atendimentos SET prontuario_id=NULL
+     WHERE prontuario_id IS NOT NULL AND prontuario_id NOT IN (SELECT id FROM prontuario)`)).changes;
+  if (an || at) console.log(`  · /restrito: vínculos órfãos soltos — ${an} anamnese(s), ${at} agendamento(s).`);
+
+  /* 5. registros anteriores à numeração recebem número uma única vez, na ordem
+     de cadastro e respeitando o ano de cada um. Vale para os dois números. */
+  for (const [tabela, coluna, emitir, rotulo] of [
+    ["prontuario", "numero", emitirNumeroProntuario, "prontuário(s) antigo(s) receberam número"],
+    ["pacientes", "codigo", emitirCodigoPaciente, "paciente(s) antigo(s) receberam código"],
+  ]) {
+    const antigos = await Q.all(`SELECT id, criado FROM ${tabela} WHERE ${coluna} IS NULL OR ${coluna}='' ORDER BY id`);
+    for (const r of antigos) {
+      const ano = Number(String(r.criado || "").slice(0, 4)) || new Date().getFullYear();
+      await emitir(r.id, ano);
+    }
+    if (antigos.length) console.log(`  · /restrito: ${antigos.length} ${rotulo}.`);
+  }
+
+  /* 6. sementes dos cadastros. Só rodam com a tabela VAZIA — o que o cliente
+     editar depois nunca é sobrescrito. */
+  const AGORA_SEED = new Date().toISOString();
+
+  if ((await Q.get("SELECT COUNT(*) c FROM g_usuarios")).c === 0) {
+    await Q.run("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,criado) VALUES(?,?,?,?,1,?)",
+      "Administrador", "admin", hashSenha("bemestar-gestao"), "admin", AGORA_SEED);
+    console.log("  · /restrito: sistema de gestão criado. Login: admin · senha: bemestar-gestao");
+  }
+  if ((await Q.get("SELECT COUNT(*) c FROM convenios")).c === 0) {
+    const lista = ["Particular", "Cartão BemEstarClinic", "Efycard", "Forms Fitness Academia",
+      "Pad Saúde", "Prosmed", "São Gabriel", "System Saúde"];
+    for (let i = 0; i < lista.length; i++)
+      await Q.run("INSERT INTO convenios(nome,ativo,sort,criado) VALUES(?,1,?,?)", lista[i], i, AGORA_SEED);
+  }
+  if ((await Q.get("SELECT COUNT(*) c FROM salas")).c === 0) {
+    const lista = ["Consultório 01", "Consultório 02", "Consultório 03"];
+    for (let i = 0; i < lista.length; i++)
+      await Q.run("INSERT INTO salas(nome,ativo,sort,criado) VALUES(?,1,?,?)", lista[i], i, AGORA_SEED);
+  }
+  if ((await Q.get("SELECT COUNT(*) c FROM procedimentos")).c === 0) {
+    for (let i = 0; i < PROCEDIMENTOS_SEED.length; i++) {
+      const p = PROCEDIMENTOS_SEED[i];
+      await Q.run("INSERT INTO procedimentos(nome,tipo,cor,duracao,ativo,sort,criado) VALUES(?,?,?,40,1,?,?)",
+        p[0], p[1], CORES_PROCEDIMENTO[p[0]] || "#5B4FD8", i, AGORA_SEED);
+    }
+  }
+  /* Bancos que nasceram com as cores provisórias recebem as oficiais UMA vez.
+     A trava em g_config garante que, se a clínica trocar uma cor depois, o
+     deploy seguinte não desfaça a escolha dela. */
+  if ((await getC("cores_oficiais")) !== "1") {
+    for (const [nome, cor] of Object.entries(CORES_PROCEDIMENTO))
+      await Q.run("UPDATE procedimentos SET cor=? WHERE nome=?", cor, nome);
+    await setC("cores_oficiais", "1");
+  }
+  if ((await Q.get("SELECT COUNT(*) c FROM profissionais")).c === 0) {
+    for (const p of [["Dr. Ronalldo JM", "#5B4FD8"], ["Dr. Samuel Teixdan", "#0E8F7E"]])
+      await Q.run("INSERT INTO profissionais(nome,especialidade,cor,ativo,criado) VALUES(?,'[]',?,1,?)", p[0], p[1], AGORA_SEED);
+  }
+
+  /* 7. qual anamnese cada procedimento pede — semeado uma vez, editável depois.
+
+     DEPOIS de semear os procedimentos, e não antes. Este passo é um UPDATE:
+     num banco recém-criado ele não encontrava linha nenhuma, atualizava zero e
+     mesmo assim gravava a trava em g_config — deixando TODOS os procedimentos
+     sem modelo de anamnese, para sempre, e o atalho "Preencher anamnese" do
+     agendamento sem funcionar.
+
+     O erro estava aqui desde o início; nunca apareceu porque o banco de
+     produção nunca esteve vazio quando a rotina rodou. Só ficou visível ao
+     montar o Postgres do zero. */
+  if ((await getC("anamnese_modelo_seed")) !== "1") {
+    const SQL_MODELO = "UPDATE procedimentos SET anamnese_modelo=? WHERE nome=? AND (anamnese_modelo IS NULL OR anamnese_modelo='')";
+    let n = 0;
+    for (const [nome, modelo] of Object.entries(ANAMNESE_POR_PROCEDIMENTO)) n += (await Q.run(SQL_MODELO, modelo, nome)).changes;
+    await setC("anamnese_modelo_seed", "1");
+    if (n) console.log(`  · /restrito: ${n} procedimento(s) ligados ao seu modelo de anamnese.`);
+  }
 }
 
 /* ------------------------------- sessões --------------------------------- */
@@ -529,7 +401,7 @@ const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").
    e, separadamente, sem choque na MESMA sala. Devolve a mensagem ou null. */
 const EXPEDIENTE_INI = 6 * 60, EXPEDIENTE_FIM = 22 * 60;
 const emMin = (hhmm) => { const [h, m] = String(hhmm || "").split(":").map(Number); return Number.isNaN(h) ? null : h * 60 + (m || 0); };
-function validarAgenda(profissionalId, data, hora, excluirId, horaFim, salaId) {
+async function validarAgenda(profissionalId, data, hora, excluirId, horaFim, salaId) {
   if (!hora) return null;                        // sem horário definido, sem regra a aplicar
   const ini = emMin(hora);
   if (ini === null) return "Horário inválido.";
@@ -548,11 +420,11 @@ function validarAgenda(profissionalId, data, hora, excluirId, horaFim, salaId) {
     return null;
   };
   const busca = (col, val) => excluirId
-    ? db.prepare(`SELECT hora,hora_fim FROM atendimentos WHERE ${col}=? AND data=? AND hora<>'' AND status<>'Cancelado' AND id<>?`).all(val, data, excluirId)
-    : db.prepare(`SELECT hora,hora_fim FROM atendimentos WHERE ${col}=? AND data=? AND hora<>'' AND status<>'Cancelado'`).all(val, data);
+    ? Q.all(`SELECT hora,hora_fim FROM atendimentos WHERE ${col}=? AND data=? AND hora<>'' AND status<>'Cancelado' AND id<>?`, val, data, excluirId)
+    : Q.all(`SELECT hora,hora_fim FROM atendimentos WHERE ${col}=? AND data=? AND hora<>'' AND status<>'Cancelado'`, val, data);
 
-  if (profissionalId) { const e = choque(busca("profissional_id", profissionalId), "este profissional"); if (e) return e; }
-  if (salaId) { const e = choque(busca("sala_id", salaId), "esta sala"); if (e) return e; }
+  if (profissionalId) { const e = choque(await busca("profissional_id", profissionalId), "este profissional"); if (e) return e; }
+  if (salaId) { const e = choque(await busca("sala_id", salaId), "esta sala"); if (e) return e; }
   return null;
 }
 /* ==========================================================================
@@ -566,9 +438,9 @@ function validarAgenda(profissionalId, data, hora, excluirId, horaFim, salaId) {
 /* O NOME do procedimento é a chave da pasta — não o id da linha, porque
    "Ozonioterapia (Consulta)" e "(Sessão)" são linhas diferentes do mesmo
    tratamento e pertencem ao mesmo prontuário. */
-function nomeProcedimento(linha) {
+async function nomeProcedimento(linha) {
   if (linha && linha.procedimento_id) {
-    const p = db.prepare("SELECT nome FROM procedimentos WHERE id=?").get(linha.procedimento_id);
+    const p = await Q.get("SELECT nome FROM procedimentos WHERE id=?", linha.procedimento_id);
     if (p && p.nome) return p.nome;
   }
   return (linha && linha.especialidade) || "";
@@ -576,44 +448,42 @@ function nomeProcedimento(linha) {
 /* Barra o registro NOVO em nome de quem já saiu da clínica. Devolve a mensagem
    de erro, ou "" se pode seguir. Editar o que já existe continua liberado — o
    passado não se mexe por causa da situação de hoje. */
-function pacienteInativo(pacienteId) {
-  const pc = db.prepare("SELECT nome, ativo FROM pacientes WHERE id=?").get(pacienteId);
+async function pacienteInativo(pacienteId) {
+  const pc = await Q.get("SELECT nome, ativo FROM pacientes WHERE id=?", pacienteId);
   if (!pc || Number(pc.ativo) !== 0) return "";
   return `${pc.nome} está INATIVO. Reative a ficha dele em Cadastros → Pacientes para voltar a registrar atendimentos.`;
 }
-function prontuarioDoPar(pacienteId, procedimento) {
+async function prontuarioDoPar(pacienteId, procedimento) {
   if (!pacienteId || !procedimento) return null;
-  return db.prepare("SELECT id,numero,especialidade,status FROM prontuario WHERE paciente_id=? AND especialidade=?")
-    .get(pacienteId, procedimento) || null;
+  return await Q.get("SELECT id,numero,especialidade,status FROM prontuario WHERE paciente_id=? AND especialidade=?", pacienteId, procedimento) || null;
 }
 /* Acerta o vínculo de UM atendimento.
    - sem vínculo  → pendura na pasta do procedimento, se existir;
    - com vínculo  → só refaz se o procedimento MUDOU nesta edição (senão um
      vínculo feito à mão dentro do prontuário seria desfeito sem querer). */
-function sincronizarProntuarioDoAtendimento(id, antes) {
-  const a = db.prepare("SELECT id,paciente_id,procedimento_id,especialidade,prontuario_id FROM atendimentos WHERE id=?").get(id);
+async function sincronizarProntuarioDoAtendimento(id, antes) {
+  const a = await Q.get("SELECT id,paciente_id,procedimento_id,especialidade,prontuario_id FROM atendimentos WHERE id=?", id);
   if (!a) return null;
-  const nome = nomeProcedimento(a);
+  const nome = await nomeProcedimento(a);
   if (a.prontuario_id) {
-    const mudou = antes && nomeProcedimento(antes) !== nome;
-    if (!mudou) return db.prepare("SELECT id,numero,especialidade FROM prontuario WHERE id=?").get(a.prontuario_id) || null;
+    const mudou = antes && await nomeProcedimento(antes) !== nome;
+    if (!mudou) return await Q.get("SELECT id,numero,especialidade FROM prontuario WHERE id=?", a.prontuario_id) || null;
   }
-  const pasta = prontuarioDoPar(a.paciente_id, nome);
+  const pasta = await prontuarioDoPar(a.paciente_id, nome);
   const novo = pasta ? pasta.id : null;
   if (String(a.prontuario_id || "") !== String(novo || ""))
-    db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(novo, id);
+    await Q.run("UPDATE atendimentos SET prontuario_id=? WHERE id=?", novo, id);
   return pasta;
 }
 /* Recolhe para a pasta recém-aberta os atendimentos daquele par que ainda
    estavam sem vínculo — tipicamente o primeiro atendimento, marcado antes de a
    anamnese existir. Devolve quantos entraram. */
-function recolherAtendimentosSoltos(prontuarioId, pacienteId, procedimento) {
-  const soltos = db.prepare(
-    `SELECT a.id FROM atendimentos a
+async function recolherAtendimentosSoltos(prontuarioId, pacienteId, procedimento) {
+  const soltos = await Q.all(`SELECT a.id FROM atendimentos a
        LEFT JOIN procedimentos p ON p.id = a.procedimento_id
       WHERE a.paciente_id = ? AND a.prontuario_id IS NULL
-        AND COALESCE(NULLIF(p.nome,''), a.especialidade) = ?`).all(pacienteId, procedimento);
-  for (const s of soltos) db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(prontuarioId, s.id);
+        AND COALESCE(NULLIF(p.nome,''), a.especialidade) = ?`, pacienteId, procedimento);
+  for (const s of soltos) await Q.run("UPDATE atendimentos SET prontuario_id=? WHERE id=?", prontuarioId, s.id);
   return soltos.length;
 }
 
@@ -677,7 +547,7 @@ const PERM = {
 const PERM_LEITURA = { profissional: new Set(["pacientes", "profissionais", "procedimentos", "convenios", "salas"]) };
 const pode = (perfil, modulo) => perfil === "admin" || (PERM[perfil] ? PERM[perfil].has(modulo) : false);
 const podeLer = (perfil, modulo) => pode(perfil, modulo) || (PERM_LEITURA[perfil] && PERM_LEITURA[perfil].has(modulo));
-const adminsAtivos = () => db.prepare("SELECT COUNT(*) c FROM g_usuarios WHERE perfil='admin' AND ativo=1").get().c;
+const adminsAtivos = async () => Number((await Q.get("SELECT COUNT(*) c FROM g_usuarios WHERE perfil='admin' AND ativo=1")).c);
 
 /* ==========================================================================
    VÍNCULOS E HISTÓRICO
@@ -686,31 +556,34 @@ const adminsAtivos = () => db.prepare("SELECT COUNT(*) c FROM g_usuarios WHERE p
    profissional, o prontuário impresso sem procedimento). O caminho certo é
    BLOQUEAR: some dos seletores, mas o histórico continua íntegro.
    ========================================================================== */
-const conta = (sql, ...args) => db.prepare(sql).get(...args).c;
-function vinculosDe(tabela, id) {
+/* O Postgres devolve COUNT(*) como string (bigint não cabe em Number com
+   segurança, então o driver entrega texto). Sem o Number() aqui, "0" seria
+   verdadeiro e todo `if (await conta(...))` passaria a disparar com zero vínculos. */
+const conta = async (sql, ...args) => Number((await Q.get(sql, ...args)).c);
+async function vinculosDe(tabela, id) {
   const v = [];
   const somar = (n, rotulo) => { if (n > 0) v.push(`${n} ${rotulo}${n > 1 ? "s" : ""}`); };
   if (tabela === "profissionais") {
-    const p = db.prepare("SELECT nome FROM profissionais WHERE id=?").get(id);
-    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=?", id), "atendimento");
+    const p = await Q.get("SELECT nome FROM profissionais WHERE id=?", id);
+    somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=?", id), "atendimento");
     if (p) {
-      somar(conta("SELECT COUNT(*) c FROM prontuario WHERE profissional=?", p.nome), "evolução de prontuário");
-      somar(conta("SELECT COUNT(*) c FROM anamneses WHERE profissional=?", p.nome), "anamnese");
+      somar(await conta("SELECT COUNT(*) c FROM prontuario WHERE profissional=?", p.nome), "evolução de prontuário");
+      somar(await conta("SELECT COUNT(*) c FROM anamneses WHERE profissional=?", p.nome), "anamnese");
     }
-    somar(conta("SELECT COUNT(*) c FROM g_usuarios WHERE profissional_id=?", id), "acesso ao sistema");
+    somar(await conta("SELECT COUNT(*) c FROM g_usuarios WHERE profissional_id=?", id), "acesso ao sistema");
   }
   if (tabela === "pacientes") {
-    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE paciente_id=?", id), "atendimento");
-    somar(conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=?", id), "evolução de prontuário");
-    somar(conta("SELECT COUNT(*) c FROM anamneses WHERE paciente_id=?", id), "anamnese");
-    somar(conta("SELECT COUNT(*) c FROM documentos_gestao WHERE paciente_id=?", id), "documento");
+    somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE paciente_id=?", id), "atendimento");
+    somar(await conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=?", id), "evolução de prontuário");
+    somar(await conta("SELECT COUNT(*) c FROM anamneses WHERE paciente_id=?", id), "anamnese");
+    somar(await conta("SELECT COUNT(*) c FROM documentos_gestao WHERE paciente_id=?", id), "documento");
   }
-  if (tabela === "procedimentos") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE procedimento_id=?", id), "atendimento");
+  if (tabela === "procedimentos") somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE procedimento_id=?", id), "atendimento");
   if (tabela === "convenios") {
-    somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE convenio_id=?", id), "atendimento");
-    somar(conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
+    somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE convenio_id=?", id), "atendimento");
+    somar(await conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
   }
-  if (tabela === "salas") somar(conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
+  if (tabela === "salas") somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
   /* Prontuário com LANÇAMENTO não se apaga: ali está o registro clínico, e
      apagar a pasta o deixaria órfão no banco — invisível, mas presente. Quem
      encerra um tratamento dá ALTA.
@@ -722,7 +595,7 @@ function vinculosDe(tabela, id) {
      pasta não se apagaria por ter a anamnese. Do jeito que está, apagar a pasta
      (enquanto ainda não tem lançamento) SOLTA os dois e permite recomeçar. */
   if (tabela === "prontuario")
-    somar(conta("SELECT COUNT(*) c FROM prontuario_registros WHERE prontuario_id=?", id), "lançamento");
+    somar(await conta("SELECT COUNT(*) c FROM prontuario_registros WHERE prontuario_id=?", id), "lançamento");
   return v;
 }
 
@@ -731,37 +604,47 @@ function vinculosDe(tabela, id) {
    secretaria pode fazer isso. Mas por aqui só nasce conta de perfil
    "profissional": promover alguém a admin continua sendo exclusividade do
    módulo Usuários do Sistema, que só o admin abre. */
-function salvarAcessoProfissional(profId, b, quemPerfil) {
+async function salvarAcessoProfissional(profId, b, quemPerfil) {
   const login = String(b.acesso_login || "").trim().toLowerCase();
   const senha = String(b.acesso_senha || "");
-  const jaTem = db.prepare("SELECT * FROM g_usuarios WHERE profissional_id=?").get(profId);
-  const prof = db.prepare("SELECT nome,ativo FROM profissionais WHERE id=?").get(profId);
+  const jaTem = await Q.get("SELECT * FROM g_usuarios WHERE profissional_id=?", profId);
+  const prof = await Q.get("SELECT nome,ativo FROM profissionais WHERE id=?", profId);
   if (!prof) return null;
   const ativo = Number(prof.ativo) === 0 ? 0 : 1;   // bloquear o profissional bloqueia o login
 
   if (!login) {                                     // sem login informado: só espelha o bloqueio
     if (jaTem && jaTem.ativo !== ativo) {
-      db.prepare("UPDATE g_usuarios SET ativo=? WHERE id=?").run(ativo, jaTem.id);
+      await Q.run("UPDATE g_usuarios SET ativo=? WHERE id=?", ativo, jaTem.id);
       if (!ativo) derrubarSessoesDoUsuario(jaTem.id);
     }
     return null;
   }
-  // login não pode colidir com outro usuário
-  const colide = db.prepare("SELECT id FROM g_usuarios WHERE email=? AND profissional_id IS NOT ?").get(login, profId);
+  /* Login não pode colidir com outro usuário.
+
+     `IS DISTINCT FROM` e não `IS NOT` / `<>`:
+     · o `IS NOT ?` que estava aqui é sintaxe do SQLite — lá ele compara com
+       QUALQUER valor tratando NULL como um valor comum. No Postgres, `IS NOT`
+       só aceita NULL/TRUE/FALSE, e com um parâmetro dá erro de sintaxe.
+     · trocar por `<>` seria PIOR que errado: em SQL, `NULL <> 5` não é
+       verdadeiro, é NULO — então um usuário sem profissional vinculado
+       (profissional_id NULL) escaparia da checagem e dois logins iguais
+       passariam.
+     `IS DISTINCT FROM` é o operador que compara tratando NULL como valor,
+     que é exatamente o que o SQLite fazia. */
+  const colide = await Q.get("SELECT id FROM g_usuarios WHERE email=? AND profissional_id IS DISTINCT FROM ?", login, profId);
   if (colide && (!jaTem || colide.id !== jaTem.id)) return "Este login já está em uso por outro usuário.";
 
   if (jaTem) {
-    db.prepare("UPDATE g_usuarios SET nome=?, email=?, ativo=? WHERE id=?").run(prof.nome, login, ativo, jaTem.id);
+    await Q.run("UPDATE g_usuarios SET nome=?, email=?, ativo=? WHERE id=?", prof.nome, login, ativo, jaTem.id);
     if (senha) {
       if (senha.length < 8) return "A senha do profissional precisa ter ao menos 8 caracteres.";
-      db.prepare("UPDATE g_usuarios SET senha_hash=? WHERE id=?").run(hashSenha(senha), jaTem.id);
+      await Q.run("UPDATE g_usuarios SET senha_hash=? WHERE id=?", hashSenha(senha), jaTem.id);
     }
     if (!ativo) derrubarSessoesDoUsuario(jaTem.id);
   } else {
     if (!senha) return "Defina uma senha para o acesso do profissional.";
     if (senha.length < 8) return "A senha do profissional precisa ter ao menos 8 caracteres.";
-    db.prepare("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,'profissional',?,?,?)")
-      .run(prof.nome, login, hashSenha(senha), ativo, profId, agora());
+    await Q.run("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,'profissional',?,?,?)", prof.nome, login, hashSenha(senha), ativo, profId, agora());
   }
   return null;
 }
@@ -770,17 +653,16 @@ function derrubarSessoesDoUsuario(userId) {
 }
 /* Junta ao profissional o login dele (nunca a senha) para a tela mostrar
    se ele já tem acesso e qual é o usuário. */
-function anexarAcesso(prof) {
-  const u = db.prepare("SELECT email, ativo FROM g_usuarios WHERE profissional_id=?").get(prof.id);
+async function anexarAcesso(prof) {
+  const u = await Q.get("SELECT email, ativo FROM g_usuarios WHERE profissional_id=?", prof.id);
   prof.acesso_login = u ? u.email : "";
   prof.acesso_ativo = u ? u.ativo : null;
   return prof;
 }
 
-// Colunas reais de cada tabela (do próprio banco). Serve para o CRUD só gravar
-// o que existe — e para saber se a tabela tem "criado" antes de carimbá-lo.
-const COLS = {};
-for (const t of Object.keys(TAB)) COLS[t] = new Set(db.prepare(`PRAGMA table_info(${t})`).all().map((c) => c.name));
+// As colunas reais de cada tabela (COLS) são lidas do information_schema
+// dentro de iniciarRestrito(). Servem para o CRUD só gravar o que existe — e
+// para saber se a tabela tem "criado" antes de carimbá-lo.
 
 /* ==========================================================================
    MODELOS DE ANAMNESE — fonte única
@@ -1000,6 +882,81 @@ function handleRestrito(req, res, pathname) {
   return true;
 }
 
+/* ==========================================================================
+   DUMP SQL DA GESTÃO (pg_dump) — usado pelo botão "Backup do banco"
+
+   Sai em texto puro, comprimido em gzip pelo próprio Node quando o navegador
+   aceita — um dump de prontuários é quase todo texto e encolhe muito.
+
+   O arquivo NÃO é gravado em disco no caminho do site: ele é transmitido
+   direto para quem pediu. Gravar num diretório servido pelo servidor web seria
+   deixar o prontuário da clínica inteira a um palpite de URL de distância.
+   ========================================================================== */
+function dumpSql(res, sessaoAdmin) {
+  const { spawn } = require("node:child_process");
+  const cfg = configPg();
+  const carimbo = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "").replace(/(\d{8})(\d{4})/, "$1-$2");
+  const nome = `bemestar-gestao-${carimbo}.sql`;
+
+  /* --no-owner / --no-privileges: o dump precisa restaurar em QUALQUER
+     servidor, inclusive num de teste onde o usuário "bemestar" não existe.
+     Sem isso, o restore falharia em cada GRANT e cada OWNER TO. */
+  const args = ["--no-owner", "--no-privileges", "--clean", "--if-exists",
+    "-h", cfg.host || "127.0.0.1", "-p", String(cfg.port || 5432),
+    "-U", cfg.user, "-d", cfg.database];
+
+  const pg_dump = process.env.PG_DUMP || "pg_dump";
+  const filho = spawn(pg_dump, args, {
+    env: { ...process.env, PGPASSWORD: cfg.password || "" },
+    windowsHide: true,
+  });
+
+  let cabecalhoEnviado = false;
+  const enviarCabecalho = () => {
+    if (cabecalhoEnviado) return;
+    cabecalhoEnviado = true;
+    res.writeHead(200, {
+      "Content-Type": "application/sql; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${nome}"`,
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex, nofollow",
+    });
+  };
+
+  let erro = "";
+  filho.stderr.on("data", (d) => { erro += d.toString(); });
+
+  /* O cabeçalho só vai quando o primeiro byte de dump chega. Assim, se o
+     pg_dump falhar de cara (binário ausente, senha errada), ainda dá tempo de
+     responder um JSON de erro em vez de entregar um arquivo vazio com nome
+     bonito — que o usuário guardaria achando que tem backup. */
+  filho.stdout.on("data", (bloco) => { enviarCabecalho(); res.write(bloco); });
+
+  filho.on("error", (e) => {
+    console.error("  ✖ pg_dump não executou:", e.message);
+    if (!cabecalhoEnviado) json(res, 500, {
+      error: e.code === "ENOENT"
+        ? "O pg_dump não está instalado neste servidor (pacote postgresql-client)."
+        : "Não consegui gerar o backup.",
+    });
+    else res.end();
+  });
+
+  filho.on("close", (codigo) => {
+    if (codigo === 0) {
+      console.log(`  · /restrito: backup SQL baixado por ${sessaoAdmin.nome} (${nome})`);
+      enviarCabecalho();
+      return res.end();
+    }
+    console.error(`  ✖ pg_dump saiu com código ${codigo}: ${erro.trim().slice(0, 400)}`);
+    if (!cabecalhoEnviado) return json(res, 500, { error: "Não consegui gerar o backup. Veja o log do servidor." });
+    /* Já mandamos bytes: não dá para trocar o status. Encerrar de forma abrupta
+       é o que faz o navegador marcar o download como FALHOU — melhor um
+       download quebrado e visível do que um .sql pela metade que parece bom. */
+    res.destroy();
+  });
+}
+
 /* ------------------------------- API ------------------------------------- */
 async function rotaApi(req, res, p) {
   const ip = clientIp(req);
@@ -1008,7 +965,7 @@ async function rotaApi(req, res, p) {
   if (p === "login" && req.method === "POST") {
     if (bloqueado(ip)) return json(res, 429, { error: "Muitas tentativas. Aguarde 15 minutos." });
     const { usuario, senha } = await readBody(req);
-    const u = db.prepare("SELECT * FROM g_usuarios WHERE email=? AND ativo=1").get(String(usuario || "").trim());
+    const u = await Q.get("SELECT * FROM g_usuarios WHERE email=? AND ativo=1", String(usuario || "").trim());
     /* Se o usuário não existe, ainda assim gastamos o mesmo tempo de um scrypt.
        Sem isto, "usuário inexistente" responde em ~1ms e "usuário certo, senha
        errada" em ~100ms — diferença que permite descobrir logins válidos por
@@ -1025,6 +982,28 @@ async function rotaApi(req, res, p) {
   const s = sessao(req);
   if (!s) return json(res, 401, { error: "Não autenticado" });
 
+  /* ==========================================================================
+     BACKUP DO BANCO — baixa o dump SQL completo da gestão
+
+     Só o ADMIN. Este arquivo contém a clínica inteira: CPF, endereço, anamnese
+     e prontuário de todo mundo. É o dado mais sensível que existe aqui, e sai
+     do servidor pelo navegador de quem clicou.
+
+     O dump sai do próprio pg_dump, no formato SQL de texto — o mesmo que o
+     `psql` restaura. Não inventamos formato: um backup que só o nosso código
+     sabe ler não é backup.
+
+     Segurança do processo: o pg_dump é chamado por spawn com os argumentos em
+     ARRAY e sem shell. Nada do que o usuário digita entra na linha de comando
+     (não há o que digitar — a rota não recebe parâmetro), e a senha vai por
+     variável de ambiente, nunca por argumento (argumento aparece no `ps` para
+     qualquer usuário da máquina).
+     ========================================================================== */
+  if (p === "backup/sql" && req.method === "GET") {
+    if (s.perfil !== "admin") return json(res, 403, { error: "Só o administrador pode baixar o backup." });
+    return dumpSql(res, s);
+  }
+
   /* Quem está logado. Devolve também o PROFISSIONAL vinculado (id e nome como
      está no cadastro) — é com ele que a tela pré-preenche "Profissional
      responsável" na anamnese. O nome do login pode ser diferente do nome no
@@ -1032,7 +1011,7 @@ async function rotaApi(req, res, p) {
   if (p === "me") {
     let profissional_nome = "";
     if (s.profissionalId) {
-      const pf = db.prepare("SELECT nome FROM profissionais WHERE id=?").get(s.profissionalId);
+      const pf = await Q.get("SELECT nome FROM profissionais WHERE id=?", s.profissionalId);
       if (pf) profissional_nome = pf.nome;
     }
     return json(res, 200, { nome: s.nome, perfil: s.perfil, profissional_id: s.profissionalId || null, profissional_nome });
@@ -1046,10 +1025,10 @@ async function rotaApi(req, res, p) {
 
   if (p === "senha" && req.method === "POST") {
     const { atual, nova } = await readBody(req);
-    const u = db.prepare("SELECT * FROM g_usuarios WHERE id=?").get(s.userId);
+    const u = await Q.get("SELECT * FROM g_usuarios WHERE id=?", s.userId);
     if (!confereSenha(atual, u.senha_hash)) return json(res, 400, { error: "Senha atual incorreta." });
     if (String(nova || "").length < 8) return json(res, 400, { error: "A nova senha precisa de ao menos 8 caracteres." });
-    db.prepare("UPDATE g_usuarios SET senha_hash=? WHERE id=?").run(hashSenha(nova), s.userId);
+    await Q.run("UPDATE g_usuarios SET senha_hash=? WHERE id=?", hashSenha(nova), s.userId);
     for (const [k, v] of sessoes) if (v.userId === s.userId && k !== s.rid) sessoes.delete(k);
     return json(res, 200, { ok: true });
   }
@@ -1057,20 +1036,20 @@ async function rotaApi(req, res, p) {
   // painel: números para a home do sistema. O profissional não vê números
   // globais (só a sua agenda e prontuários) — devolve os dele.
   if (p === "painel") {
-    const n = (sql) => db.prepare(sql).get().c;
+    const n = async (sql, ...args) => (await Q.get(sql, ...args)).c;
     const hoje = new Date().toISOString().slice(0, 10);
     if (s.perfil === "profissional") {
       return json(res, 200, { profissional: true,
-        agendaHoje: db.prepare("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=? AND data=?").get(s.profissionalId, hoje).c,
-        agendaTotal: db.prepare("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=?").get(s.profissionalId).c,
-        prontuarios: db.prepare("SELECT COUNT(*) c FROM prontuario WHERE usuario_id=?").get(s.userId).c });
+        agendaHoje: await n("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=? AND data=?", s.profissionalId, hoje),
+        agendaTotal: await n("SELECT COUNT(*) c FROM atendimentos WHERE profissional_id=?", s.profissionalId),
+        prontuarios: await n("SELECT COUNT(*) c FROM prontuario WHERE usuario_id=?", s.userId) });
     }
     return json(res, 200, {
-      pacientes: n("SELECT COUNT(*) c FROM pacientes"),
-      atendimentosHoje: db.prepare("SELECT COUNT(*) c FROM atendimentos WHERE data=?").get(hoje).c,
-      confirmadosHoje: db.prepare("SELECT COUNT(*) c FROM atendimentos WHERE data=? AND status IN ('Confirmado','Atendido')").get(hoje).c,
-      anamneses: n("SELECT COUNT(*) c FROM anamneses"),
-      prontuarios: n("SELECT COUNT(*) c FROM prontuario"),
+      pacientes: await n("SELECT COUNT(*) c FROM pacientes"),
+      atendimentosHoje: await n("SELECT COUNT(*) c FROM atendimentos WHERE data=?", hoje),
+      confirmadosHoje: await n("SELECT COUNT(*) c FROM atendimentos WHERE data=? AND status IN ('Confirmado','Atendido')", hoje),
+      anamneses: await n("SELECT COUNT(*) c FROM anamneses"),
+      prontuarios: await n("SELECT COUNT(*) c FROM prontuario"),
     });
   }
 
@@ -1099,26 +1078,26 @@ async function rotaApi(req, res, p) {
     };
     const onde = (col, alias) => ` WHERE ${corte(col, alias)}`;
     const e = (col, alias) => ` AND ${corte(col, alias)}`;
-    const grupo = (sql) => db.prepare(sql).all();
-    const n = (sql) => db.prepare(sql).get().c;
+    const grupo = (sql) => Q.all(sql);
+    const n = async (sql) => (await Q.get(sql)).c;
     return json(res, 200, {
       periodo: { de, ate },
       totais: {
-        pacientes: n("SELECT COUNT(*) c FROM pacientes" + onde("criado")),
-        atendimentos: n("SELECT COUNT(*) c FROM atendimentos" + onde("data")),
-        atendidos: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Atendido'" + e("data")),
-        faltas: n("SELECT COUNT(*) c FROM atendimentos WHERE status='Faltou'" + e("data")),
-        anamneses: n("SELECT COUNT(*) c FROM anamneses" + onde("data")),
-        prontuarios: n("SELECT COUNT(*) c FROM prontuario" + onde("aberto_em")),
+        pacientes: await n("SELECT COUNT(*) c FROM pacientes" + onde("criado")),
+        atendimentos: await n("SELECT COUNT(*) c FROM atendimentos" + onde("data")),
+        atendidos: await n("SELECT COUNT(*) c FROM atendimentos WHERE status='Atendido'" + e("data")),
+        faltas: await n("SELECT COUNT(*) c FROM atendimentos WHERE status='Faltou'" + e("data")),
+        anamneses: await n("SELECT COUNT(*) c FROM anamneses" + onde("data")),
+        prontuarios: await n("SELECT COUNT(*) c FROM prontuario" + onde("aberto_em")),
       },
-      porProcedimento: grupo(`SELECT COALESCE(NULLIF(pr.nome,''),'(sem procedimento)') rotulo, COUNT(*) total
+      porProcedimento: await grupo(`SELECT COALESCE(NULLIF(pr.nome,''),'(sem procedimento)') rotulo, COUNT(*) total
         FROM atendimentos a LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
-      porProfissional: grupo(`SELECT COALESCE(NULLIF(pf.nome,''),'(sem profissional)') rotulo, COUNT(*) total
+      porProfissional: await grupo(`SELECT COALESCE(NULLIF(pf.nome,''),'(sem profissional)') rotulo, COUNT(*) total
         FROM atendimentos a LEFT JOIN profissionais pf ON pf.id=a.profissional_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
-      porConvenio: grupo(`SELECT COALESCE(NULLIF(c.nome,''),'(sem convênio)') rotulo, COUNT(*) total
+      porConvenio: await grupo(`SELECT COALESCE(NULLIF(c.nome,''),'(sem convênio)') rotulo, COUNT(*) total
         FROM atendimentos a LEFT JOIN convenios c ON c.id=a.convenio_id${onde("data", "a")} GROUP BY rotulo ORDER BY total DESC`),
-      porStatus: grupo("SELECT COALESCE(NULLIF(status,''),'(sem status)') rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY total DESC"),
-      porMes: grupo("SELECT substr(data,1,7) rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY rotulo DESC LIMIT 12"),
+      porStatus: await grupo("SELECT COALESCE(NULLIF(status,''),'(sem status)') rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY total DESC"),
+      porMes: await grupo("SELECT substr(data,1,7) rotulo, COUNT(*) total FROM atendimentos" + onde("data") + " GROUP BY rotulo ORDER BY rotulo DESC LIMIT 12"),
     });
   }
 
@@ -1140,23 +1119,25 @@ async function rotaApi(req, res, p) {
     const q = new URL(req.url, "http://x").searchParams;
     const at = (q.get("ativo") || "").trim();
     const cond = at === "1" ? " WHERE COALESCE(ativo,1)<>0" : at === "0" ? " WHERE COALESCE(ativo,1)=0" : "";
-    const pacs = db.prepare(`SELECT * FROM pacientes${cond} ORDER BY nome`).all();
+    const pacs = await Q.all(`SELECT * FROM pacientes${cond} ORDER BY nome`);
 
-    const pastasDe = db.prepare("SELECT numero, especialidade, profissional, status FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade");
-    const profsDe = db.prepare(`SELECT DISTINCT pf.nome FROM atendimentos a JOIN profissionais pf ON pf.id=a.profissional_id
-                                 WHERE a.paciente_id=? AND pf.nome<>''`);
-    const procsDe = db.prepare(`SELECT DISTINCT COALESCE(NULLIF(pr.nome,''), a.especialidade) nome FROM atendimentos a
-                                 LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
-                                 WHERE a.paciente_id=? AND COALESCE(NULLIF(pr.nome,''), a.especialidade) IS NOT NULL`);
-    const conv = db.prepare("SELECT nome FROM convenios WHERE id=?");
+    const SQL_PASTAS = "SELECT numero, especialidade, profissional, status FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade";
+    const SQL_PROFS = `SELECT DISTINCT pf.nome FROM atendimentos a JOIN profissionais pf ON pf.id=a.profissional_id
+                        WHERE a.paciente_id=? AND pf.nome<>''`;
+    const SQL_PROCS = `SELECT DISTINCT COALESCE(NULLIF(pr.nome,''), a.especialidade) nome FROM atendimentos a
+                        LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
+                        WHERE a.paciente_id=? AND COALESCE(NULLIF(pr.nome,''), a.especialidade) IS NOT NULL`;
     const juntar = (lista) => [...new Set(lista.filter((x) => x && String(x).trim()))].sort();
+    /* O convênio de um paciente repete muito na relação inteira; buscar uma vez
+       por paciente seria uma ida ao banco por linha à toa. */
+    const convenios = new Map((await Q.all("SELECT id, nome FROM convenios")).map((c) => [Number(c.id), c.nome]));
 
     for (const pc of pacs) {
-      const pastas = pastasDe.all(pc.id);
+      const pastas = await Q.all(SQL_PASTAS, pc.id);
       pc.prontuarios = pastas;
-      pc.especialidades = juntar([...pastas.map((x) => x.especialidade), ...procsDe.all(pc.id).map((x) => x.nome)]);
-      pc.profissionais = juntar([...pastas.map((x) => x.profissional), ...profsDe.all(pc.id).map((x) => x.nome)]);
-      pc.convenio_nome = pc.convenio_id ? (conv.get(pc.convenio_id) || {}).nome || "" : "";
+      pc.especialidades = juntar([...pastas.map((x) => x.especialidade), ...(await Q.all(SQL_PROCS, pc.id)).map((x) => x.nome)]);
+      pc.profissionais = juntar([...pastas.map((x) => x.profissional), ...(await Q.all(SQL_PROFS, pc.id)).map((x) => x.nome)]);
+      pc.convenio_nome = pc.convenio_id ? (convenios.get(Number(pc.convenio_id)) || "") : "";
       // em tratamento = tem pasta sem alta; serve para a coluna Situação da relação
       pc.emTratamento = pastas.filter((x) => x.status !== "Alta").length;
     }
@@ -1190,8 +1171,8 @@ async function rotaApi(req, res, p) {
     const idm = p.match(/^usuarios\/(\d+)$/);
     const id = idm ? idm[1] : null;
     // nunca devolvemos o hash da senha
-    if (req.method === "GET" && !id) return json(res, 200, db.prepare("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios ORDER BY id").all());
-    if (req.method === "GET" && id) return json(res, 200, db.prepare("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios WHERE id=?").get(id) || {});
+    if (req.method === "GET" && !id) return json(res, 200, await Q.all("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios ORDER BY id"));
+    if (req.method === "GET" && id) return json(res, 200, await Q.get("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios WHERE id=?", id) || {});
     if (req.method === "POST" && !id) {
       const b = await readBody(req);
       const nome = String(b.nome || "").trim(), email = String(b.email || "").trim(), perfil = String(b.perfil || "secretaria").trim();
@@ -1200,19 +1181,18 @@ async function rotaApi(req, res, p) {
       if (String(b.senha || "").length < 8) return json(res, 400, { error: "A senha precisa de ao menos 8 caracteres." });
       const profId = perfil === "profissional" && b.profissional_id ? Number(b.profissional_id) : null;
       try {
-        db.prepare("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,?,?,?,?)")
-          .run(nome, email, hashSenha(b.senha), perfil, b.ativo === undefined ? 1 : (Number(b.ativo) ? 1 : 0), profId, agora());
+        await Q.run("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,?,?,?,?)", nome, email, hashSenha(b.senha), perfil, b.ativo === undefined ? 1 : (Number(b.ativo) ? 1 : 0), profId, agora());
       } catch (e) { return json(res, 400, { error: /UNIQUE/.test(e.message) ? "Já existe um usuário com esse login." : "Erro ao criar usuário." }); }
       return json(res, 200, { ok: true });
     }
     if (req.method === "PUT" && id) {
       const b = await readBody(req);
-      const alvo = db.prepare("SELECT perfil,ativo FROM g_usuarios WHERE id=?").get(id);
+      const alvo = await Q.get("SELECT perfil,ativo FROM g_usuarios WHERE id=?", id);
       if (!alvo) return json(res, 404, { error: "Usuário não encontrado." });
       // não deixar o único admin ativo se rebaixar a si mesmo ou desativar
       const viraNaoAdmin = b.perfil !== undefined && b.perfil !== "admin";
       const viraInativo = b.ativo !== undefined && !Number(b.ativo);
-      if (alvo.perfil === "admin" && alvo.ativo && (viraNaoAdmin || viraInativo) && adminsAtivos() <= 1)
+      if (alvo.perfil === "admin" && alvo.ativo && (viraNaoAdmin || viraInativo) && await adminsAtivos() <= 1)
         return json(res, 400, { error: "Não é possível rebaixar ou desativar o único administrador." });
       const sets = [], args = [];
       if (b.nome !== undefined) { sets.push("nome=?"); args.push(String(b.nome).trim()); }
@@ -1222,16 +1202,16 @@ async function rotaApi(req, res, p) {
       if (b.profissional_id !== undefined) { sets.push("profissional_id=?"); args.push(b.profissional_id ? Number(b.profissional_id) : null); }
       if (b.senha) { if (String(b.senha).length < 8) return json(res, 400, { error: "A senha precisa de ao menos 8 caracteres." }); sets.push("senha_hash=?"); args.push(hashSenha(b.senha)); }
       if (sets.length) {
-        try { db.prepare(`UPDATE g_usuarios SET ${sets.join(",")} WHERE id=?`).run(...args, id); }
+        try { await Q.run(`UPDATE g_usuarios SET ${sets.join(",")} WHERE id=?`, ...args, id); }
         catch (e) { return json(res, 400, { error: /UNIQUE/.test(e.message) ? "Já existe um usuário com esse login." : "Erro ao salvar." }); }
       }
       return json(res, 200, { ok: true });
     }
     if (req.method === "DELETE" && id) {
       if (Number(id) === s.userId) return json(res, 400, { error: "Você não pode excluir o próprio usuário." });
-      const alvo = db.prepare("SELECT perfil,ativo FROM g_usuarios WHERE id=?").get(id);
-      if (alvo && alvo.perfil === "admin" && alvo.ativo && adminsAtivos() <= 1) return json(res, 400, { error: "Não é possível excluir o único administrador." });
-      db.prepare("DELETE FROM g_usuarios WHERE id=?").run(id);
+      const alvo = await Q.get("SELECT perfil,ativo FROM g_usuarios WHERE id=?", id);
+      if (alvo && alvo.perfil === "admin" && alvo.ativo && await adminsAtivos() <= 1) return json(res, 400, { error: "Não é possível excluir o único administrador." });
+      await Q.run("DELETE FROM g_usuarios WHERE id=?", id);
       return json(res, 200, { ok: true });
     }
   }
@@ -1244,40 +1224,37 @@ async function rotaApi(req, res, p) {
     if (!podeLer(s.perfil, "prontuario") && !podeLer(s.perfil, "anamneses"))
       return json(res, 403, { error: "Sem permissão." });
     const pid = hm[1];
-    const paciente = db.prepare("SELECT * FROM pacientes WHERE id=?").get(pid);
+    const paciente = await Q.get("SELECT * FROM pacientes WHERE id=?", pid);
     if (!paciente) return json(res, 404, { error: "Paciente não encontrado." });
-    const conv = paciente.convenio_id ? db.prepare("SELECT nome FROM convenios WHERE id=?").get(paciente.convenio_id) : null;
+    const conv = paciente.convenio_id ? await Q.get("SELECT nome FROM convenios WHERE id=?", paciente.convenio_id) : null;
     // o profissional só vê os lançamentos que ele mesmo escreveu
     const sóMeus = s.perfil === "profissional" ? " AND r.usuario_id=" + Number(s.userId) : "";
     // as pastas do paciente e, dentro de cada uma, os lançamentos em ordem
-    const pastas = db.prepare("SELECT * FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade, id").all(pid);
+    const pastas = await Q.all("SELECT * FROM prontuario WHERE paciente_id=? ORDER BY status, especialidade, id", pid);
     for (const pasta of pastas) {
-      pasta.registros = db.prepare(
-        `SELECT r.* FROM prontuario_registros r WHERE r.prontuario_id=?${sóMeus}
-         ORDER BY COALESCE(NULLIF(r.data,''),r.criado), r.id`).all(pasta.id);
+      pasta.registros = await Q.all(`SELECT r.* FROM prontuario_registros r WHERE r.prontuario_id=?${sóMeus}
+         ORDER BY COALESCE(NULLIF(r.data,''),r.criado), r.id`, pasta.id);
       // os vínculos da pasta, para sair na tela e na impressão
-      pasta.anamneses = db.prepare(
-        "SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id").all(pasta.id);
-      pasta.atendimentos = db.prepare(
-        `SELECT a.id,a.data,a.hora,a.hora_fim,a.status,a.valor, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
+      pasta.anamneses = await Q.all("SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id", pasta.id);
+      pasta.atendimentos = await Q.all(`SELECT a.id,a.data,a.hora,a.hora_fim,a.status,a.valor, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
            FROM atendimentos a
            LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
            LEFT JOIN profissionais pf ON pf.id=a.profissional_id
            LEFT JOIN salas sa ON sa.id=a.sala_id
-          WHERE a.prontuario_id=? ORDER BY a.data, a.hora, a.id`).all(pasta.id);
+          WHERE a.prontuario_id=? ORDER BY a.data, a.hora, a.id`, pasta.id);
     }
     return json(res, 200, {
       paciente: { ...paciente, convenio_nome: conv ? conv.nome : "" },
       prontuarios: pastas,
-      historico: db.prepare("SELECT * FROM historico WHERE entidade='paciente' AND entidade_id=? ORDER BY criado, id").all(pid),
-      anamneses: db.prepare("SELECT * FROM anamneses WHERE paciente_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id").all(pid),
-      atendimentos: db.prepare(`SELECT a.*, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome, cv.nome convenio_nome
+      historico: await Q.all("SELECT * FROM historico WHERE entidade='paciente' AND entidade_id=? ORDER BY criado, id", pid),
+      anamneses: await Q.all("SELECT * FROM anamneses WHERE paciente_id=? ORDER BY COALESCE(NULLIF(data,''),criado), id", pid),
+      atendimentos: await Q.all(`SELECT a.*, pr.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome, cv.nome convenio_nome
         FROM atendimentos a
         LEFT JOIN procedimentos pr ON pr.id=a.procedimento_id
         LEFT JOIN profissionais pf ON pf.id=a.profissional_id
         LEFT JOIN salas sa ON sa.id=a.sala_id
         LEFT JOIN convenios cv ON cv.id=a.convenio_id
-        WHERE a.paciente_id=? ORDER BY a.data, a.hora, a.id`).all(pid),
+        WHERE a.paciente_id=? ORDER BY a.data, a.hora, a.id`, pid),
     });
   }
 
@@ -1288,21 +1265,21 @@ async function rotaApi(req, res, p) {
   if (am && req.method === "POST") {
     if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
     const id = am[1], acao = am[2];
-    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(id);
+    const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", id);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
     const b = await readBody(req);
     if (acao === "alta") {
       const quando = b.data || new Date().toISOString().slice(0, 10);
-      db.prepare("UPDATE prontuario SET status='Alta', alta_em=?, alta_motivo=? WHERE id=?").run(quando, b.motivo || "", id);
-      anotar("prontuario", id, "Alta", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
-      anotar("paciente", pr.paciente_id, "Alta em " + pr.especialidade, pr.numero || "", s);
+      await Q.run("UPDATE prontuario SET status='Alta', alta_em=?, alta_motivo=? WHERE id=?", quando, b.motivo || "", id);
+      await anotar("prontuario", id, "Alta", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      await anotar("paciente", pr.paciente_id, "Alta em " + pr.especialidade, pr.numero || "", s);
     } else {
       // reabrir: o paciente voltou. Data de reativação atualizada, histórico intacto.
       const quando = agora();
-      db.prepare("UPDATE prontuario SET status='Ativo', alta_em=NULL, alta_motivo=NULL, reativado_em=? WHERE id=?").run(quando, id);
-      db.prepare("UPDATE pacientes SET reativado_em=? WHERE id=?").run(quando, pr.paciente_id);
-      anotar("prontuario", id, "Prontuário reaberto", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
-      anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
+      await Q.run("UPDATE prontuario SET status='Ativo', alta_em=NULL, alta_motivo=NULL, reativado_em=? WHERE id=?", quando, id);
+      await Q.run("UPDATE pacientes SET reativado_em=? WHERE id=?", quando, pr.paciente_id);
+      await anotar("prontuario", id, "Prontuário reaberto", `${pr.especialidade}${b.motivo ? " — " + b.motivo : ""}`, s);
+      await anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
     }
     return json(res, 200, { ok: true });
   }
@@ -1318,20 +1295,19 @@ async function rotaApi(req, res, p) {
   if (pm3 && req.method === "POST") {
     if (!pode(s.perfil, "pacientes")) return json(res, 403, { error: "Sem permissão." });
     const id = pm3[1], inativar = pm3[2] === "inativar";
-    const pac = db.prepare("SELECT id,nome,codigo FROM pacientes WHERE id=?").get(id);
+    const pac = await Q.get("SELECT id,nome,codigo FROM pacientes WHERE id=?", id);
     if (!pac) return json(res, 404, { error: "Paciente não encontrado." });
     const b = await readBody(req);
     if (inativar) {
-      const abertos = conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=? AND status<>'Alta'", id);
-      db.prepare("UPDATE pacientes SET ativo=0, inativo_em=?, inativo_motivo=? WHERE id=?")
-        .run(agora(), b.motivo || "", id);
-      anotar("paciente", id, "Paciente inativado", b.motivo || "", s);
+      const abertos = await conta("SELECT COUNT(*) c FROM prontuario WHERE paciente_id=? AND status<>'Alta'", id);
+      await Q.run("UPDATE pacientes SET ativo=0, inativo_em=?, inativo_motivo=? WHERE id=?", agora(), b.motivo || "", id);
+      await anotar("paciente", id, "Paciente inativado", b.motivo || "", s);
       /* Avisa se ficou tratamento em aberto — não impede (a pessoa pode
          simplesmente ter parado de vir), mas quem inativa precisa saber. */
       return json(res, 200, { ok: true, prontuariosAbertos: abertos });
     }
-    db.prepare("UPDATE pacientes SET ativo=1, inativo_em=NULL, inativo_motivo=NULL, reativado_em=? WHERE id=?").run(agora(), id);
-    anotar("paciente", id, "Paciente reativado", b.motivo || "", s);
+    await Q.run("UPDATE pacientes SET ativo=1, inativo_em=NULL, inativo_motivo=NULL, reativado_em=? WHERE id=?", agora(), id);
+    await anotar("paciente", id, "Paciente reativado", b.motivo || "", s);
     return json(res, 200, { ok: true });
   }
 
@@ -1349,32 +1325,31 @@ async function rotaApi(req, res, p) {
   if (fm && req.method === "POST") {
     if (!pode(s.perfil, "anamneses")) return json(res, 403, { error: "Sem permissão." });
     const id = fm[1];
-    const an = db.prepare("SELECT * FROM anamneses WHERE id=?").get(id);
+    const an = await Q.get("SELECT * FROM anamneses WHERE id=?", id);
     if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
     const b = await readBody(req);
     const procedimento = String(b.procedimento || an.procedimento || "").trim();
     if (!an.paciente_id) return json(res, 400, { error: "Anamnese sem paciente." });
     if (!procedimento) return json(res, 400, { error: "Escolha o procedimento antes de finalizar — é ele que define de qual prontuário esta anamnese faz parte." });
 
-    let pasta = prontuarioDoPar(an.paciente_id, procedimento);
+    let pasta = await prontuarioDoPar(an.paciente_id, procedimento);
     let criada = false;
     if (!pasta) {
       const prof = an.profissional || (s.perfil === "profissional" ? s.nome : "");
-      const info = db.prepare(
-        "INSERT INTO prontuario(paciente_id,especialidade,profissional,status,aberto_em,usuario_id,criado) VALUES(?,?,?,'Ativo',?,?,?)"
-      ).run(an.paciente_id, procedimento, prof, (an.data || new Date().toISOString().slice(0, 10)), s.userId, agora());
-      const novoId = Number(info.lastInsertRowid);
-      const numero = emitirNumeroProntuario(novoId);
+      /* Q.inserir (e não Q.run) porque o id novo é preciso na hora. No SQLite
+         vinha de lastInsertRowid; no Postgres só existe com RETURNING, que o
+         Q.inserir acrescenta. */
+      const novoId = await Q.inserir("INSERT INTO prontuario(paciente_id,especialidade,profissional,status,aberto_em,usuario_id,criado) VALUES(?,?,?,'Ativo',?,?,?)", an.paciente_id, procedimento, prof, (an.data || new Date().toISOString().slice(0, 10)), s.userId, agora());
+      const numero = await emitirNumeroProntuario(novoId);
       pasta = { id: novoId, numero, especialidade: procedimento, status: "Ativo" };
       criada = true;
-      anotar("prontuario", novoId, "Prontuário aberto pela anamnese", `${numero} · ${procedimento}`, s);
-      anotar("paciente", an.paciente_id, "Prontuário aberto", `${numero} · ${procedimento}`, s);
+      await anotar("prontuario", novoId, "Prontuário aberto pela anamnese", `${numero} · ${procedimento}`, s);
+      await anotar("paciente", an.paciente_id, "Prontuário aberto", `${numero} · ${procedimento}`, s);
     }
-    db.prepare("UPDATE anamneses SET status='Finalizada', finalizada_em=?, prontuario_id=?, procedimento=?, atualizado=? WHERE id=?")
-      .run(agora(), pasta.id, procedimento, agora(), id);
-    const recolhidos = recolherAtendimentosSoltos(pasta.id, an.paciente_id, procedimento);
-    anotar("prontuario", pasta.id, "Anamnese finalizada", rotuloModelo(an.tipo) + (recolhidos ? ` · ${recolhidos} agendamento(s) vinculado(s)` : ""), s);
-    anotar("paciente", an.paciente_id, "Anamnese finalizada", `${rotuloModelo(an.tipo)} · ${pasta.numero}`, s);
+    await Q.run("UPDATE anamneses SET status='Finalizada', finalizada_em=?, prontuario_id=?, procedimento=?, atualizado=? WHERE id=?", agora(), pasta.id, procedimento, agora(), id);
+    const recolhidos = await recolherAtendimentosSoltos(pasta.id, an.paciente_id, procedimento);
+    await anotar("prontuario", pasta.id, "Anamnese finalizada", rotuloModelo(an.tipo) + (recolhidos ? ` · ${recolhidos} agendamento(s) vinculado(s)` : ""), s);
+    await anotar("paciente", an.paciente_id, "Anamnese finalizada", `${rotuloModelo(an.tipo)} · ${pasta.numero}`, s);
     return json(res, 200, { ok: true, prontuario: pasta, criada, atendimentosVinculados: recolhidos });
   }
 
@@ -1383,10 +1358,10 @@ async function rotaApi(req, res, p) {
   const rvm = p.match(/^anamneses\/(\d+)\/reabrir$/);
   if (rvm && req.method === "POST") {
     if (!pode(s.perfil, "anamneses")) return json(res, 403, { error: "Sem permissão." });
-    const an = db.prepare("SELECT * FROM anamneses WHERE id=?").get(rvm[1]);
+    const an = await Q.get("SELECT * FROM anamneses WHERE id=?", rvm[1]);
     if (!an) return json(res, 404, { error: "Anamnese não encontrada." });
-    db.prepare("UPDATE anamneses SET status='Rascunho', atualizado=? WHERE id=?").run(agora(), rvm[1]);
-    if (an.prontuario_id) anotar("prontuario", an.prontuario_id, "Anamnese reaberta para correção", rotuloModelo(an.tipo), s);
+    await Q.run("UPDATE anamneses SET status='Rascunho', atualizado=? WHERE id=?", agora(), rvm[1]);
+    if (an.prontuario_id) await anotar("prontuario", an.prontuario_id, "Anamnese reaberta para correção", rotuloModelo(an.tipo), s);
     return json(res, 200, { ok: true });
   }
 
@@ -1396,18 +1371,18 @@ async function rotaApi(req, res, p) {
   const vm = p.match(/^prontuario\/(\d+)\/atendimentos\/(\d+)$/);
   if (vm && (req.method === "POST" || req.method === "DELETE")) {
     if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(vm[1]);
-    const at = db.prepare("SELECT * FROM atendimentos WHERE id=?").get(vm[2]);
+    const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", vm[1]);
+    const at = await Q.get("SELECT * FROM atendimentos WHERE id=?", vm[2]);
     if (!pr || !at) return json(res, 404, { error: "Prontuário ou agendamento não encontrado." });
     if (req.method === "POST") {
       // a pasta é do paciente: não se pendura o atendimento de outra pessoa
       if (String(at.paciente_id) !== String(pr.paciente_id))
         return json(res, 400, { error: "Este agendamento é de outro paciente." });
-      db.prepare("UPDATE atendimentos SET prontuario_id=? WHERE id=?").run(pr.id, at.id);
-      anotar("prontuario", pr.id, "Agendamento vinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
+      await Q.run("UPDATE atendimentos SET prontuario_id=? WHERE id=?", pr.id, at.id);
+      await anotar("prontuario", pr.id, "Agendamento vinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
     } else {
-      db.prepare("UPDATE atendimentos SET prontuario_id=NULL WHERE id=?").run(at.id);
-      anotar("prontuario", pr.id, "Agendamento desvinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
+      await Q.run("UPDATE atendimentos SET prontuario_id=NULL WHERE id=?", at.id);
+      await anotar("prontuario", pr.id, "Agendamento desvinculado", `${at.data || ""} ${at.hora || ""}`.trim(), s);
     }
     return json(res, 200, { ok: true });
   }
@@ -1417,15 +1392,14 @@ async function rotaApi(req, res, p) {
   const dm = p.match(/^prontuario\/(\d+)\/disponiveis$/);
   if (dm && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(dm[1]);
+    const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", dm[1]);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
-    return json(res, 200, db.prepare(
-      `SELECT a.*, p.nome procedimento_nome, pf.nome profissional_nome
+    return json(res, 200, await Q.all(`SELECT a.*, p.nome procedimento_nome, pf.nome profissional_nome
          FROM atendimentos a
          LEFT JOIN procedimentos p ON p.id = a.procedimento_id
          LEFT JOIN profissionais pf ON pf.id = a.profissional_id
         WHERE a.paciente_id = ? AND a.prontuario_id IS NULL
-        ORDER BY a.data DESC, a.hora DESC, a.id DESC`).all(pr.paciente_id));
+        ORDER BY a.data DESC, a.hora DESC, a.id DESC`, pr.paciente_id));
   }
 
   /* -------- Arquivar / restaurar lançamento (nunca excluir) ------------- */
@@ -1433,13 +1407,12 @@ async function rotaApi(req, res, p) {
   if (rm && req.method === "POST") {
     if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
     const id = rm[1], arq = rm[2] === "arquivar";
-    const reg = db.prepare("SELECT * FROM prontuario_registros WHERE id=?").get(id);
+    const reg = await Q.get("SELECT * FROM prontuario_registros WHERE id=?", id);
     if (!reg) return json(res, 404, { error: "Lançamento não encontrado." });
     if (s.perfil === "profissional" && String(reg.usuario_id) !== String(s.userId))
       return json(res, 403, { error: "Lançamento de outro profissional." });
-    db.prepare("UPDATE prontuario_registros SET arquivado=?, arquivado_em=? WHERE id=?")
-      .run(arq ? 1 : 0, arq ? agora() : null, id);
-    anotar("prontuario", reg.prontuario_id, (arq ? "Lançamento arquivado: " : "Lançamento restaurado: ") + rotuloTipo(reg.tipo), "", s);
+    await Q.run("UPDATE prontuario_registros SET arquivado=?, arquivado_em=? WHERE id=?", arq ? 1 : 0, arq ? agora() : null, id);
+    await anotar("prontuario", reg.prontuario_id, (arq ? "Lançamento arquivado: " : "Lançamento restaurado: ") + rotuloTipo(reg.tipo), "", s);
     return json(res, 200, { ok: true });
   }
 
@@ -1447,9 +1420,7 @@ async function rotaApi(req, res, p) {
   const hm2 = p.match(/^historico\/(paciente|prontuario)\/(\d+)$/);
   if (hm2 && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    return json(res, 200, db.prepare(
-      "SELECT * FROM historico WHERE entidade=? AND entidade_id=? ORDER BY criado DESC, id DESC"
-    ).all(hm2[1], hm2[2]));
+    return json(res, 200, await Q.all("SELECT * FROM historico WHERE entidade=? AND entidade_id=? ORDER BY criado DESC, id DESC", hm2[1], hm2[2]));
   }
 
   /* ------- Prontuários de um paciente, com a contagem dos seus vínculos ---
@@ -1458,30 +1429,28 @@ async function rotaApi(req, res, p) {
   const pm2 = p.match(/^pacientes\/(\d+)\/prontuarios$/);
   if (pm2 && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    return json(res, 200, db.prepare(`SELECT pr.*,
+    return json(res, 200, await Q.all(`SELECT pr.*,
         (SELECT COUNT(*) FROM prontuario_registros r WHERE r.prontuario_id=pr.id AND r.arquivado=0) lancamentos,
         (SELECT COUNT(*) FROM anamneses an WHERE an.prontuario_id=pr.id) anamneses,
         (SELECT COUNT(*) FROM atendimentos at WHERE at.prontuario_id=pr.id) atendimentos
-      FROM prontuario pr WHERE pr.paciente_id=? ORDER BY pr.status, pr.especialidade`).all(pm2[1]));
+      FROM prontuario pr WHERE pr.paciente_id=? ORDER BY pr.status, pr.especialidade`, pm2[1]));
   }
 
   /* ------- O que está pendurado numa pasta (tela do prontuário) --------- */
   const vlm = p.match(/^prontuario\/(\d+)\/vinculos$/);
   if (vlm && req.method === "GET") {
     if (!podeLer(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    const pr = db.prepare("SELECT * FROM prontuario WHERE id=?").get(vlm[1]);
+    const pr = await Q.get("SELECT * FROM prontuario WHERE id=?", vlm[1]);
     if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
     return json(res, 200, {
       prontuario: pr,
-      anamneses: db.prepare(
-        "SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado) DESC, id DESC").all(pr.id),
-      atendimentos: db.prepare(
-        `SELECT a.*, pr2.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
+      anamneses: await Q.all("SELECT id,tipo,procedimento,status,data,profissional,finalizada_em FROM anamneses WHERE prontuario_id=? ORDER BY COALESCE(NULLIF(data,''),criado) DESC, id DESC", pr.id),
+      atendimentos: await Q.all(`SELECT a.*, pr2.nome procedimento_nome, pf.nome profissional_nome, sa.nome sala_nome
            FROM atendimentos a
            LEFT JOIN procedimentos pr2 ON pr2.id=a.procedimento_id
            LEFT JOIN profissionais pf ON pf.id=a.profissional_id
            LEFT JOIN salas sa ON sa.id=a.sala_id
-          WHERE a.prontuario_id=? ORDER BY a.data DESC, a.hora DESC, a.id DESC`).all(pr.id),
+          WHERE a.prontuario_id=? ORDER BY a.data DESC, a.hora DESC, a.id DESC`, pr.id),
     });
   }
 
@@ -1563,25 +1532,29 @@ async function rotaApi(req, res, p) {
            : tabela === "prontuario" ? " ORDER BY status, especialidade, id"
            : tabela === "prontuario_registros" ? " ORDER BY data DESC, id DESC"
            : " ORDER BY id DESC";
-      const linhas = db.prepare(sql).all(...args);
-      if (tabela === "profissionais") linhas.forEach(anexarAcesso);
+      const linhas = await Q.all(sql, ...args);
+      /* Promise.all e não forEach: `forEach` ignora o valor devolvido pelo
+         callback, então com uma função assíncrona ele dispara todas e segue em
+         frente sem esperar nenhuma — a resposta sairia antes de os logins serem
+         anexados, e a coluna chegaria vazia na tela sem erro nenhum. */
+      if (tabela === "profissionais") await Promise.all(linhas.map(anexarAcesso));
       return json(res, 200, linhas);
     }
     if (req.method === "GET" && id) {
-      const row = db.prepare(`SELECT * FROM ${tabela} WHERE id=?`).get(id);
+      const row = await Q.get(`SELECT * FROM ${tabela} WHERE id=?`, id);
       if (!row) return json(res, 404, { error: "Registro não encontrado." });
       if (donoCol && String(row[donoCol]) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." });
-      if (tabela === "profissionais") anexarAcesso(row);
+      if (tabela === "profissionais") await anexarAcesso(row);
       // a tela avisa quando o registro tem histórico e por isso não pode ser excluído
       if (["profissionais", "pacientes", "procedimentos", "convenios", "salas", "prontuario"].includes(tabela))
-        row._vinculos = vinculosDe(tabela, id);
+        row._vinculos = await vinculosDe(tabela, id);
       /* A pasta a que esta anamnese pertence, RESOLVIDA no servidor. É por ela
          que a tela decide mostrar ou não o Excluir — não pelo campo
          prontuario_id, que pode ter sobrado apontando para pasta apagada, nem
          pelo cache do navegador, que a recepção nem carrega. */
       if (tabela === "anamneses") {
         row._prontuario = row.prontuario_id
-          ? db.prepare("SELECT id,numero,especialidade,status FROM prontuario WHERE id=?").get(row.prontuario_id) || null
+          ? await Q.get("SELECT id,numero,especialidade,status FROM prontuario WHERE id=?", row.prontuario_id) || null
           : null;
       }
       return json(res, 200, row);
@@ -1594,11 +1567,10 @@ async function rotaApi(req, res, p) {
          de segurança caso duas telas salvem ao mesmo tempo. */
       if (tabela === "prontuario") {
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente." });
-        const e0 = pacienteInativo(b.paciente_id);
+        const e0 = await pacienteInativo(b.paciente_id);
         if (e0) return json(res, 400, { error: e0 });
         if (!b.especialidade) return json(res, 400, { error: "Selecione o procedimento deste prontuário." });
-        const ja = db.prepare("SELECT numero FROM prontuario WHERE paciente_id=? AND especialidade=?")
-          .get(b.paciente_id, b.especialidade);
+        const ja = await Q.get("SELECT numero FROM prontuario WHERE paciente_id=? AND especialidade=?", b.paciente_id, b.especialidade);
         if (ja) return json(res, 409, { error: `Este paciente já tem prontuário de ${b.especialidade} (nº ${ja.numero}). Abra o existente — cada procedimento tem um único prontuário.` });
         if (!b.aberto_em) b.aberto_em = new Date().toISOString().slice(0, 10);
       }
@@ -1611,14 +1583,14 @@ async function rotaApi(req, res, p) {
       if (tabela === "atendimentos") {
         // só se agenda para quem tem ficha: é o que garante código e histórico
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente. Só é possível agendar para paciente cadastrado." });
-        const e0 = pacienteInativo(b.paciente_id);
+        const e0 = await pacienteInativo(b.paciente_id);
         if (e0) return json(res, 400, { error: e0 });
-        const e = validarAgenda(b.profissional_id, b.data, b.hora, null, b.hora_fim, b.sala_id);
+        const e = await validarAgenda(b.profissional_id, b.data, b.hora, null, b.hora_fim, b.sala_id);
         if (e) return json(res, 400, { error: e });
       }
       if (tabela === "anamneses") {
         if (!b.paciente_id) return json(res, 400, { error: "Selecione o paciente." });
-        const e0 = pacienteInativo(b.paciente_id);
+        const e0 = await pacienteInativo(b.paciente_id);
         if (e0) return json(res, 400, { error: e0 });
         if (!MODELOS_ANAMNESE[b.tipo]) return json(res, 400, { error: "Tipo de anamnese inválido." });
         if (typeof b.dados !== "string") b.dados = JSON.stringify(b.dados || {});
@@ -1627,40 +1599,39 @@ async function rotaApi(req, res, p) {
       const temCriado = COLS[tabela].has("criado");
       const campos = temCriado ? use.concat("criado") : use;
       const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
-      const info = db.prepare(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`).run(...valores);
-      const novoId = Number(info.lastInsertRowid);
+      const novoId = await Q.inserir(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`, ...valores);
       // toda pasta de prontuário nasce com o seu número de controle
       if (tabela === "prontuario") {
-        const numero = emitirNumeroProntuario(novoId);
-        anotar("prontuario", novoId, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
-        anotar("paciente", b.paciente_id, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
+        const numero = await emitirNumeroProntuario(novoId);
+        await anotar("prontuario", novoId, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
+        await anotar("paciente", b.paciente_id, "Prontuário aberto", `${numero} · ${b.especialidade}`, s);
         return json(res, 200, { ok: true, id: novoId, numero });
       }
       if (tabela === "prontuario_registros") {
-        const pr = db.prepare("SELECT paciente_id,numero FROM prontuario WHERE id=?").get(b.prontuario_id) || {};
-        anotar("prontuario", b.prontuario_id, "Lançamento: " + rotuloTipo(b.tipo), (b.texto || "").slice(0, 120), s);
-        if (pr.paciente_id) anotar("paciente", pr.paciente_id, "Lançamento no prontuário " + (pr.numero || ""), rotuloTipo(b.tipo), s);
+        const pr = await Q.get("SELECT paciente_id,numero FROM prontuario WHERE id=?", b.prontuario_id) || {};
+        await anotar("prontuario", b.prontuario_id, "Lançamento: " + rotuloTipo(b.tipo), (b.texto || "").slice(0, 120), s);
+        if (pr.paciente_id) await anotar("paciente", pr.paciente_id, "Lançamento no prontuário " + (pr.numero || ""), rotuloTipo(b.tipo), s);
       }
       // todo paciente nasce com o seu código próprio, gerado aqui
       if (tabela === "pacientes") {
-        const codigo = emitirCodigoPaciente(novoId);
-        anotar("paciente", novoId, "Cadastro criado", `${codigo} · ${b.nome || ""}`, s);
+        const codigo = await emitirCodigoPaciente(novoId);
+        await anotar("paciente", novoId, "Cadastro criado", `${codigo} · ${b.nome || ""}`, s);
         return json(res, 200, { ok: true, id: novoId, codigo });
       }
       // o agendamento se pendura na pasta do procedimento, se ela já existir
       if (tabela === "atendimentos") {
-        const pasta = sincronizarProntuarioDoAtendimento(novoId);
+        const pasta = await sincronizarProntuarioDoAtendimento(novoId);
         return json(res, 200, { ok: true, id: novoId, prontuario: pasta || null });
       }
       // cadastrar profissional já cria o acesso dele ao sistema
       if (tabela === "profissionais") {
-        const e = salvarAcessoProfissional(novoId, b, s.perfil);
+        const e = await salvarAcessoProfissional(novoId, b, s.perfil);
         if (e) return json(res, 200, { ok: true, id: novoId, aviso: e });
       }
       return json(res, 200, { ok: true, id: novoId });
     }
     if (req.method === "PUT" && id) {
-      if (donoCol) { const dono = db.prepare(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`).get(id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
+      if (donoCol) { const dono = await Q.get(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`, id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
       const b = await readBody(req);
       delete b.usuario_id;                                            // não se troca o dono por aqui
       if (donoCol === "profissional_id") delete b.profissional_id;    // o profissional não reatribui o atendimento
@@ -1668,9 +1639,9 @@ async function rotaApi(req, res, p) {
       // edição — e só nesse caso o vínculo com o prontuário é refeito
       let antesAtend = null;
       if (tabela === "atendimentos") {
-        antesAtend = db.prepare("SELECT profissional_id,data,hora,hora_fim,sala_id,procedimento_id,especialidade FROM atendimentos WHERE id=?").get(id) || {};
+        antesAtend = await Q.get("SELECT profissional_id,data,hora,hora_fim,sala_id,procedimento_id,especialidade FROM atendimentos WHERE id=?", id) || {};
         if ("paciente_id" in b && !b.paciente_id) return json(res, 400, { error: "Selecione o paciente. Só é possível agendar para paciente cadastrado." });
-        const e = validarAgenda(b.profissional_id ?? antesAtend.profissional_id, b.data ?? antesAtend.data, b.hora ?? antesAtend.hora, id,
+        const e = await validarAgenda(b.profissional_id ?? antesAtend.profissional_id, b.data ?? antesAtend.data, b.hora ?? antesAtend.hora, id,
           b.hora_fim ?? antesAtend.hora_fim, b.sala_id ?? antesAtend.sala_id);
         if (e) return json(res, 400, { error: e });
       }
@@ -1681,14 +1652,14 @@ async function rotaApi(req, res, p) {
          complementada hoje, e com o quê. */
       let antesReg = null;
       if (tabela === "prontuario_registros")
-        antesReg = db.prepare("SELECT prontuario_id,tipo,texto,data,profissional FROM prontuario_registros WHERE id=?").get(id) || null;
+        antesReg = await Q.get("SELECT prontuario_id,tipo,texto,data,profissional FROM prontuario_registros WHERE id=?", id) || null;
 
       const use = cols.filter((c) => c in b && COLS[tabela].has(c));
-      if (use.length) db.prepare(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`).run(...use.map((c) => b[c]), id);
-      if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) db.prepare("UPDATE anamneses SET atualizado=? WHERE id=?").run(agora(), id);
+      if (use.length) await Q.run(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`, ...use.map((c) => b[c]), id);
+      if (tabela === "anamneses" && COLS.anamneses.has("atualizado")) await Q.run("UPDATE anamneses SET atualizado=? WHERE id=?", agora(), id);
 
       if (antesReg) {
-        const depois = db.prepare("SELECT texto,data,profissional FROM prontuario_registros WHERE id=?").get(id) || {};
+        const depois = await Q.get("SELECT texto,data,profissional FROM prontuario_registros WHERE id=?", id) || {};
         const mudancas = [];
         const t = trechoAlterado(antesReg.texto, depois.texto);
         if (t) mudancas.push(t);
@@ -1697,30 +1668,30 @@ async function rotaApi(req, res, p) {
         if (String(antesReg.profissional || "") !== String(depois.profissional || ""))
           mudancas.push(`profissional ${antesReg.profissional || "—"} → ${depois.profissional || "—"}`);
         if (mudancas.length) {
-          db.prepare("UPDATE prontuario_registros SET atualizado=? WHERE id=?").run(agora(), id);
+          await Q.run("UPDATE prontuario_registros SET atualizado=? WHERE id=?", agora(), id);
           const rot = "Lançamento atualizado: " + rotuloTipo(antesReg.tipo);
-          anotar("prontuario", antesReg.prontuario_id, rot, mudancas.join(" · "), s);
-          const pr = db.prepare("SELECT paciente_id,numero FROM prontuario WHERE id=?").get(antesReg.prontuario_id) || {};
-          if (pr.paciente_id) anotar("paciente", pr.paciente_id, rot + (pr.numero ? " (" + pr.numero + ")" : ""), mudancas.join(" · "), s);
+          await anotar("prontuario", antesReg.prontuario_id, rot, mudancas.join(" · "), s);
+          const pr = await Q.get("SELECT paciente_id,numero FROM prontuario WHERE id=?", antesReg.prontuario_id) || {};
+          if (pr.paciente_id) await anotar("paciente", pr.paciente_id, rot + (pr.numero ? " (" + pr.numero + ")" : ""), mudancas.join(" · "), s);
         }
       }
       if (tabela === "atendimentos") {
-        const pasta = sincronizarProntuarioDoAtendimento(id, antesAtend);
+        const pasta = await sincronizarProntuarioDoAtendimento(id, antesAtend);
         return json(res, 200, { ok: true, prontuario: pasta || null });
       }
       // editar profissional também mantém o acesso dele em dia (login/senha/bloqueio)
       if (tabela === "profissionais") {
-        const e = salvarAcessoProfissional(id, b, s.perfil);
+        const e = await salvarAcessoProfissional(id, b, s.perfil);
         if (e) return json(res, 200, { ok: true, aviso: e });
       }
       return json(res, 200, { ok: true });
     }
     if (req.method === "DELETE" && id) {
-      if (donoCol) { const dono = db.prepare(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`).get(id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
+      if (donoCol) { const dono = await Q.get(`SELECT ${donoCol} d FROM ${tabela} WHERE id=?`, id); if (dono && String(dono.d) !== String(donoVal)) return json(res, 403, { error: "Registro de outro profissional." }); }
       /* Cadastro com histórico não se apaga — bloqueia-se. Apagar deixaria a
          agenda antiga sem profissional e o prontuário impresso sem procedimento. */
       if (["profissionais", "pacientes", "procedimentos", "convenios", "salas", "prontuario"].includes(tabela)) {
-        const v = vinculosDe(tabela, id);
+        const v = await vinculosDe(tabela, id);
         if (v.length) {
           const podeBloquear = COLS[tabela].has("ativo");
           const saida = tabela === "prontuario"
@@ -1736,21 +1707,21 @@ async function rotaApi(req, res, p) {
          Vale mesmo se a anamnese tiver sido reaberta para correção: o vínculo
          permanece, então o Excluir continua fora. */
       if (tabela === "anamneses") {
-        const an = db.prepare("SELECT prontuario_id FROM anamneses WHERE id=?").get(id);
+        const an = await Q.get("SELECT prontuario_id FROM anamneses WHERE id=?", id);
         /* O que barra é o prontuário EXISTIR — não o campo estar preenchido.
            Um id apontando para pasta apagada é lixo, não vínculo, e não pode
            deixar a anamnese impossível de excluir. */
         const pr = an && an.prontuario_id
-          ? db.prepare("SELECT numero, especialidade FROM prontuario WHERE id=?").get(an.prontuario_id) : null;
+          ? await Q.get("SELECT numero, especialidade FROM prontuario WHERE id=?", an.prontuario_id) : null;
         if (pr) {
           return json(res, 409, { error: `Não dá para excluir: esta anamnese está vinculada ao prontuário ${pr.numero || ""}`
             + `${pr.especialidade ? " (" + pr.especialidade + ")" : ""} e faz parte do registro clínico dele.` });
         }
         // vínculo morto: solta antes de apagar, para não deixar rastro estranho
-        if (an && an.prontuario_id) db.prepare("UPDATE anamneses SET prontuario_id=NULL WHERE id=?").run(id);
+        if (an && an.prontuario_id) await Q.run("UPDATE anamneses SET prontuario_id=NULL WHERE id=?", id);
       }
       // profissional sem histórico: o acesso dele vai junto
-      if (tabela === "profissionais") db.prepare("DELETE FROM g_usuarios WHERE profissional_id=?").run(id);
+      if (tabela === "profissionais") await Q.run("DELETE FROM g_usuarios WHERE profissional_id=?", id);
 
       /* Apagar a pasta SOLTA o que estava arquivado nela, sem destruir nada:
          a anamnese volta a ser rascunho (e aí sim pode ser excluída ou
@@ -1759,18 +1730,18 @@ async function rotaApi(req, res, p) {
          quem finalizou a anamnese errada. */
       let soltos = null;
       if (tabela === "prontuario") {
-        const pr = db.prepare("SELECT numero, paciente_id, especialidade FROM prontuario WHERE id=?").get(id) || {};
-        const nAn = db.prepare("UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL WHERE prontuario_id=?").run(id).changes;
-        const nAt = db.prepare("UPDATE atendimentos SET prontuario_id=NULL WHERE prontuario_id=?").run(id).changes;
+        const pr = await Q.get("SELECT numero, paciente_id, especialidade FROM prontuario WHERE id=?", id) || {};
+        const nAn = (await Q.run("UPDATE anamneses SET prontuario_id=NULL, status='Rascunho', finalizada_em=NULL WHERE prontuario_id=?", id)).changes;
+        const nAt = (await Q.run("UPDATE atendimentos SET prontuario_id=NULL WHERE prontuario_id=?", id)).changes;
         soltos = { anamneses: nAn, atendimentos: nAt };
         if (pr.paciente_id) {
           const det = [nAn ? `${nAn} anamnese(s) voltaram a rascunho` : "", nAt ? `${nAt} agendamento(s) sem prontuário` : ""]
             .filter(Boolean).join(" · ");
-          anotar("paciente", pr.paciente_id, `Prontuário excluído${pr.numero ? " " + pr.numero : ""}`,
+          await anotar("paciente", pr.paciente_id, `Prontuário excluído${pr.numero ? " " + pr.numero : ""}`,
             [pr.especialidade, det].filter(Boolean).join(" — "), s);
         }
       }
-      db.prepare(`DELETE FROM ${tabela} WHERE id=?`).run(id);
+      await Q.run(`DELETE FROM ${tabela} WHERE id=?`, id);
       return json(res, 200, soltos ? { ok: true, soltos } : { ok: true });
     }
   }
@@ -1779,4 +1750,4 @@ async function rotaApi(req, res, p) {
 }
 
 
-module.exports = { handleRestrito };
+module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION };

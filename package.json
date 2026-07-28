@@ -1,17 +1,22 @@
 {
   "name": "bemestarclinic",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "private": true,
-  "description": "Site, painel administrativo (/admin) e sistema de gestão clínica (/restrito) da BemEstarClinic.",
+  "description": "Site, painel administrativo (/admin, SQLite) e sistema de gestão clínica (/restrito, PostgreSQL) da BemEstarClinic.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "publicar": "node server.js --publicar",
     "backup": "node server.js --backup",
-    "backup:status": "node server.js --backup-status"
+    "backup:status": "node server.js --backup-status",
+    "migrar": "node migrar.js",
+    "migrar:status": "node migrar.js --status",
+    "migrar:dados": "node migrar-dados.js",
+    "migrar:conferir": "node migrar-dados.js --conferir"
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1"
+    "better-sqlite3": "^12.4.1",
+    "pg": "^8.22.0"
   },
   "engines": {
     "node": ">=20"

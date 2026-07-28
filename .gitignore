@@ -20,6 +20,14 @@ assets/img/uploads/
 # em hipótese alguma — o git guardaria cópia permanente no histórico.
 restrito/arquivos/
 
+# Credenciais do PostgreSQL (sistema de gestão). Em produção quem entrega as
+# variáveis é o systemd (EnvironmentFile=/etc/bemestar.env); este .env é só
+# para desenvolvimento — e mesmo assim nunca entra no repositório.
+.env
+
+# Dumps SQL gerados pelo botão "Backup do banco" do painel.
+dumps/
+
 # Sistema / editor
 Thumbs.db
 .DS_Store

@@ -62,9 +62,10 @@ restaurar_e_sair() {
 }
 
 # ----------------------------------------------------------- 1. backup
-# Usa o próprio backup.js: VACUUM INTO (cópia consistente com o serviço no ar) e
-# integrity_check na cópia. Cobre site.db e gestao.db — este último guarda
-# prontuário e anamnese, dado pessoal SENSÍVEL (LGPD).
+# Usa o próprio backup.js. Dois motores, duas técnicas:
+#   · site.db  (SQLite)     → VACUUM INTO + integrity_check na cópia
+#   · gestão   (PostgreSQL) → pg_dump em .sql
+# A gestão guarda prontuário e anamnese, dado pessoal SENSÍVEL (LGPD).
 azul "1/8  Backup dos bancos"
 mkdir -p "$BACKUP_DIR"
 if [ -f data/site.db ] || [ -f data/gestao.db ]; then
@@ -135,13 +136,33 @@ if [ -f package.json ]; then
     if npm ci --omit=dev --no-audit --no-fund 2>/dev/null || npm install --omit=dev --no-audit --no-fund; then
       verde "     node_modules em dia"
     else
-      amarelo "     npm install falhou — o sistema sobe com o driver de fábrica do Node"
+      # O `pg` NÃO tem alternativa: sem ele o /restrito não conecta e o serviço
+      # não sobe. Diferente do better-sqlite3, que tinha o driver de fábrica do
+      # Node como reserva. Por isso aqui é ERRO, não aviso.
+      vermelho "     npm install FALHOU — sem o pacote 'pg' o /restrito não sobe"
+      amarelo  "     tente à mão: npm ci --omit=dev   (e confira a rede do servidor)"
     fi
   else
-    amarelo "     npm não encontrado — instale com: apt install -y npm"
+    vermelho "     npm não encontrado — instale com: apt install -y npm"
   fi
 else
   amarelo "     sem package.json (versão antiga) — nada a instalar"
+fi
+
+# ------------------------------------------------- 6b. migrations do Postgres
+# O esquema do /restrito vive em migrations/*.sql. O boot do serviço já aplica o
+# que falta, mas rodar AQUI é melhor: se uma migração falhar, o erro aparece no
+# deploy, com o serviço ainda parado — e não num restart que não sobe.
+azul "6b/8 Migrations do PostgreSQL"
+if [ -f migrar.js ]; then
+  if node migrar.js 2>&1 | sed 's/^/     /'; then
+    verde "     esquema em dia"
+  else
+    vermelho "     MIGRATION FALHOU — o /restrito não vai subir. Corrija antes de seguir."
+    amarelo  "     detalhes: node migrar.js --status"
+  fi
+else
+  amarelo "     sem migrar.js (versão anterior ao PostgreSQL)"
 fi
 
 # --------------------------------------------------------- 7. devolver

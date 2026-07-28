@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.11.0";
+const APP_VERSION = "1.12.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -80,7 +80,13 @@ const CSP_PAINEL = "default-src 'self'; base-uri 'none'; object-src 'none'; fram
 
 /* Sistema de gestão da clínica (/restrito) — app INDEPENDENTE deste painel.
    Compartilha só o processo e a porta; banco, sessão e login são separados. */
-const { handleRestrito } = require("./restrito");
+/* O .env é lido ANTES do require do restrito.js: aquele módulo monta a conexão
+   do Postgres a partir das variáveis de ambiente, então elas precisam já estar
+   no lugar. Em produção quem as entrega é o systemd (EnvironmentFile) e este
+   carregarEnv não acha arquivo nenhum — o que está certo. */
+const { Q, carregarAmbiente } = require("./pg");
+carregarAmbiente(__dirname);
+const { handleRestrito, iniciarRestrito } = require("./restrito");
 
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
@@ -1258,7 +1264,13 @@ if (process.argv.includes("--publicar")) {
    pelo `node server.js --backup`, para que as duas gravem no mesmo lugar. */
 const BACKUP_CFG = {
   destino: path.join(ROOT, "backups"),
-  bancos: [path.join(ROOT, "data", "site.db"), path.join(ROOT, "data", "gestao.db")],
+  /* Só o banco do SITE é arquivo. A gestão virou PostgreSQL e é copiada por
+     pg_dump — o gestao.db saiu daqui na v1.12.0. Se ele ainda estiver no disco,
+     é o arquivo morto de antes da migração, e não deve ser copiado como se
+     fosse o banco vivo: daria a impressão de que há backup atualizado dos
+     prontuários quando o conteúdo pararia na data da virada. */
+  bancos: [path.join(ROOT, "data", "site.db")],
+  postgres: require("./pg").config(),
   intervaloHoras: Number(process.env.BACKUP_HORAS) || 24,
   manter: Number(process.env.BACKUP_MANTER) || 30,
 };
@@ -1278,7 +1290,7 @@ if (process.argv.includes("--backup-status")) {
   process.exit(0);
 }
 
-http.createServer(async (req, res) => {
+const servidor = http.createServer(async (req, res) => {
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
   // Cabeçalhos de segurança em toda resposta
@@ -1519,33 +1531,69 @@ http.createServer(async (req, res) => {
     console.error(`  ✖ erro em ${p}:`, e.message);
     json(res, 500, { error: "Erro interno" });
   }
-// Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
-// ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.
-// Para expor direto (ambiente sem proxy), rode com HOST=0.0.0.0
-}).listen(PORT, process.env.HOST || "127.0.0.1", () => {
-  console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
-  console.log(`  · Site:   http://localhost:${PORT}/`);
-  console.log(`  · Painel: http://localhost:${PORT}/admin/`);
-  console.log(`  · Banco:  ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""}`);
-
-  /* Backup automático dos DOIS bancos: o do site e o da gestão (prontuários).
-     Roda aqui, no processo do site, porque é ele que sobe com o systemd — o
-     restrito.js não tem boot próprio. Diário, guardando 30 cópias (~1 mês). */
-  agendarBackups(BACKUP_CFG);
-
-  // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
-  // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.
-  try {
-    setS("_teste_escrita", String(Date.now()));
-    db.prepare("DELETE FROM settings WHERE key='_teste_escrita'").run();
-  } catch (e) {
-    const usuario = (() => { try { return require("node:os").userInfo().username; } catch { return "root"; } })();
-    console.error(`  ✖ BANCO SEM PERMISSÃO DE ESCRITA: ${e.message}`);
-    console.error("    O painel não vai conseguir salvar nada. O processo roda como:", usuario);
-    console.error(`    Corrija com: sudo chown -R ${usuario}: "${ROOT}/data" "${ROOT}/assets/img/uploads"`);
-  }
-  // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
-  if (confereSenha("bemestar-admin", getS("admin_password_hash")))
-    console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
-  else console.log("");
 });
+
+/* ==========================================================================
+   SUBIDA DO SERVIDOR
+
+   A porta só abre DEPOIS que o sistema de gestão terminou de inicializar
+   (conectar no PostgreSQL, aplicar migrations, semear cadastros).
+
+   Antes isso não era preciso: o SQLite abria de forma síncrona, durante o
+   `require`, então quando o listen acontecia tudo já estava pronto. Conectar
+   no Postgres é assíncrono — sem este await, a clínica poderia entrar no
+   sistema durante a migração e receber "relation does not exist" numa tela de
+   prontuário.
+
+   E se a inicialização FALHAR, o processo não sobe. Um sistema no ar sem banco
+   é pior que um sistema fora do ar: o segundo o cliente percebe na hora.
+   ========================================================================== */
+(async () => {
+  try {
+    await iniciarRestrito();
+  } catch (e) {
+    console.error("\n  ✖ NÃO CONSEGUI INICIAR O SISTEMA DE GESTÃO (/restrito).");
+    console.error("    " + e.message);
+    console.error("\n    O /restrito usa PostgreSQL. Verifique:");
+    console.error("      · o serviço está no ar?   systemctl status postgresql");
+    console.error("      · as credenciais estão no ambiente? (PGHOST/PGUSER/PGPASSWORD/PGDATABASE)");
+    console.error("        em produção vêm de /etc/bemestar.env, lido pelo systemd");
+    console.error("      · o banco existe e o usuário tem acesso?  psql -U bemestar -d bemestar_gestao -c '\\dt'\n");
+    process.exit(1);
+  }
+
+  // Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
+  // ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.
+  // Para expor direto (ambiente sem proxy), rode com HOST=0.0.0.0
+  servidor.listen(PORT, process.env.HOST || "127.0.0.1", async () => {
+    console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
+    console.log(`  · Site:   http://localhost:${PORT}/`);
+    console.log(`  · Painel: http://localhost:${PORT}/admin/`);
+    console.log(`  · Banco do site:    ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""} (data/site.db)`);
+    try {
+      const v = await Q.versao();
+      console.log(`  · Banco da gestão:  PostgreSQL — ${v.d} (usuário ${v.u})`);
+    } catch { /* não chega aqui: iniciarRestrito já teria falhado */ }
+
+    /* Backup automático dos DOIS bancos: o do site (cópia do arquivo) e o da
+       gestão (dump SQL do Postgres). Roda aqui, no processo do site, porque é
+       ele que sobe com o systemd — o restrito.js não tem boot próprio. */
+    agendarBackups(BACKUP_CFG);
+
+    // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
+    // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.
+    try {
+      setS("_teste_escrita", String(Date.now()));
+      db.prepare("DELETE FROM settings WHERE key='_teste_escrita'").run();
+    } catch (e) {
+      const usuario = (() => { try { return require("node:os").userInfo().username; } catch { return "root"; } })();
+      console.error(`  ✖ BANCO DO SITE SEM PERMISSÃO DE ESCRITA: ${e.message}`);
+      console.error("    O painel não vai conseguir salvar nada. O processo roda como:", usuario);
+      console.error(`    Corrija com: sudo chown -R ${usuario}: "${ROOT}/data" "${ROOT}/assets/img/uploads"`);
+    }
+    // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
+    if (confereSenha("bemestar-admin", getS("admin_password_hash")))
+      console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
+    else console.log("");
+  });
+})();

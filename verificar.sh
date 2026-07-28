@@ -78,20 +78,42 @@ else
 fi
 echo
 
-echo "--- Banco da gestão (/restrito) ---"
-if [ -f data/gestao.db ]; then
-  echo "  arquivo: $(du -h data/gestao.db | cut -f1)"
-  node -e '
-    const { abrirBanco } = require("./db");
+echo "--- Banco da gestão (/restrito · PostgreSQL) ---"
+echo "  serviço postgres : $(systemctl is-active postgresql 2>/dev/null || echo '—')"
+echo "  pg_dump          : $(command -v pg_dump >/dev/null 2>&1 && pg_dump --version | head -1 || echo 'AUSENTE — instale postgresql-client, o backup depende dele')"
+node -e '
+  const { Q, carregarAmbiente } = require("./pg");
+  carregarAmbiente();
+  (async () => {
     try {
-      const db = abrirBanco("data/gestao.db");
-      for (const t of ["pacientes","profissionais","atendimentos","prontuario","prontuario_registros","anamneses"])
-        console.log("  " + t.padEnd(22) + db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c);
-      console.log("  integridade           " + db.prepare("PRAGMA integrity_check").get().integrity_check);
-    } catch (e) { console.log("  ERRO ao ler: " + e.message); }
-  ' 2>/dev/null
-else
-  echo "  data/gestao.db NÃO EXISTE"
+      const v = await Q.versao();
+      console.log("  conexão          OK — " + v.d + " (usuário " + v.u + ")");
+      for (const t of ["pacientes","profissionais","atendimentos","prontuario","prontuario_registros","anamneses","historico"]) {
+        const r = await Q.get(`SELECT COUNT(*) c FROM ${t}`);
+        console.log("  " + t.padEnd(22) + r.c);
+      }
+      const m = await Q.all("SELECT versao FROM schema_migrations ORDER BY versao");
+      console.log("  migrations aplicadas   " + m.length + (m.length ? " (última: " + m[m.length-1].versao + ")" : ""));
+      /* Tamanho ocupado: é o número que avisa quando o disco vai apertar, muito
+         antes de o serviço parar por falta de espaço. */
+      const s = await Q.get("SELECT pg_size_pretty(pg_database_size(current_database())) t");
+      console.log("  tamanho                " + s.t);
+    } catch (e) {
+      console.log("  ✖ NÃO CONECTOU: " + e.message.split("\n")[0]);
+      console.log("    confira /etc/bemestar.env e: systemctl status postgresql");
+    }
+    await Q.fechar().catch(() => {});
+  })();
+' 2>/dev/null
+
+# O arquivo antigo do SQLite, se ainda estiver no disco, é ARQUIVO MORTO: o
+# sistema não o abre mais desde a v1.12.0. Avisar evita a leitura errada de que
+# os prontuários ainda estão ali — e lembra que ele guarda dado sensível.
+if [ -f data/gestao.db ]; then
+  echo
+  echo "  ⚠ data/gestao.db ainda existe ($(du -h data/gestao.db | cut -f1)) — é o banco ANTES"
+  echo "    da migração para o PostgreSQL. Não é mais lido. Guarde-o fora do servidor"
+  echo "    (contém prontuário) ou renomeie para .antes-do-postgres."
 fi
 echo
 
