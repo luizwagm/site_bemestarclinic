@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.12.1";
+const APP_VERSION = "1.14.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -86,7 +86,8 @@ const CSP_PAINEL = "default-src 'self'; base-uri 'none'; object-src 'none'; fram
    carregarEnv não acha arquivo nenhum — o que está certo. */
 const { Q, carregarAmbiente } = require("./pg");
 carregarAmbiente(__dirname);
-const { handleRestrito, iniciarRestrito } = require("./restrito");
+const { handleRestrito, iniciarRestrito, sessao: sessaoRestrito, auditar: auditarRestrito,
+        registrarEncerrarPainel } = require("./restrito");
 
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
@@ -596,6 +597,24 @@ const authed = (req) => {
   sessions.set(m[1], Date.now());   // renova enquanto estiver em uso
   return true;
 };
+
+/* Sair do sistema de gestão encerra também a sessão do painel DESTE navegador.
+   Quem entrou aqui pelo atalho de 9 pontos não digitou a senha do painel: a
+   porta foi aberta pela credencial do /restrito, e some junto com ela.
+
+   Quem entrou no painel pela senha, no mesmo navegador, também sai — e é o
+   comportamento certo num computador de recepção, onde "saí do sistema"
+   precisa querer dizer que o computador ficou trancado.
+
+   Devolve true se havia mesmo uma sessão para encerrar; é o que permite ao
+   /restrito só limpar o cookie quando fez sentido. */
+registrarEncerrarPainel((req) => {
+  const m = /(?:^|;\s*)sid=([a-f0-9]+)/.exec(req.headers.cookie || "");
+  if (!m || !sessions.has(m[1])) return false;
+  sessions.delete(m[1]);
+  console.log("  · /admin: sessão encerrada junto com a saída do /restrito");
+  return true;
+});
 
 /* Sem isto, dá para tentar senha à vontade: 100 mil tentativas por minuto
    quebram qualquer senha curta. O bloqueio é por IP e some sozinho. */
@@ -1358,6 +1377,66 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
       // a página de aviso; com 404 acharia que o site sumiu.
       res.writeHead(503, { "Content-Type": MIME[".html"], "Retry-After": "3600", "Cache-Control": "no-store" });
       return res.end(corpo);
+    }
+
+    /* ======================================================================
+       ENTRAR NO PAINEL DO SITE VINDO DO SISTEMA DE GESTÃO
+
+       O atalho de 9 pontos do /restrito leva para cá. Quem já está logado
+       como ADMINISTRADOR do sistema de gestão entra no /admin sem digitar a
+       senha do painel de novo.
+
+       POR QUE ISTO É SEGURO — e onde estão os limites:
+
+       · A troca acontece INTEIRAMENTE NO SERVIDOR. O navegador não recebe,
+         nem envia, nem guarda a senha do painel em momento algum. Não há
+         token na URL que possa vazar pelo histórico, pelo Referer ou por um
+         print de tela.
+
+       · SÓ o perfil `admin` do /restrito passa. A secretaria e o
+         profissional recebem 403. Sem isso, quem atende o telefone poderia
+         publicar conteúdo no site da clínica — é escalação de privilégio, e
+         silenciosa, que é a pior espécie.
+
+       · Só aceita navegação a partir do PRÓPRIO site (Sec-Fetch-Site). Um
+         link numa página de terceiros não consegue criar a sessão do painel
+         no navegador de quem está logado. Navegadores antigos, que não
+         mandam esse cabeçalho, continuam funcionando — o que se perde ali é
+         uma camada extra, não a checagem principal, que é o perfil.
+
+       · Fica registrado na auditoria. Pular de um sistema para o outro é
+         exatamente o tipo de movimento que a trilha existe para mostrar.
+       ====================================================================== */
+    if (p === "/admin/entrar" && req.method === "GET") {
+      const s = sessaoRestrito(req);
+      if (!s) { res.writeHead(302, { Location: "/restrito/" }); return res.end(); }
+      if (s.perfil !== "admin") {
+        auditarRestrito({ req, sessao: s, acao: "acesso", modulo: "admin",
+          resumo: `${s.nome} tentou abrir o painel do site sem ser administrador` });
+        res.writeHead(403, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+        return res.end(`<!doctype html><meta charset="utf-8"><title>Sem permissão</title>
+<body style="font-family:system-ui,sans-serif;background:#F8F7FC;color:#2b2b3a;display:grid;place-items:center;height:100vh;margin:0">
+<div style="max-width:30rem;background:#fff;border:1px solid #e6e3f2;border-radius:16px;padding:2rem;text-align:center">
+<h1 style="font-size:1.2rem;color:#5B4FD8;margin:0 0 .7rem">Painel do site</h1>
+<p style="line-height:1.6;margin:0">O painel que edita o site da clínica é exclusivo do administrador do sistema.</p>
+<p style="line-height:1.6;margin:.8rem 0 0"><a href="/restrito/" style="color:#5B4FD8">Voltar ao sistema de gestão</a></p></div>`);
+      }
+      /* `cross-site` é o caso que interessa barrar: alguém em outro domínio
+         induzindo a navegação. `same-origin` (nosso link) e `none` (URL
+         digitada à mão) passam. */
+      if (req.headers["sec-fetch-site"] === "cross-site") {
+        res.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end("Abra o painel pelo atalho dentro do sistema de gestão.");
+      }
+      const t = crypto.randomBytes(24).toString("hex");
+      sessions.set(t, Date.now());
+      const https = req.headers["x-forwarded-proto"] === "https";
+      res.setHeader("Set-Cookie", `sid=${t}; HttpOnly; Path=/; SameSite=Lax${https ? "; Secure" : ""}`);
+      auditarRestrito({ req, sessao: s, acao: "acesso", modulo: "admin",
+        resumo: `${s.nome} abriu o painel do site pelo atalho (entrou sem digitar a senha do painel)` });
+      console.log(`  · /admin: sessão criada pelo atalho do /restrito (${s.nome})`);
+      res.writeHead(302, { Location: "/admin/" });
+      return res.end();
     }
 
     if (p.startsWith("/api/")) {

@@ -128,6 +128,32 @@
     .ed-area p{margin:0 0 .6rem}
     .ed-area ul,.ed-area ol{margin:.4rem 0 .7rem;padding-left:1.5rem}
 
+    /* ------------------ Atalho para os outros sistemas ------------------ */
+    /* A barra do topo alinha à direita (justify-content:flex-end). Este bloco
+       usa margin-right:auto para ficar colado no menu da conta, e não jogado
+       no canto oposto da tela. */
+    .ap-drop{position:relative;margin-left:auto}
+    .ap-trigger{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;
+      border:1px solid transparent;border-radius:10px;background:none;color:var(--muted);cursor:pointer}
+    .ap-trigger svg{fill:currentColor}
+    .ap-trigger:hover{background:#f0f3f8;color:var(--marinho)}
+    .ap-drop.aberto .ap-trigger{background:#f0f3f8;border-color:var(--line);color:var(--marinho)}
+    .ap-trigger:focus-visible{outline:2px solid var(--celeste);outline-offset:2px}
+
+    /* Os dois atalhos ficam LADO A LADO, como pedido. */
+    .ap-painel{position:absolute;right:0;top:calc(100% + 6px);z-index:120;display:none;
+      grid-template-columns:repeat(2,132px);gap:.4rem;padding:.5rem;
+      background:#fff;border:1px solid var(--line2);border-radius:12px;box-shadow:0 14px 32px rgba(37,50,130,.18)}
+    .ap-drop.aberto .ap-painel{display:grid}
+    .ap-item{display:flex;flex-direction:column;align-items:center;gap:.35rem;text-align:center;
+      padding:.8rem .5rem;border-radius:10px;text-decoration:none;color:var(--text)}
+    .ap-item:hover{background:#f4f6fb}
+    .ap-item b{font-size:.83rem;font-weight:600;color:var(--marinho);line-height:1.25}
+    .ap-item small{font-size:.72rem;color:var(--dim);line-height:1.3}
+    .ap-icone{display:grid;place-items:center;width:46px;height:46px;border-radius:12px;color:#fff}
+    .ap-icone--painel{background:linear-gradient(135deg,var(--marinho),var(--celeste))}
+    .ap-icone--site{background:linear-gradient(135deg,#0E8F7E,#2bb39c)}
+
     /* ------------------- Botão ocupado (espera visível) ----------------- */
     /* O giro entra ANTES do rótulo e o texto continua legível: quem clicou em
        "Salvar" precisa continuar vendo que era Salvar. Trocar o texto por
@@ -501,6 +527,43 @@
 
   <div class="conteudo">
     <header class="appbar">
+      <!-- Atalho para os outros sistemas. Fica à ESQUERDA do menu da conta.
+           O item do painel do site só aparece para o administrador. -->
+      <div class="ap-drop" id="ap-drop">
+        <button type="button" class="ap-trigger" id="ap-trigger" aria-haspopup="true" aria-expanded="false"
+                title="Ir para" aria-label="Ir para outros sistemas" onclick="abrirAtalhos(event)">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <circle cx="5" cy="5" r="1.9"/><circle cx="12" cy="5" r="1.9"/><circle cx="19" cy="5" r="1.9"/>
+            <circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/>
+            <circle cx="5" cy="19" r="1.9"/><circle cx="12" cy="19" r="1.9"/><circle cx="19" cy="19" r="1.9"/>
+          </svg>
+        </button>
+        <div class="ap-painel" role="menu">
+          <a class="ap-item" id="ap-admin" role="menuitem" href="/admin/entrar" target="_blank" rel="noopener" hidden>
+            <span class="ap-icone ap-icone--painel" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 9v11"/>
+                <path d="M11.5 12.5h6M11.5 16h4"/>
+              </svg>
+            </span>
+            <b>Painel do site</b>
+            <small>Editar o conteúdo</small>
+          </a>
+          <a class="ap-item" role="menuitem" href="/" target="_blank" rel="noopener">
+            <span class="ap-icone ap-icone--site" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9"/><path d="M3 12h18"/>
+                <path d="M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.4 5.7 12 3z"/>
+              </svg>
+            </span>
+            <b>Site da clínica</b>
+            <small>Ver como o público vê</small>
+          </a>
+        </div>
+      </div>
+
       <div class="tn-drop">
         <button class="tn-trigger" type="button"><span class="tn-quem" id="quem"></span> <span class="tn-caret">▼</span></button>
         <div class="tn-panel">
@@ -510,8 +573,6 @@
           <!-- Backup: só o admin vê (o JS esconde para os demais perfis) -->
           <button class="navbtn" id="btn-backup" onclick="baixarBackup(this)" hidden>⬇ Backup do banco</button>
           <hr class="tn-sep" id="sep-backup" hidden>
-          <a class="navbtn" href="/" target="_blank">↗ Ver o site</a>
-          <hr class="tn-sep">
           <button class="navbtn" data-nav="auditoria">Auditoria</button>
           <button class="navbtn" data-nav="sobre">Sobre o sistema</button>
           <button class="navbtn" onclick="sair()">Sair</button>
@@ -1423,6 +1484,10 @@ async function iniciarApp(me){
   const soAdmin = me.perfil === "admin";
   $("#btn-backup").hidden = !soAdmin;
   $("#sep-backup").hidden = !soAdmin;
+  /* O painel do site edita o conteúdo público — é do administrador. Esconder
+     aqui é conforto; quem barra de verdade é o /admin/entrar, que devolve 403
+     para os outros perfis. O atalho do SITE continua visível para todos. */
+  $("#ap-admin").hidden = !soAdmin;
   aplicarPermissoes(me.perfil);
   await recarregarCache();
   // abre o Painel se o perfil o vê; senão, vai ao primeiro módulo visível
@@ -1450,6 +1515,30 @@ document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("
   else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }
   fecharDropdowns(); marcarTriggers();
 }));
+/* ==========================================================================
+   ATALHO PARA OS OUTROS SISTEMAS (os 9 pontos)
+
+   O item "Painel do site" leva para /admin/entrar, que valida a sessão do
+   /restrito NO SERVIDOR e cria a sessão do painel sem pedir senha de novo.
+   Nenhuma credencial passa pelo navegador — o link é só uma navegação comum.
+   ========================================================================== */
+function abrirAtalhos(ev){
+  ev.stopPropagation();
+  const d=$("#ap-drop");
+  const abrindo=!d.classList.contains("aberto");
+  fecharDropdowns(); fecharMenusLinha(); d.classList.remove("aberto");
+  if(!abrindo) return;
+  d.classList.add("aberto");
+  $("#ap-trigger").setAttribute("aria-expanded","true");
+}
+function fecharAtalhos(){
+  const d=$("#ap-drop"); if(!d) return;
+  d.classList.remove("aberto");
+  $("#ap-trigger")?.setAttribute("aria-expanded","false");
+}
+document.addEventListener("click", fecharAtalhos);
+document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") fecharAtalhos(); });
+
 /* dropdown da conta (topo direito): abre no clique além do hover */
 function fecharDropdowns(){ document.querySelectorAll(".tn-drop.open").forEach((d)=>d.classList.remove("open")); }
 // marca a seção/aba ativa e mantém aberta a seção lateral do item selecionado

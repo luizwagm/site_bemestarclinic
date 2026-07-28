@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.23.2";
+const SISTEMA_VERSION = "1.25.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +48,13 @@ const SISTEMA_VERSION = "1.23.2";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.24.0", data: "2026-07-28", titulo: "Atalho para o painel do site", mudancas: [
+    "Novo menu de atalhos no topo, ao lado do menu da conta",
+    "Painel do site abre em nova aba, já autenticado (só administrador)",
+    "Site da clínica abre em nova aba",
+    "Sair do sistema encerra também a sessão do painel do site neste navegador",
+    "Correção: valores saíam picados em tiras verticais nas impressões e em Profissionais",
+  ] },
   { versao: "1.23.0", data: "2026-07-28", titulo: "Editor de texto e melhorias de uso", mudancas: [
     "Editor com formatação (negrito, itálico, listas) nos textos do prontuário",
     "Observação da pasta, avaliações, evoluções, planos e encaminhamentos aceitam formatação",
@@ -775,6 +782,23 @@ async function iniciarRestrito() {
 /* ------------------------------- sessões --------------------------------- */
 const SESSAO_HORAS = 8;
 const sessoes = new Map();   // rid -> { userId, perfil, nome, ts }
+
+/* ==========================================================================
+   ENCERRAR A SESSÃO DO PAINEL DO SITE
+
+   A sessão do /admin vive no server.js, não aqui — os dois sistemas são
+   separados de propósito. Mas o server.js é quem CARREGA este arquivo; se
+   fôssemos buscar lá de dentro, os dois passariam a exigir um ao outro para
+   carregar (dependência circular), e um dos dois receberia o outro pela
+   metade.
+
+   Então o caminho é o inverso: o server.js REGISTRA aqui a função que sabe
+   encerrar a sessão dele. Enquanto ninguém registrar, o valor é nulo e o
+   logout daqui simplesmente segue sem mexer no painel — o /restrito continua
+   funcionando isolado, como sempre funcionou.
+   ========================================================================== */
+let encerrarPainelDoSite = null;
+const registrarEncerrarPainel = (fn) => { encerrarPainelDoSite = fn; };
 function novaSessao(u) {
   const rid = crypto.randomBytes(24).toString("hex");
   sessoes.set(rid, { userId: u.id, perfil: u.perfil, nome: u.nome, profissionalId: u.profissional_id || null, ts: Date.now() });
@@ -1557,10 +1581,31 @@ async function rotaApi(req, res, p) {
   }
 
   if (p === "logout" && req.method === "POST") {
-    auditar({ req, sessao: s, acao: "logout", resumo: `${s.nome} saiu do sistema` });
     sessoes.delete(s.rid);
-    res.setHeader("Set-Cookie", "rid=; HttpOnly; Path=/restrito; Max-Age=0");
-    return json(res, 200, { ok: true });
+    const cookies = ["rid=; HttpOnly; Path=/restrito; Max-Age=0"];
+
+    /* Sair do sistema de gestão SAI TAMBÉM do painel do site.
+
+       Quem entrou no /admin pelo atalho de 9 pontos não digitou senha nenhuma
+       — a porta foi aberta pela credencial daqui. Se essa credencial for
+       embora e a outra ficar, o computador da recepção fica com o painel do
+       site destrancado depois que a pessoa "saiu". Numa clínica, onde o mesmo
+       computador atende o balcão o dia inteiro, é o cenário provável, não o
+       raro.
+
+       Encerra só a sessão DESTE navegador (a do cookie que veio na
+       requisição), e não todas: derrubar as demais tiraria do ar quem estivesse
+       trabalhando no painel de outra máquina, sem nenhum aviso. */
+    let saiuDoPainel = false;
+    if (typeof encerrarPainelDoSite === "function") {
+      const fora = encerrarPainelDoSite(req);
+      if (fora) { saiuDoPainel = true; cookies.push("sid=; HttpOnly; Path=/; Max-Age=0"); }
+    }
+
+    auditar({ req, sessao: s, acao: "logout",
+      resumo: `${s.nome} saiu do sistema${saiuDoPainel ? " (e do painel do site)" : ""}` });
+    res.setHeader("Set-Cookie", cookies);
+    return json(res, 200, { ok: true, painelEncerrado: saiuDoPainel });
   }
 
   if (p === "senha" && req.method === "POST") {
@@ -2387,4 +2432,4 @@ async function rotaApi(req, res, p) {
 }
 
 
-module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS };
+module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS, sessao, auditar, registrarEncerrarPainel };
