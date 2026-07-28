@@ -101,6 +101,45 @@
     .tag-Atendido{background:#e7f6ee;color:var(--verde)}.tag-Faltou{background:#fdecef;color:var(--red)}
     .tag-Remarcado{background:#fdf4e6;color:var(--ambar)}.tag-Ativo{background:#e7f6ee;color:var(--verde)}.tag-Inativo{background:#eef1f6;color:var(--muted)}
     .vazio{color:var(--dim);padding:1.5rem;text-align:center}
+
+    /* ---------------------------- Sobre o sistema ---------------------- */
+    .sb-atual{background:linear-gradient(135deg,var(--marinho),var(--celeste));color:#fff;border:0}
+    .sb-atual h2,.sb-atual h3{color:#fff}
+    .sb-selo{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
+      border-radius:999px;padding:.15rem .7rem;font-size:.78rem;font-weight:700;letter-spacing:.04em}
+    .sb-data{font-size:.8rem;opacity:.85}
+    /* A lista de mudanças usa marcador próprio: o disco padrão some no fundo
+       escuro do cartão da versão atual. */
+    .sb-lista{list-style:none;padding:0;margin:.7rem 0 0}
+    .sb-lista li{position:relative;padding-left:1.15rem;margin:.35rem 0;line-height:1.5}
+    .sb-lista li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;
+      border-radius:50%;background:currentColor;opacity:.55}
+
+    /* Sanfona das versões anteriores */
+    .sb-acc{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+    .sb-acc + .sb-acc{margin-top:.5rem}
+    .sb-cab{width:100%;display:flex;align-items:center;gap:.7rem;padding:.8rem 1rem;background:none;
+      border:0;cursor:pointer;text-align:left;font:inherit;color:var(--text)}
+    .sb-cab:hover{background:#f7f9fc}
+    .sb-cab b{color:var(--marinho);font-size:.95rem}
+    .sb-cab .sb-tit{color:var(--muted);font-size:.86rem;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .sb-cab .sb-seta{color:var(--dim);transition:transform .2s;flex-shrink:0}
+    .sb-acc.aberta .sb-seta{transform:rotate(180deg)}
+    /* hidden no corpo (e não max-height animado): conteúdo escondido que
+       continua no fluxo é lido por leitor de tela e achado pelo Ctrl+F,
+       confundindo quem procura em qual versão algo entrou. */
+    .sb-corpo{padding:0 1rem 1rem 1rem;border-top:1px solid var(--line)}
+
+    .sb-tec{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.7rem}
+    .sb-tec div{border:1px solid var(--line);border-radius:10px;padding:.7rem .85rem;background:#fbfcfe}
+    .sb-tec b{display:block;color:var(--marinho)}
+    .sb-tec span{display:block;font-size:.83rem;color:var(--muted)}
+    .sb-tec small{display:block;font-size:.76rem;color:var(--dim);margin-top:.15rem;overflow-wrap:anywhere}
+
+    .sb-banco{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.8rem}
+    .sb-banco div span{display:block;font-size:.76rem;color:var(--dim);text-transform:uppercase;letter-spacing:.04em}
+    .sb-banco div b{font-size:1rem;color:var(--text);overflow-wrap:anywhere}
+    @media(max-width:640px){ .sb-cab .sb-tit{display:none} }
     /* seletor de vista da agenda */
     .vista-toggle{display:inline-flex;gap:.25rem;background:#e3eaf3;border-radius:999px;padding:.25rem;margin-bottom:1rem}
     .vbtn{border:0;background:none;padding:.4rem .95rem;border-radius:999px;font-weight:600;font-size:.85rem;color:var(--muted)}
@@ -335,6 +374,7 @@
           <hr class="tn-sep" id="sep-backup" hidden>
           <a class="navbtn" href="/" target="_blank">↗ Ver o site</a>
           <hr class="tn-sep">
+          <button class="navbtn" data-nav="sobre">Sobre o sistema</button>
           <button class="navbtn" onclick="sair()">Sair</button>
           <p class="tn-versao">Versão do Sistema v{{VERSAO}}</p>
         </div>
@@ -425,6 +465,13 @@
         <label>Nova senha (mín. 8 caracteres)</label><input id="ct-nova" type="password">
         <div style="margin-top:1rem"><button class="btn btn-navy" onclick="trocarSenha()">Salvar</button></div>
       </div>
+    </section>
+
+    <!-- Sobre o sistema: versão, histórico, tecnologias e banco ativo.
+         Só o admin chega aqui (o menu esconde e o servidor devolve 403). -->
+    <section class="panel" id="pane-sobre">
+      <div class="topbar"><h1>Sobre o sistema</h1></div>
+      <div id="sobre-corpo"><p class="vazio">Carregando…</p></div>
     </section>
   </main>
   </div>
@@ -752,6 +799,97 @@ async function entrar(){ $("#lg-erro").textContent="";
 async function sair(){ try{ await api("logout","POST"); }catch{} location.reload(); }
 
 /* ==========================================================================
+   SOBRE O SISTEMA
+
+   Tudo vem do servidor (versão, histórico, tecnologias, banco). Nada é escrito
+   na tela: se a lista morasse aqui, ela envelheceria em silêncio enquanto o
+   sistema sobe de versão — e a tela passaria a mentir sobre o que está no ar.
+   ========================================================================== */
+let SOBRE_CARREGADO = false;
+
+async function carregarSobre(){
+  if(SOBRE_CARREGADO) return;                 // não recarrega a cada visita
+  const alvo = $("#sobre-corpo");
+  try{
+    const d = await api("sobre");
+    alvo.innerHTML = montarSobre(d);
+    SOBRE_CARREGADO = true;
+  }catch(e){
+    alvo.innerHTML = '<div class="card"><p class="vazio">'+escA(e.message||"Não consegui carregar.")+'</p></div>';
+  }
+}
+
+function montarSobre(d){
+  const lista = (itens) => '<ul class="sb-lista">'+itens.map((t)=>"<li>"+escA(t)+"</li>").join("")+"</ul>";
+  const dataBR = (iso) => { const p=String(iso||"").split("-"); return p.length===3 ? p[2]+"/"+p[1]+"/"+p[0] : ""; };
+
+  const atual = d.historico[0] || { versao:d.versao, titulo:"", mudancas:[] };
+  const anteriores = d.historico.slice(1);
+
+  /* --- versão atual em destaque --- */
+  let h = '<div class="card sb-atual">'
+    + '<div style="display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">'
+    +   '<span class="sb-selo">VERSÃO ATUAL</span>'
+    +   '<h2 style="margin:0">v'+escA(atual.versao)+'</h2>'
+    +   '<span class="sb-data">'+escA(dataBR(atual.data))+'</span>'
+    + '</div>'
+    + (atual.titulo ? '<h3 style="margin:.6rem 0 0;font-size:1rem">'+escA(atual.titulo)+'</h3>' : '')
+    + lista(atual.mudancas)
+    + '</div>';
+
+  /* --- banco de dados ativo --- */
+  const b = d.banco || {};
+  h += '<div class="card"><h3 style="margin-bottom:.8rem">Banco de dados ativo</h3>';
+  if(b.conectado){
+    h += '<div class="sb-banco">'
+      + '<div><span>Motor</span><b>'+escA(b.motor)+(b.versao?" "+escA(b.versao):"")+'</b></div>'
+      + '<div><span>Base</span><b>'+escA(b.base)+'</b></div>'
+      + '<div><span>Usuário</span><b>'+escA(b.usuario)+'</b></div>'
+      + '<div><span>Tamanho</span><b>'+escA(b.tamanho)+'</b></div>'
+      + '<div><span>Migrations</span><b>'+escA(String(b.migrations))+'</b></div>'
+      + '</div>'
+      + (b.ultimaMigration ? '<p style="margin-top:.7rem;font-size:.82rem;color:var(--dim)">Última alteração de estrutura: '+escA(b.ultimaMigration)+'</p>' : '');
+  } else {
+    h += '<p style="color:var(--red)">Não conectado'+(b.erro?" — "+escA(b.erro):"")+'</p>';
+  }
+  h += '</div>';
+
+  /* --- tecnologias --- */
+  h += '<div class="card"><h3 style="margin-bottom:.3rem">Tecnologias do sistema</h3>'
+    + '<p style="font-size:.83rem;color:var(--dim);margin-bottom:.8rem">O que faz o sistema de gestão funcionar. O site da clínica é outro projeto, com outra estrutura.</p>'
+    + '<div class="sb-tec">'
+    + d.tecnologias.map((t)=>'<div><b>'+escA(t.nome)+'</b><span>'+escA(t.papel)+'</span>'
+        +(t.detalhe?'<small>'+escA(t.detalhe)+'</small>':'')+'</div>').join("")
+    + '</div></div>';
+
+  /* --- versões anteriores em sanfona --- */
+  if(anteriores.length){
+    h += '<div class="card"><h3 style="margin-bottom:.8rem">Versões anteriores</h3>'
+      + anteriores.map((v,i)=>
+          '<div class="sb-acc" data-acc="'+i+'">'
+          + '<button type="button" class="sb-cab" onclick="alternarVersao(this)" aria-expanded="false">'
+          +   '<b>v'+escA(v.versao)+'</b>'
+          +   '<span class="sb-tit">'+escA(v.titulo||"")+'</span>'
+          +   '<span class="sb-data" style="color:var(--dim)">'+escA(dataBR(v.data))+'</span>'
+          +   '<span class="sb-seta">▾</span>'
+          + '</button>'
+          + '<div class="sb-corpo" hidden>'+lista(v.mudancas)+'</div>'
+          + '</div>').join("")
+      + '</div>';
+  }
+  return h;
+}
+
+function alternarVersao(botao){
+  const caixa = botao.closest(".sb-acc");
+  const corpo = caixa.querySelector(".sb-corpo");
+  const abrindo = corpo.hidden;
+  corpo.hidden = !abrindo;
+  caixa.classList.toggle("aberta", abrindo);
+  botao.setAttribute("aria-expanded", abrindo ? "true" : "false");
+}
+
+/* ==========================================================================
    BACKUP DO BANCO — baixa o dump SQL completo da gestão
 
    Não uso um <a download> simples porque, se o servidor responder erro, o
@@ -820,6 +958,7 @@ document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("
   document.querySelectorAll(".panel").forEach((x)=>x.classList.remove("on"));
   if(nav==="painel"){ $("#pane-painel").classList.add("on"); carregarPainel(); }
   else if(nav==="conta"){ $("#pane-conta").classList.add("on"); }
+  else if(nav==="sobre"){ $("#pane-sobre").classList.add("on"); carregarSobre(); }
   else if(nav==="relatorios"){ $("#pane-relatorios").classList.add("on"); carregarRelatorios(); }
   else if(nav==="relatorios_pacientes"){ $("#pane-relpac").classList.add("on"); carregarRelacaoPacientes(); }
   else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }

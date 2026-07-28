@@ -29,7 +29,134 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.19.0";
+const SISTEMA_VERSION = "1.20.0";
+
+/* ==========================================================================
+   HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
+
+   Fica AQUI, e não num arquivo à parte, porque a versão que a tela mostra
+   (SISTEMA_VERSION, logo acima) e a lista de mudanças precisam andar juntas.
+   Separadas em dois lugares, uma hora a tela anuncia uma versão cujo texto
+   ficou para trás.
+
+   A primeira entrada é sempre a versão ATUAL. Ao subir a versão: mude a
+   constante acima e acrescente a entrada nova no TOPO desta lista.
+
+   Reconstruído a partir do git (a versão gravada em cada commit) e do registro
+   do projeto. Algumas versões saíram entre commits e estão descritas junto da
+   que as entregou.
+   ========================================================================== */
+const HISTORICO_VERSOES = [
+  { versao: "1.20.0", data: "2026-07-28", titulo: "Tela Sobre o sistema", mudancas: [
+    "Nova tela com versão, histórico de atualizações, tecnologias e banco ativo",
+    "Histórico de versões anteriores em sanfona",
+    "Exclusiva do administrador",
+  ] },
+  { versao: "1.19.0", data: "2026-07-28", titulo: "Banco de dados PostgreSQL", mudancas: [
+    "Sistema de gestão migrado do SQLite para o PostgreSQL",
+    "Estrutura do banco controlada por migrations versionadas",
+    "Backup do banco pelo painel, em arquivo SQL completo",
+    "Uma falha no banco não derruba mais o site da clínica",
+    "Correção: procedimentos sem modelo de anamnese em instalação nova",
+  ] },
+  { versao: "1.18.1", data: "2026-07-28", titulo: "Procedimento que não aparece na agenda", mudancas: [
+    "A busca de procedimento explica quando ele existe mas o profissional escolhido não o realiza",
+  ] },
+  { versao: "1.18.0", data: "2026-07-27", titulo: "Paginação e vínculos órfãos", mudancas: [
+    "Paginação em todas as tabelas: 10, 15, 30, 50 ou 100 por página",
+    "Correção: anamneses ligadas a prontuário excluído voltam a rascunho",
+  ] },
+  { versao: "1.17.1", data: "2026-07-27", titulo: "Correções de agenda e exclusão", mudancas: [
+    "Hora de término sempre recalculada a partir do início e da duração",
+    "Anamnese só pode ser excluída quando não tem prontuário",
+    "Excluir uma pasta de prontuário solta o que estava arquivado nela",
+  ] },
+  { versao: "1.17.0", data: "2026-07-27", titulo: "Relatórios em submenu", mudancas: [
+    "Relatórios virou submenu: movimento da clínica e pacientes ativos/inativos",
+    "Relação com endereço, WhatsApp, quem assiste e especialidades",
+    "Impressão da relação em paisagem",
+  ] },
+  { versao: "1.16.0", data: "2026-07-27", titulo: "Paciente ativo e inativo", mudancas: [
+    "Ativar e inativar paciente sem apagar a ficha",
+    "Inativo some das telas de escolha e volta com um clique",
+    "Filtro Todos / Ativos / Inativos na lista",
+  ] },
+  { versao: "1.15.0", data: "2026-07-27", titulo: "Rastro das edições no prontuário", mudancas: [
+    "Editar um lançamento grava no histórico o trecho que mudou",
+    "A lista mostra quando o registro foi editado",
+  ] },
+  { versao: "1.14.0", data: "2026-07-27", titulo: "Prontuário como tela do sistema", mudancas: [
+    "Prontuário aberto virou tela com menu e barra do topo",
+    "Filtro por período em Anamneses, Agenda e Relatórios",
+    "Anamneses passou a ser um item único de menu",
+    "Cabeçalho das impressões com CNPJ, e-mail, telefone e site em linhas",
+  ] },
+  { versao: "1.13.0", data: "2026-07-26", titulo: "Regra de negócio ponta a ponta", mudancas: [
+    "Código próprio do paciente (PAC-AAAA-00000), gerado pelo sistema",
+    "Busca por código, CPF ou nome em todos os módulos",
+    "Agendamento exige paciente cadastrado",
+    "Finalizar a anamnese é o que abre o prontuário",
+  ] },
+  { versao: "1.12.0", data: "2026-07-26", titulo: "Redesenho do prontuário", mudancas: [
+    "Prontuário virou pasta por paciente e especialidade",
+    "Avaliações, evoluções, planos e encaminhamentos viraram lançamentos datados",
+    "Alta e reabertura da pasta",
+    "Histórico por paciente e por prontuário",
+  ] },
+  { versao: "1.11.0", data: "2026-07-26", titulo: "Backup automático", mudancas: [
+    "Cópia de segurança diária, com conferência de integridade",
+    "Restauração assistida por script",
+  ] },
+  { versao: "1.7.0", data: "2026-07-26", titulo: "Ajustes de agenda", mudancas: [
+    "Horário de início e término obrigatórios",
+    "Agenda ordenada por data e hora",
+  ] },
+  { versao: "1.6.0", data: "2026-07-26", titulo: "Número de controle do prontuário", mudancas: [
+    "Numeração PR-AAAA-00000, sequencial por ano e nunca reaproveitada",
+    "O número aparece nas listas e nas impressões",
+  ] },
+  { versao: "1.5.0", data: "2026-07-26", titulo: "Impressões", mudancas: [
+    "Escolha entre retrato e paisagem em todas as impressões",
+    "Impressão de uma evolução isolada",
+    "Cabeçalho e rodapé do navegador removidos do papel",
+  ] },
+  { versao: "1.4.0", data: "2026-07-26", titulo: "Busca de CEP", mudancas: [
+    "CEP preenche endereço, bairro e cidade no cadastro de paciente",
+  ] },
+  { versao: "1.3.0", data: "2026-07-26", titulo: "Acesso do profissional", mudancas: [
+    "Cadastrar profissional já cria o login dele",
+    "Bloquear e desbloquear acesso, derrubando a sessão aberta",
+    "Cadastro com histórico não pode ser excluído, só bloqueado",
+  ] },
+  { versao: "1.2.0", data: "2026-07-26", titulo: "Cores e ficha do paciente", mudancas: [
+    "Ficha do paciente dentro do prontuário",
+    "Cores oficiais dos procedimentos na agenda",
+    "Busca de procedimento separada por consulta, sessão e procedimento",
+    "Agenda de um profissional por vez",
+  ] },
+  { versao: "1.1.0", data: "2026-07-24", titulo: "Impressões e busca", mudancas: [
+    "Marca d'água da clínica nas impressões",
+    "Busca de paciente por CPF, com ou sem máscara",
+  ] },
+  { versao: "1.0.0", data: "2026-07-24", titulo: "Primeira versão", mudancas: [
+    "Cadastros: pacientes, profissionais, convênios, procedimentos e salas",
+    "Agenda de atendimentos com controle de choque de horário e sala",
+    "Anamneses em três modelos, com impressão em papel timbrado",
+    "Prontuário, documentos e relatórios",
+    "Perfis de acesso: administrador, secretaria e profissional",
+  ] },
+];
+
+/* As tecnologias do SISTEMA DE GESTÃO. O site da clínica é outro projeto, com
+   outra pilha (e outro banco) — não entra aqui. */
+const TECNOLOGIAS = [
+  { nome: "Node.js", papel: "Servidor da aplicação", detalhe: process.version },
+  { nome: "PostgreSQL", papel: "Banco de dados do sistema", detalhe: "acesso pelo driver pg" },
+  { nome: "JavaScript, HTML e CSS", papel: "Interface", detalhe: "sem framework — tela única" },
+  { nome: "Migrations em SQL", papel: "Controle da estrutura do banco", detalhe: "cada mudança é um arquivo versionado" },
+  { nome: "scrypt", papel: "Proteção das senhas", detalhe: "com sal individual por senha" },
+  { nome: "pg_dump", papel: "Backup", detalhe: "cópia diária automática e sob demanda" },
+];
 // CSP das telas do sistema de gestão e do portal — bloqueia script/objeto
 // externos; só libera as fontes do Google. 'unsafe-inline' é preciso porque as
 // telas usam script/estilo inline. A janela de impressão (about:blank via
@@ -1002,6 +1129,51 @@ async function rotaApi(req, res, p) {
   if (p === "backup/sql" && req.method === "GET") {
     if (s.perfil !== "admin") return json(res, 403, { error: "Só o administrador pode baixar o backup." });
     return dumpSql(res, s);
+  }
+
+  /* ==========================================================================
+     SOBRE O SISTEMA — versão, histórico, tecnologias e banco ativo
+
+     Só o admin. Não por sigilo (nada aqui é segredo), mas porque a tela
+     descreve a INFRAESTRUTURA: versão do banco, do Node, nome da base. Para a
+     recepção e o profissional isso é ruído; para quem sonda o sistema, é mapa.
+
+     O banco é consultado AO VIVO, e não escrito à mão numa constante: assim a
+     tela responde "qual banco está rodando" com o que está de fato conectado
+     naquele instante, não com o que alguém supôs ao escrever o texto.
+     ========================================================================== */
+  if (p === "sobre" && req.method === "GET") {
+    if (s.perfil !== "admin") return json(res, 403, { error: "Tela exclusiva do administrador." });
+
+    let banco = { motor: "PostgreSQL", conectado: false };
+    try {
+      const v = await Q.get(`SELECT version() v, current_database() d, current_user u,
+                                    pg_size_pretty(pg_database_size(current_database())) tam`);
+      /* version() devolve uma linha longa ("PostgreSQL 16.4 on x86_64-pc-linux-gnu,
+         compiled by gcc..."). Para a tela basta o número. */
+      const num = /PostgreSQL\s+([\d.]+)/.exec(v.v);
+      const m = await Q.all("SELECT versao FROM schema_migrations ORDER BY versao");
+      banco = {
+        motor: "PostgreSQL",
+        versao: num ? num[1] : "",
+        base: v.d,
+        usuario: v.u,
+        tamanho: v.tam,
+        migrations: m.length,
+        ultimaMigration: m.length ? m[m.length - 1].versao : "",
+        conectado: true,
+      };
+    } catch (e) {
+      banco.erro = e.message.split("\n")[0];
+    }
+
+    return json(res, 200, {
+      sistema: "Sistema de Gestão — BemEstarClinic",
+      versao: SISTEMA_VERSION,
+      historico: HISTORICO_VERSOES,
+      tecnologias: TECNOLOGIAS,
+      banco,
+    });
   }
 
   /* Quem está logado. Devolve também o PROFISSIONAL vinculado (id e nome como
