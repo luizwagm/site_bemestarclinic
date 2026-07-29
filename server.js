@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.16.0";
+const APP_VERSION = "1.18.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -173,10 +173,29 @@ const VISIT_SALT = getS("visit_salt");
 
 const BOT_RE = /bot|crawler|spider|crawling|slurp|bingpreview|facebookexternalhit|whatsapp|telegram|preview|monitor|uptime|curl|wget|python-requests|axios|headless|lighthouse|pagespeed|semrush|ahrefs|mj12|dotbot|petalbot|gptbot|ccbot|claudebot|perplexity/i;
 
+/* O IP REAL de quem está pedindo.
+
+   Atrás do nginx o socket é sempre 127.0.0.1, então o IP verdadeiro precisa
+   chegar por cabeçalho. Só que cabeçalho é texto que o CLIENTE também
+   escreve. O nginx monta `X-Forwarded-For: <o que o cliente mandou>, <IP
+   real>` — ele ACRESCENTA no fim, não substitui. Ler o PRIMEIRO item da lista,
+   como estava aqui, é ler exatamente o que o visitante digitou.
+
+   Na prática isso anulava a trava de força bruta: bastava mandar um
+   X-Forwarded-For diferente a cada tentativa para nenhuma "contar" duas vezes
+   no mesmo IP, e a senha podia ser tentada infinitas vezes.
+
+   Duas correções: o cabeçalho só é aceito quando a conexão de fato veio do
+   nginx local, e usamos o X-Real-IP — que o nginx SOBRESCREVE — ou, na falta
+   dele, o ÚLTIMO item da lista, o único que o nginx escreveu. */
+const DO_PROXY = /^(?:::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/;
 function clientIp(req) {
-  // atrás do nginx o socket é sempre 127.0.0.1 — o IP real vem no X-Forwarded-For
-  const xff = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
-  return xff || req.headers["x-real-ip"] || req.socket.remoteAddress || "";
+  const direto = String(req.socket.remoteAddress || "");
+  if (!DO_PROXY.test(direto)) return direto;                      // conexão direta: só o socket vale
+  const real = String(req.headers["x-real-ip"] || "").trim();
+  if (real) return real;
+  const lista = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return lista.length ? lista[lista.length - 1] : direto;
 }
 
 function trackVisit(req, pathname) {
@@ -655,8 +674,15 @@ const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
    `href` é o único atributo aceito, e só em <a>, com o esquema conferido:
    `javascript:` num link é execução de código com a cara de um link comum.
    ========================================================================== */
+/* Com o botão "</>" dá para escrever marcação à mão, e uma tag que não estivesse
+   nesta lista sumiria calada — a pessoa salvaria a tabela e ela simplesmente não
+   apareceria no site. Por isso a lista cobre também o que se escreve à mão.
+   Todas as adições são INERTES: não executam nada e ficam sem atributo nenhum,
+   porque htmlLimpo só preserva o href do <a>. Continuam de fora img (sem src
+   sobra uma tag vazia — foto é pelo campo de imagem) e tudo que roda código. */
 const TAGS_SITE = new Set(["p", "br", "b", "strong", "i", "em", "u", "s", "ul", "ol", "li",
-  "h2", "h3", "h4", "blockquote", "a", "span", "div"]);
+  "h2", "h3", "h4", "blockquote", "a", "span", "div", "hr", "sub", "sup", "code", "pre",
+  "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption"]);
 const LINK_SEGURO = /^(https?:\/\/|mailto:|tel:|\/|#)/i;
 
 function htmlLimpo(valor) {

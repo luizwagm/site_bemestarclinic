@@ -28,12 +28,35 @@
     .btn-danger{background:#fdeef2;color:var(--red);border-color:#f6c6d4}
     .btn-sm{padding:.35rem .75rem;font-size:.8rem}
     .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
-    aside{background:var(--violet);color:#cfc9f6;padding:1.2rem;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+    aside{background:var(--violet);color:#cfc9f6;padding:1.2rem;position:sticky;top:0;height:100vh;
+      display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain}
     aside .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:1.4rem;color:#fff;font-weight:700}
     aside .logo img{height:40px}
     .navbtn{display:block;width:100%;text-align:left;padding:.6rem .8rem;border-radius:9px;border:0;background:none;color:#cfc9f6;font-weight:600;margin-bottom:.15rem}
     .navbtn:hover{background:rgba(255,255,255,.08);color:#fff}
     .navbtn.on{background:var(--gold);color:#fff}
+
+    /* ---- Grupos do menu ----
+       O cabeçalho do grupo é botão de verdade (não um <div> com onclick): já
+       vem com teclado e leitor de tela funcionando, e o aria-expanded conta em
+       que estado está. A seta é ::after, para não existir no texto copiado. */
+    .navtopo{display:flex;align-items:center;justify-content:space-between;gap:.5rem;
+      width:100%;text-align:left;padding:.6rem .8rem;border-radius:9px;border:0;background:none;
+      color:#a9a1e0;font-weight:700;font-size:.82rem;letter-spacing:.03em;text-transform:uppercase;
+      margin-bottom:.15rem;cursor:pointer}
+    .navtopo:hover{background:rgba(255,255,255,.08);color:#fff}
+    .navtopo::after{content:"▾";font-size:.7rem;opacity:.75;transition:transform .2s ease}
+    .navtopo[aria-expanded="true"]{color:#fff}
+    .navtopo[aria-expanded="true"]::after{transform:rotate(180deg)}
+    /* O grupo fechado some do fluxo: `display:none` e não `height:0`, senão a
+       margem dos botões continuaria ocupando altura e a lista não encolheria. */
+    .navsub{display:none;margin:0 0 .35rem .5rem;padding-left:.55rem;border-left:2px solid rgba(255,255,255,.16)}
+    .navtopo[aria-expanded="true"]+.navsub{display:block}
+    .navsub .navbtn{font-weight:600;font-size:.9rem;padding:.48rem .7rem}
+    /* Grupo fechado com a tela ativa dentro: uma marca discreta para não se
+       perder de vista onde se está. */
+    .navgrupo:has(.navbtn.on) .navtopo{color:#fff}
+    .navgrupo:has(.navbtn.on) .navtopo[aria-expanded="false"]{background:rgba(255,255,255,.1)}
     .versao{margin:.7rem 0 0;text-align:center;font-size:.7rem;letter-spacing:.08em;color:rgba(207,201,246,.55);font-variant-numeric:tabular-nums}
     /* na tela de login o fundo é claro — o tom da barra lateral sumiria */
     #login .versao{color:var(--dim)}
@@ -75,7 +98,23 @@
     .st-table td{padding:.4rem 0;border-bottom:1px solid var(--line)}
     .st-table td:last-child{text-align:right;font-weight:700;color:var(--violet);width:70px}
     .st-table tr:last-child td{border-bottom:0}
-    @media(max-width:820px){.app{grid-template-columns:1fr}aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:.3rem}main{padding:1.2rem}}
+    @media(max-width:820px){
+      .app{grid-template-columns:1fr}
+      /* No celular a barra deixa de ser coluna fixa e vira faixa no topo, que
+         cresce conforme o conteúdo. Os botões soltos se espalham em linha; cada
+         GRUPO ocupa a largura toda, senão o submenu abriria dentro de uma
+         coluna de dois dedos. */
+      aside{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;gap:.3rem;overflow:visible}
+      aside>.navbtn{width:auto}
+      .navgrupo{flex:1 0 100%}
+      /* Sem `display` aqui: quem esconde o grupo fechado é a regra geral
+         (`.navsub{display:none}`), e repetir `display:flex` neste ponto a
+         anularia — todos os grupos apareceriam abertos ao mesmo tempo. */
+      .navsub{flex-wrap:wrap;gap:.3rem;margin-left:.4rem}
+      .navtopo[aria-expanded="true"]+.navsub{display:flex}
+      .navsub .navbtn{width:auto}
+      main{padding:1.2rem}
+    }
     /* ---------------------- Editor de texto formatado ------------------- */
     .ed-caixa{border:1.5px solid var(--line2);border-radius:9px;overflow:hidden;background:#fff}
     .ed-caixa:focus-within{border-color:var(--violet2);box-shadow:0 0 0 3px rgba(91,79,216,.13)}
@@ -87,6 +126,14 @@
     .ed-area{min-height:120px;max-height:60vh;overflow:auto;padding:.7rem .8rem;line-height:1.65;
       font-size:.95rem;color:var(--text);outline:none}
     .ed-area.alto{min-height:260px}
+    /* A caixa do HTML ocupa exatamente o lugar da área formatada — trocar de
+       modo não pode fazer a página pular. Fonte monoespaçada porque aqui o
+       alinhamento das tags é o que se lê. */
+    .ed-fonte{display:none;width:100%;border:0;outline:0;resize:vertical;padding:.7rem .8rem;
+      font:12.5px/1.6 ui-monospace,"Cascadia Mono",Consolas,monospace;color:#334;background:#fbfdff;
+      min-height:120px;max-height:60vh}
+    .ed-fonte.alto{min-height:260px}
+    .ed-bt.ativo{background:var(--blue);border-color:var(--blue);color:#fff}
     .ed-area:empty::before{content:"Escreva aqui…";color:var(--muted);opacity:.7}
     /* Como o texto formatado aparece DENTRO do editor. Sem isto o <ul> herdaria
        o reset `*{margin:0}` lá de cima e a lista sairia colada na margem. */
@@ -117,14 +164,27 @@
     <span class="logo"><img src="/assets/img/favicon.svg" alt="" style="border-radius:10px"> bem-estar</span>
     <button class="navbtn on" data-p="dash">▲ Publicar</button>
     <button class="navbtn" data-p="acessos">📊 Acessos</button>
-    <button class="navbtn" data-p="services">Especialidades</button>
-    <button class="navbtn" data-p="team">Profissionais</button>
-    <button class="navbtn" data-p="posts">Blog</button>
-    <button class="navbtn" data-p="portfolio">Nosso Espaço</button>
+
+    <div class="navgrupo">
+      <button class="navtopo" type="button" aria-expanded="false">🩺 A clínica</button>
+      <div class="navsub">
+        <button class="navbtn" data-p="services">Especialidades</button>
+        <button class="navbtn" data-p="team">Profissionais</button>
+        <button class="navbtn" data-p="portfolio">Nosso Espaço</button>
+      </div>
+    </div>
+
+    <div class="navgrupo">
+      <button class="navtopo" type="button" aria-expanded="false">📰 Conteúdo</button>
+      <div class="navsub">
+        <button class="navbtn" data-p="posts">Blog</button>
+        <button class="navbtn" data-p="testimonials">Depoimentos</button>
+      </div>
+    </div>
+
     <button class="navbtn" data-p="texts">Textos do site</button>
-    <button class="navbtn" data-p="testimonials">Depoimentos</button>
-    <button class="navbtn" data-p="password">Senha</button>
     <div style="margin-top:auto">
+      <button class="navbtn" data-p="password">Senha</button>
       <a class="navbtn" href="/" target="_blank" style="text-decoration:none;display:block">↗ Ver o site</a>
       <button class="navbtn" onclick="logout()">Sair</button>
       <p class="versao" id="app-versao" title="Versão do gerenciador em execução no servidor">v—</p>
@@ -287,6 +347,9 @@ const ED_BOTOES = [
   ["unlink", "⛓", "Tirar o link", ""],
   ["|", "", "", ""],
   ["removeFormat", "T̶", "Limpar formatação", ""],
+  ["|", "", "", ""],
+  ["html", "&lt;/&gt;", "Ver e escrever o HTML", "font-size:.72rem;font-weight:700"],
+  ["|", "", "", ""],
   ["undo", "↶", "Desfazer (Ctrl+Z)", ""],
   ["redo", "↷", "Refazer (Ctrl+Y)", ""],
 ];
@@ -298,12 +361,14 @@ function editorRico(attrs, valor, alto) {
   const id = "ed" + (++edSeq);
   const barra = ED_BOTOES.map(([cmd, rot, titulo, estilo]) =>
     cmd === "|" ? '<span class="ed-sep"></span>'
-      : `<button type="button" class="ed-bt" title="${escA(titulo)}" aria-label="${escA(titulo)}"
+      : `<button type="button" class="ed-bt" id="${id}-bt${cmd}" title="${escA(titulo)}" aria-label="${escA(titulo)}"
            onmousedown="event.preventDefault()" onclick="edCmd('${id}','${cmd}')" style="${estilo}">${rot}</button>`).join("");
   return `<div class="ed-caixa">
     <div class="ed-barra" role="toolbar" aria-label="Formatação">${barra}</div>
     <div class="ed-area${alto ? " alto" : ""}" id="${id}-ed" contenteditable="true" role="textbox" aria-multiline="true"
          oninput="edSync('${id}')" onblur="edSync('${id}')" onpaste="edColar(event)">${paraHTML(valor)}</div>
+    <textarea class="ed-fonte${alto ? " alto" : ""}" id="${id}-html" spellcheck="false"
+              oninput="edSync('${id}')" onblur="edSync('${id}')"></textarea>
     <input type="hidden" id="${id}" ${attrs} value="${escA(valor || "")}">
   </div>`;
 }
@@ -320,6 +385,10 @@ function paraHTML(v) {
 
 function edCmd(id, cmd) {
   const area = document.getElementById(id + "-ed");
+  if (cmd === "html") return edHtml(id);
+  /* Com o HTML à mostra, os botões de formatar não têm onde agir: a área
+     formatada está escondida e aplicar negrito ali mexeria no que não se vê. */
+  if (document.getElementById(id + "-html").style.display === "block") return;
   area.focus();
   if (cmd === "link") {
     const url = prompt("Endereço do link (https://… , /pagina/ ou mailto:…):", "https://");
@@ -332,10 +401,52 @@ function edCmd(id, cmd) {
   edSync(id);
 }
 
+/* ==========================================================================
+   VER E ESCREVER O HTML
+
+   Troca a área formatada por uma caixa com a marcação crua e volta. É por aqui
+   que entra o que a barra não faz — uma tabela, um vídeo embutido, uma classe
+   do layout.
+
+   ISSO NÃO ABRE UM BURACO: o que sai daqui passa pelo MESMO filtro do servidor
+   na hora de salvar. Escrever <script> à mão continua não publicando script
+   nenhum — a tag é descartada e o texto de dentro fica. O filtro é do lado do
+   servidor justamente porque qualquer trava só no navegador seria contornada
+   mandando o dado direto para a API.
+   ========================================================================== */
+function edHtml(id) {
+  const area = document.getElementById(id + "-ed");
+  const fonte = document.getElementById(id + "-html");
+  const bt = document.getElementById(id + "-bthtml");
+  if (fonte.style.display === "block") {                 // voltando ao texto formatado
+    area.innerHTML = fonte.value;
+    fonte.style.display = ""; area.style.display = "";
+    bt.classList.remove("ativo"); bt.setAttribute("aria-pressed", "false");
+  } else {                                               // indo para o HTML
+    /* Uma tag por linha: o editor devolve tudo grudado, e ninguém lê "</p><p>"
+       no meio de um parágrafo de 400 caracteres. */
+    fonte.value = area.innerHTML.trim().replace(/></g, ">\n<");
+    fonte.style.height = Math.max(area.offsetHeight, 120) + "px";
+    area.style.display = "none"; fonte.style.display = "block";
+    bt.classList.add("ativo"); bt.setAttribute("aria-pressed", "true");
+    fonte.focus();
+  }
+  edSync(id);
+}
+
 /* Espelha o que está na tela no campo oculto — é ele que o salvar lê. */
 function edSync(id) {
   const area = document.getElementById(id + "-ed"), campo = document.getElementById(id);
   if (!area || !campo) return;
+  /* Com o HTML aberto, quem vale é a caixa de HTML: é nela que se está
+     escrevendo. Salvar a área escondida jogaria fora o que acabou de ser
+     digitado. */
+  const fonte = document.getElementById(id + "-html");
+  if (fonte && fonte.style.display === "block") {
+    campo.value = fonte.value.trim();
+    campo.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
   /* Apagar tudo raramente deixa a caixa realmente vazia: o navegador guarda um
      "<br>" solto e, se o texto estava numa lista, guarda a lista inteira. A
      regra é o que se ENXERGA: sem texto visível, o campo está vazio. */
@@ -411,12 +522,30 @@ async function showApp() {
   await loadAll();
 }
 
+/* ---------------------------- Menu em grupos ---------------------------- */
+/* Abrir um grupo fecha os outros. Não é manha de estilo: é o que mantém a
+   barra curta — com vários abertos, a lista volta a passar da altura da tela. */
+function abrirGrupo(topo, aberto) {
+  document.querySelectorAll(".navtopo").forEach((t) =>
+    t.setAttribute("aria-expanded", String(t === topo && aberto)));
+}
+document.querySelectorAll(".navtopo").forEach((topo) =>
+  topo.addEventListener("click", () =>
+    abrirGrupo(topo, topo.getAttribute("aria-expanded") !== "true")));
+
+/* A tela ativa nunca fica escondida dentro de um grupo fechado. */
+function revelarGrupoAtivo() {
+  const ativo = document.querySelector(".navsub .navbtn.on");
+  if (ativo) abrirGrupo(ativo.closest(".navgrupo").querySelector(".navtopo"), true);
+}
+
 document.querySelectorAll(".navbtn[data-p]").forEach((b) =>
   b.addEventListener("click", () => {
     document.querySelectorAll(".navbtn[data-p]").forEach((x) => x.classList.remove("on"));
     document.querySelectorAll(".panel").forEach((x) => x.classList.remove("on"));
     b.classList.add("on");
     $("#p-" + b.dataset.p).classList.add("on");
+    revelarGrupoAtivo();
     if (b.dataset.p === "acessos") loadStats();
   })
 );
