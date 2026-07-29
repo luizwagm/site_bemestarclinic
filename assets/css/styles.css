@@ -260,6 +260,14 @@ p { margin: 0 0 1rem; }
   color: var(--gold); margin: 0 0 .7rem;
 }
 .pro__bio { color: var(--ink-soft); font-size: .9rem; margin: 0; }
+/* A mini-bio virou campo formatado no painel: o texto passou a vir dentro de
+   <p>/<ul>, e a margem 0 acima vale para o contêiner, não para os filhos.
+   Sem estas regras o primeiro parágrafo ganharia a margem padrão do navegador
+   e empurraria o cartão. */
+.pro__bio > :first-child, .prof-card__bio > :first-child { margin-top: 0; }
+.pro__bio > :last-child,  .prof-card__bio > :last-child  { margin-bottom: 0; }
+.pro__bio p, .prof-card__bio p { margin: 0 0 .5rem; }
+.pro__bio ul, .pro__bio ol, .prof-card__bio ul, .prof-card__bio ol { margin: .3rem 0 .5rem; padding-left: 1.2rem; }
 
 /* -------------------------------- Split ----------------------------------- */
 .split { display: grid; grid-template-columns: .95fr 1.05fr; gap: clamp(2.2rem, 6vw, 4.5rem); align-items: center; }
@@ -540,8 +548,34 @@ p { margin: 0 0 1rem; }
 .post-card__more:hover { color: var(--gold); transform: translateX(4px); }
 .blog-empty { grid-column: 1 / -1; text-align: center; color: var(--ink-soft); }
 .post__date { font-size: .74rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); display: block; margin-bottom: .5rem; }
+/* CAPA DA MATÉRIA — na proporção em que a foto foi feita.
+
+   Antes havia `aspect-ratio: 16/8.5` com `object-fit: cover`: toda capa era
+   forçada a um retângulo deitado e o que sobrava era CORTADO. Foto em pé — que
+   é o que sai de um celular — perdia o topo e a base, justamente onde costuma
+   estar o rosto.
+
+   `width`/`height` em `auto` com os dois limites é o que preserva a proporção:
+   a imagem entra no tamanho natural e só encolhe se passar da largura da
+   coluna OU da altura máxima. Nenhum dos dois deforma, porque o navegador
+   ajusta o outro lado junto. Sem o teto de altura, uma foto 3:4 numa coluna de
+   700px ocuparia mais de 900px e empurraria o texto para fora da tela.
+
+   No card da lista o corte CONTINUA — ali as capas precisam ter o mesmo
+   tamanho para a grade não ficar irregular. É na matéria aberta que a foto tem
+   de aparecer inteira. */
 .post__cover { margin: 0 0 1.6rem; }
-.post__cover img { width: 100%; aspect-ratio: 16 / 8.5; object-fit: cover; border-radius: var(--radius); box-shadow: var(--shadow-soft); }
+.post__cover img {
+  width: auto; height: auto;
+  max-width: 100%; max-height: 70vh;
+  /* `margin-inline: auto`, e não `text-align: center` no <figure>: a regra
+     global põe `display: block` em toda imagem, e bloco não obedece a
+     alinhamento de texto. Sem isto a foto em pé fica encostada à esquerda
+     com um vão de 420px ao lado. */
+  margin-inline: auto;
+  border-radius: var(--radius); box-shadow: var(--shadow-soft);
+}
+@media (max-width: 640px) { .post__cover img { max-height: 60vh; } }
 
 /* Tiles de contato com altura igualada (sem o mapa) */
 .contact { align-items: stretch; }

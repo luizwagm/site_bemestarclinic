@@ -1160,10 +1160,14 @@ function edSincronizar(id){
   const campo = document.getElementById(id);
   if(!area || !campo) return;
   const html = area.innerHTML.trim();
-  /* O navegador deixa "<br>" sozinho quando o usuário apaga tudo. Isso não é
-     conteúdo — e salvo assim faria um lançamento vazio passar pela validação
-     de "escreva o conteúdo". */
-  campo.value = (html === "<br>" || html === "<div><br></div>") ? "" : html;
+  /* Apagar tudo raramente deixa a caixa realmente vazia: o navegador guarda um
+     "<br>" solto e, se o texto estava numa lista, guarda a lista inteira —
+     "<ul><li><br></li></ul>". Salvo assim, o campo esvaziado passaria pela
+     validação de "escreva o conteúdo" e ainda apareceria na tela e na
+     impressão como um marcador sozinho, sem texto nenhum ao lado.
+
+     A regra é o que se ENXERGA: sem texto visível, o campo está vazio. */
+  campo.value = area.textContent.trim() === "" ? "" : html;
 }
 
 /* Colar sempre como texto puro (ver o comentário do bloco). */

@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.14.1";
+const APP_VERSION = "1.16.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -639,6 +639,151 @@ setInterval(() => {
 
 /* ------------------------------ Publicar --------------------------------- */
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/* ==========================================================================
+   TEXTO FORMATADO DO PAINEL
+
+   O painel ganhou um editor com negrito, listas e links, e o que ele grava é
+   HTML. Isso significa que o site passa a IMPRIMIR marcação vinda do banco —
+   e é aí que mora o risco: um texto colado de fora traria script, iframe e
+   estilo junto, e o site é público.
+
+   A regra é LISTA DE PERMITIDOS. Só o que está aqui passa; o resto vira texto.
+   Lista de proibidos sempre esquece alguma coisa, e a que esquecer é a que vai
+   ser usada.
+
+   `href` é o único atributo aceito, e só em <a>, com o esquema conferido:
+   `javascript:` num link é execução de código com a cara de um link comum.
+   ========================================================================== */
+const TAGS_SITE = new Set(["p", "br", "b", "strong", "i", "em", "u", "s", "ul", "ol", "li",
+  "h2", "h3", "h4", "blockquote", "a", "span", "div"]);
+const LINK_SEGURO = /^(https?:\/\/|mailto:|tel:|\/|#)/i;
+
+function htmlLimpo(valor) {
+  if (valor === null || valor === undefined) return valor;
+  let s = String(valor);
+  if (!s.includes("<")) return s;                     // texto puro: nada a fazer
+
+  /* Fora antes de tudo: o conteúdo destas some junto com a tag. Remover só a
+     tag deixaria o código do script solto como texto visível na página. */
+  s = s.replace(/<(script|style|iframe|object|embed|form|link|meta|base|svg|math)\b[\s\S]*?<\/\1\s*>/gi, "");
+  s = s.replace(/<(script|style|iframe|object|embed|form|link|meta|base|svg|math)\b[^>]*\/?>/gi, "");
+  s = s.replace(/<!--[\s\S]*?-->/g, "");
+
+  return s.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/g, (tag, nome, attrs) => {
+    const n = nome.toLowerCase();
+    if (!TAGS_SITE.has(n)) return "";                 // descarta a tag, mantém o texto
+    if (tag.startsWith("</")) return `</${n}>`;
+    if (n === "br") return "<br>";
+    if (n === "a") {
+      const m = /\bhref\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attrs || "");
+      const href = m ? (m[2] ?? m[3] ?? m[4] ?? "").trim() : "";
+      if (!href || !LINK_SEGURO.test(href)) return "<a>";
+      const externo = /^https?:\/\//i.test(href);
+      return `<a href="${esc(href)}"${externo ? ' target="_blank" rel="noopener"' : ""}>`;
+    }
+    return `<${n}>`;                                   // todo o resto sem atributo
+  });
+}
+
+/* Quais campos aceitam formatação. Fora daqui, o texto é gravado como veio.
+
+   Os RESUMOS (`posts.excerpt`, `services.text`) ficam de propósito de fora:
+   eles viram a descrição do Google e o JSON-LD, onde uma tag aparece crua no
+   resultado de busca. O endereço também — entra no JSON-LD da clínica. */
+const CAMPOS_RICOS = {
+  posts: ["content"],
+  services: ["content"],
+  testimonials: ["text"],
+  team: ["bio"],
+};
+function limparRicos(tabela, obj) {
+  for (const c of CAMPOS_RICOS[tabela] || []) if (c in obj) obj[c] = htmlLimpo(obj[c]);
+  return obj;
+}
+
+/* Um bloco de texto do painel, pronto para entrar na página.
+
+   Convive com os dois formatos porque o conteúdo antigo é TEXTO PURO com
+   parágrafos separados por linha em branco — e continua sendo, até alguém
+   reabrir aquele texto no editor. Sem esta ponte, todo o conteúdo já
+   publicado viraria um parágrafo só na primeira publicação depois desta
+   versão. */
+/* ==========================================================================
+   TAMANHO REAL DA IMAGEM
+
+   O `width`/`height` do <img> não muda o tamanho na tela (quem manda é o CSS):
+   ele diz ao navegador a PROPORÇÃO, para reservar o espaço certo antes de a
+   imagem carregar. Sem isso a página dá um pulo quando ela chega — e o número
+   errado é pior que nenhum, porque reserva um retângulo deitado para uma foto
+   em pé.
+
+   A capa da matéria vinha com `width="900" height="500"` fixos no template. A
+   clínica sobe foto de WhatsApp, que quase sempre está EM PÉ: o navegador
+   reservava paisagem e o CSS recortava o resto.
+
+   Lê direto do cabeçalho do arquivo, sem biblioteca: são os primeiros bytes de
+   cada formato. Só vale para os nossos uploads — imagem de fora (Unsplash) é
+   uma URL, e buscá-la aqui deixaria a publicação dependendo da internet. Nesse
+   caso não declaramos nada, e o CSS acerta a proporção quando a imagem chega.
+   ========================================================================== */
+function medirImagem(url) {
+  const m = /^\/assets\/img\/uploads\/([A-Za-z0-9._-]+)$/.exec(String(url || ""));
+  if (!m) return null;
+  const arq = path.join(UPLOAD_DIR, m[1]);
+  let b;
+  try { b = fs.readFileSync(arq); } catch { return null; }
+
+  // PNG: largura e altura em big-endian logo depois do IHDR
+  if (b.length > 24 && b.toString("hex", 0, 8) === "89504e470d0a1a0a")
+    return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+
+  // GIF: little-endian, no cabeçalho
+  if (b.length > 10 && (b.toString("ascii", 0, 6) === "GIF87a" || b.toString("ascii", 0, 6) === "GIF89a"))
+    return { w: b.readUInt16LE(6), h: b.readUInt16LE(8) };
+
+  // WEBP (VP8 simples, VP8L sem perdas e VP8X estendido guardam em lugares diferentes)
+  if (b.length > 30 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") {
+    const tipo = b.toString("ascii", 12, 16);
+    if (tipo === "VP8 ") return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+    if (tipo === "VP8L") {
+      const n = b.readUInt32LE(21);
+      return { w: (n & 0x3fff) + 1, h: ((n >> 14) & 0x3fff) + 1 };
+    }
+    if (tipo === "VP8X") return { w: (b.readUIntLE(24, 3) & 0xffffff) + 1, h: (b.readUIntLE(27, 3) & 0xffffff) + 1 };
+  }
+
+  // JPEG: percorre os segmentos até achar o "start of frame", que carrega o tamanho
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) { i++; continue; }                 // ressincroniza em byte de preenchimento
+      const marca = b[i + 1];
+      if (marca === 0xd8 || marca === 0x01 || (marca >= 0xd0 && marca <= 0xd7)) { i += 2; continue; }
+      const tam = b.readUInt16BE(i + 2);
+      /* SOF0..SOF15, menos DHT (c4), JPG (c8) e DAC (cc), que não são frames.
+         É onde moram altura e largura — nesta ordem. */
+      if (marca >= 0xc0 && marca <= 0xcf && marca !== 0xc4 && marca !== 0xc8 && marca !== 0xcc)
+        return { h: b.readUInt16BE(i + 5), w: b.readUInt16BE(i + 7) };
+      if (tam < 2) break;                                    // tamanho inválido: para em vez de girar
+      i += 2 + tam;
+    }
+  }
+  return null;
+}
+
+/* Os atributos prontos para entrar no <img>, ou vazio se não dá para saber. */
+function medidasDoImg(url) {
+  const d = medirImagem(url);
+  return d && d.w && d.h ? ` width="${d.w}" height="${d.h}"` : "";
+}
+
+function blocoTexto(valor) {
+  const s = String(valor || "").trim();
+  if (!s) return "";
+  if (/<(p|br|ul|ol|li|h2|h3|h4|blockquote|div|strong|b|em|i|a)\b/i.test(s)) return htmlLimpo(s);
+  return s.split(/\n{2,}/).map((par) => `<p>${esc(par.trim()).replace(/\n/g, "<br>")}</p>`).join("\n        ");
+}
 const ICONS = [
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 1 7 7c0 1.9-.7 3.2-1.7 4.5-.8 1-1.3 2.1-1.3 3.5v3h-6v-2H8a2 2 0 0 1-2-2v-3H4.5L6.2 10A7 7 0 0 1 12 3Z"/><path d="M11 9.5a1.8 1.8 0 1 1 1.8 1.8V13"/></svg>',
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/><path d="M9 14a3 3 0 0 0 3 3"/></svg>',
@@ -719,7 +864,7 @@ function publish() {
             <figure class="pro__photo"><img src="${esc(m.photo)}" alt="${esc(m.name)} — ${esc(m.role)}" loading="lazy" width="300" height="340"></figure>
             <h3 class="pro__name">${esc(m.name)}</h3>
             <p class="pro__role">${esc(m.role)}</p>
-            <p class="pro__bio">${esc(m.bio)}</p>
+            <div class="pro__bio">${blocoTexto(m.bio)}</div>
           </article>`).join("\n          ");
 
   const depsHtml = deps.map((t, i) => `<figure class="card quote" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
@@ -844,8 +989,7 @@ function publish() {
     if (d.isDirectory() && !keepEsp.has(d.name)) fs.rmSync(path.join(ROOT, "especialidades", d.name), { recursive: true, force: true });
   for (const [i, sv] of services.entries()) {
     if (!sv.slug) continue;
-    const paragraphs = String(sv.content || sv.text || "").split(/\n{2,}/)
-      .map((par) => `<p>${esc(par.trim()).replace(/\n/g, "<br>")}</p>`).join("\n        ");
+    const paragraphs = blocoTexto(sv.content || sv.text);
     const others = services.filter((x) => x.id !== sv.id).slice(0, 3).map(svcCard).join("\n          ");
     // meta description própria: prefixo local + resumo, cortado em palavra inteira (≤158)
     const prefixo = `${sv.title} em Caruaru-PE e online. `;
@@ -905,7 +1049,7 @@ function publish() {
             <figure class="prof-card__foto${m.photo ? "" : " prof-card__foto--vazia"}">${foto}</figure>
             <h3 class="prof-card__nome">${esc(m.name)}</h3>
             <p class="prof-card__role">${esc(m.role)}</p>
-            ${m.bio ? `<p class="prof-card__bio">${esc(m.bio)}</p>` : ""}
+            ${m.bio ? `<div class="prof-card__bio">${blocoTexto(m.bio)}</div>` : ""}
             ${esp.length ? `<ul class="prof-card__tags">${esp.map((e, k) => {
               const sv = services.find((s) => s.title === e);
               // quem atende muita coisa (o Dr. Ronalldo tem 9) estouraria a altura do
@@ -1024,7 +1168,7 @@ function publish() {
   for (const d of fs.readdirSync(path.join(ROOT, "blog"), { withFileTypes: true }))
     if (d.isDirectory() && !keepPosts.has(d.name)) fs.rmSync(path.join(ROOT, "blog", d.name), { recursive: true, force: true });
   for (const po of posts) {
-    const paragraphs = String(po.content || "").split(/\n{2,}/).map((par) => `<p>${esc(par.trim()).replace(/\n/g, "<br>")}</p>`).join("\n        ");
+    const paragraphs = blocoTexto(po.content);
     const pj = { "@context": "https://schema.org", "@type": "Article",
       headline: po.title, description: po.excerpt, image: po.image, datePublished: po.date, inLanguage: "pt-BR",
       author: { "@type": "Organization", name: "BemEstarClinic", url: `${SITE}/` },
@@ -1033,6 +1177,7 @@ function publish() {
     fs.writeFileSync(path.join(ROOT, "blog", po.slug, "index.html"),
       aplicarTextos(postTpl, S).replaceAll("{{TITLE}}", esc(po.title)).replaceAll("{{EXCERPT}}", esc(po.excerpt))
         .replaceAll("{{SLUG}}", esc(po.slug)).replaceAll("{{IMAGE}}", esc(po.image))
+        .replaceAll("{{IMAGE_DIMS}}", medidasDoImg(po.image))
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
         .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(pj, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
@@ -1397,7 +1542,10 @@ const servidor = http.createServer(async (req, res) => {
      recado claro — em vez de estourar uma exceção diferente a cada clique,
      deixando a equipe sem entender se o problema é a senha dela.
      O site e o /admin, que são SQLite, seguem o fluxo normal logo abaixo. */
-  if (ERRO_GESTAO && (p === "/restrito" || p.startsWith("/restrito/"))) {
+  /* `gestaoNoAr()` tenta religar antes de desistir. É o que transforma uma
+     queda de banco em soluço em vez de interrupção: quem chega depois que o
+     PostgreSQL voltou já entra normalmente, sem ninguém mexer no servidor. */
+  if (ERRO_GESTAO && (p === "/restrito" || p.startsWith("/restrito/")) && !(await gestaoNoAr())) {
     const api = p.startsWith("/restrito/api/");
     res.writeHead(503, {
       "Content-Type": api ? "application/json; charset=utf-8" : "text/html; charset=utf-8",
@@ -1549,7 +1697,12 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
       }
       if (p === "/api/settings" && req.method === "PUT") {
         const b = await readBody(req);
-        for (const [k, v] of Object.entries(b)) if (KEYS.includes(k)) setS(k, v);
+        /* Os textos de seção já entravam CRUS na página (o setMarker injeta sem
+           escapar) — era assim que negrito e link funcionavam ali. Agora que o
+           editor grava HTML de verdade, eles passam pelo mesmo filtro do resto:
+           o que muda não é a permissão, é o que se pode escrever. */
+        for (const [k, v] of Object.entries(b))
+          if (KEYS.includes(k)) setS(k, ESPECIAIS.includes(k) || k === "address" ? v : htmlLimpo(v));
         return json(res, 200, { ok: true });
       }
       const tm = p.match(/^\/api\/(services|portfolio|testimonials|team|posts)(?:\/(\d+))?$/);
@@ -1562,6 +1715,7 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
             const clash = db.prepare(`SELECT id FROM ${table} WHERE slug=?`).get(b.slug);
             if (clash) b.slug = `${b.slug}-${Date.now().toString(36)}`;
           }
+          limparRicos(table, b);
           const use = cols.filter((c) => c in b);
           db.prepare(`INSERT INTO ${table}(${use.join(",")}) VALUES(${use.map(() => "?").join(",")})`).run(...use.map((c) => b[c]));
           return json(res, 200, { ok: true });
@@ -1573,6 +1727,7 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
             const clash = db.prepare(`SELECT id FROM ${table} WHERE slug=?`).get(b.slug);
             if (clash && String(clash.id) !== String(id)) b.slug = `${b.slug}-${Date.now().toString(36)}`;
           }
+          limparRicos(table, b);
           const use = cols.filter((c) => c in b);
           if (use.length) db.prepare(`UPDATE ${table} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`).run(...use.map((c) => b[c]), id);
           return json(res, 200, { ok: true });
@@ -1674,11 +1829,69 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
    ========================================================================== */
 let ERRO_GESTAO = null;
 
+/* ==========================================================================
+   A GESTÃO SE RECUPERA SOZINHA
+
+   O banco sair do ar por alguns segundos é ROTINA, não exceção: o
+   unattended-upgrades reinicia o PostgreSQL de madrugada e ele volta em ~5
+   segundos. Em 29/07/2026 o app tentou conectar exatamente dentro dessa janela
+   (banco parou 06:16:02, voltou 06:16:07; a tentativa foi às 06:16:04), falhou,
+   e ficou servindo "sistema indisponível" por horas — com o banco de pé ao
+   lado. A falha durou 5 segundos; o estrago, uma manhã inteira.
+
+   O erro de projeto era tratar a inicialização como decisão ÚNICA e definitiva.
+   Agora ela é uma TENTATIVA, repetida em dois momentos:
+
+     · no boot, algumas vezes com espera crescente — cobre a janela do upgrade
+       sem ninguém precisar fazer nada;
+     · a cada acesso ao /restrito, se ainda estiver fora — assim uma queda mais
+       longa se cura no primeiro clique de quem chegar depois que o banco voltar.
+
+   A trava `religando` existe para que dez acessos simultâneos não abram dez
+   reconexões; a espera mínima, para não martelar um banco que está mesmo fora.
+   Ninguém precisa reiniciar serviço: quem religa é o próprio processo.
+   ========================================================================== */
+let religando = null;               // tentativa em curso (promessa compartilhada)
+let proximaTentativa = 0;           // não tenta de novo antes disto
+const ESPERA_ENTRE_TENTATIVAS = 15_000;
+
+async function ligarGestao() {
+  await iniciarRestrito();
+  ERRO_GESTAO = null;
+}
+
+/* true se a gestão está no ar — religando antes, se for a hora de tentar. */
+async function gestaoNoAr() {
+  if (!ERRO_GESTAO) return true;
+  if (Date.now() < proximaTentativa) return false;
+  if (!religando) {
+    proximaTentativa = Date.now() + ESPERA_ENTRE_TENTATIVAS;
+    religando = ligarGestao()
+      .then(() => console.log("  · /restrito: banco de volta — sistema de gestão religado sozinho."))
+      .catch((e) => { ERRO_GESTAO = e; })
+      .finally(() => { religando = null; });
+  }
+  await religando;
+  return !ERRO_GESTAO;
+}
+
 (async () => {
-  try {
-    await iniciarRestrito();
-  } catch (e) {
-    ERRO_GESTAO = e;
+  /* No boot vale insistir: o serviço sobe junto com o resto da máquina, e o
+     PostgreSQL pode ainda estar abrindo. As esperas somam ~30s — bem mais que
+     os 5 segundos de um upgrade. */
+  const ESPERAS = [1000, 2000, 4000, 8000, 15000];
+  for (let i = 0; ; i++) {
+    try { await ligarGestao(); break; }
+    catch (e) {
+      ERRO_GESTAO = e;
+      if (i >= ESPERAS.length) break;
+      console.error(`  · /restrito: banco não respondeu (${e.message}) — nova tentativa em ${ESPERAS[i] / 1000}s`);
+      await new Promise((r) => setTimeout(r, ESPERAS[i]));
+    }
+  }
+  if (!ERRO_GESTAO) return;
+  {
+    const e = ERRO_GESTAO;
     console.error("\n  ✖ O SISTEMA DE GESTÃO (/restrito) NÃO INICIALIZOU.");
     console.error("    " + e.message);
     console.error("\n    O SITE E O /admin CONTINUAM NO AR (usam o SQLite, não o Postgres).");
@@ -1689,45 +1902,53 @@ let ERRO_GESTAO = null;
     console.error("        systemctl show bemestar -p EnvironmentFiles");
     console.error("      · o banco existe e o usuário tem acesso?");
     console.error("        psql -U bemestar -d bemestar_gestao -c '\\dt'");
-    console.error("\n    Depois de corrigir:  systemctl restart bemestar\n");
+    console.error("\n    Corrigido o problema, NÃO é preciso reiniciar nada: o sistema");
+    console.error("    religa sozinho no primeiro acesso ao /restrito.\n");
+  }
+})();
+
+/* O listen fica FORA do laço de tentativas, e nunca depois dele.
+
+   A primeira versão desta correção esperava as tentativas terminarem para só
+   então abrir a porta — e com o banco fora o SITE PÚBLICO ficava 30 segundos
+   sem responder. Seria trocar um problema por outro pior: o site da clínica
+   não depende do PostgreSQL e não pode ficar refém dele nem por um instante. */
+
+// Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
+// ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.
+// Para expor direto (ambiente sem proxy), rode com HOST=0.0.0.0
+servidor.listen(PORT, process.env.HOST || "127.0.0.1", async () => {
+  console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
+  console.log(`  · Site:   http://localhost:${PORT}/`);
+  console.log(`  · Painel: http://localhost:${PORT}/admin/`);
+  console.log(`  · Banco do site:    ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""} (data/site.db)`);
+  if (ERRO_GESTAO) {
+    console.log(`  · Banco da gestão:  ✖ INDISPONÍVEL — /restrito fora do ar (site e /admin OK)`);
+  } else {
+    try {
+      const v = await Q.versao();
+      console.log(`  · Banco da gestão:  PostgreSQL — ${v.d} (usuário ${v.u})`);
+    } catch (e) { console.log(`  · Banco da gestão:  ✖ ${e.message.split("\n")[0]}`); }
   }
 
-  // Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
-  // ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.
-  // Para expor direto (ambiente sem proxy), rode com HOST=0.0.0.0
-  servidor.listen(PORT, process.env.HOST || "127.0.0.1", async () => {
-    console.log(`\n  BemEstarClinic — site + gerenciador v${APP_VERSION}`);
-    console.log(`  · Site:   http://localhost:${PORT}/`);
-    console.log(`  · Painel: http://localhost:${PORT}/admin/`);
-    console.log(`  · Banco do site:    ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""} (data/site.db)`);
-    if (ERRO_GESTAO) {
-      console.log(`  · Banco da gestão:  ✖ INDISPONÍVEL — /restrito fora do ar (site e /admin OK)`);
-    } else {
-      try {
-        const v = await Q.versao();
-        console.log(`  · Banco da gestão:  PostgreSQL — ${v.d} (usuário ${v.u})`);
-      } catch (e) { console.log(`  · Banco da gestão:  ✖ ${e.message.split("\n")[0]}`); }
-    }
+  /* Backup automático dos DOIS bancos: o do site (cópia do arquivo) e o da
+     gestão (dump SQL do Postgres). Roda aqui, no processo do site, porque é
+     ele que sobe com o systemd — o restrito.js não tem boot próprio. */
+  agendarBackups(BACKUP_CFG);
 
-    /* Backup automático dos DOIS bancos: o do site (cópia do arquivo) e o da
-       gestão (dump SQL do Postgres). Roda aqui, no processo do site, porque é
-       ele que sobe com o systemd — o restrito.js não tem boot próprio. */
-    agendarBackups(BACKUP_CFG);
-
-    // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
-    // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.
-    try {
-      setS("_teste_escrita", String(Date.now()));
-      db.prepare("DELETE FROM settings WHERE key='_teste_escrita'").run();
-    } catch (e) {
-      const usuario = (() => { try { return require("node:os").userInfo().username; } catch { return "root"; } })();
-      console.error(`  ✖ BANCO DO SITE SEM PERMISSÃO DE ESCRITA: ${e.message}`);
-      console.error("    O painel não vai conseguir salvar nada. O processo roda como:", usuario);
-      console.error(`    Corrija com: sudo chown -R ${usuario}: "${ROOT}/data" "${ROOT}/assets/img/uploads"`);
-    }
-    // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
-    if (confereSenha("bemestar-admin", getS("admin_password_hash")))
-      console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
-    else console.log("");
-  });
-})();
+  // Testa a escrita no boot. Sem isto, um banco somente-leitura só aparece
+  // quando o cliente tenta salvar algo e nada acontece — e o log fica mudo.
+  try {
+    setS("_teste_escrita", String(Date.now()));
+    db.prepare("DELETE FROM settings WHERE key='_teste_escrita'").run();
+  } catch (e) {
+    const usuario = (() => { try { return require("node:os").userInfo().username; } catch { return "root"; } })();
+    console.error(`  ✖ BANCO DO SITE SEM PERMISSÃO DE ESCRITA: ${e.message}`);
+    console.error("    O painel não vai conseguir salvar nada. O processo roda como:", usuario);
+    console.error(`    Corrija com: sudo chown -R ${usuario}: "${ROOT}/data" "${ROOT}/assets/img/uploads"`);
+  }
+  // avisa sem imprimir a senha: em produção esse log vai parar no journalctl
+  if (confereSenha("bemestar-admin", getS("admin_password_hash")))
+    console.log(`  ⚠ A senha do painel ainda é a padrão. Troque em Painel → Senha antes de publicar.\n`);
+  else console.log("");
+});
