@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.26.0";
+const SISTEMA_VERSION = "1.27.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -866,18 +866,23 @@ setInterval(() => {
 }, 30 * 60_000).unref();
 
 /* Trava de força bruta por IP (igual filosofia do admin) */
-const TENT_MAX = 5, BLOQ_MIN = 15;
-const tentativas = new Map();
-function bloqueado(ip) {
-  const t = tentativas.get(ip);
-  if (!t) return false;
-  if (Date.now() - t.ts > BLOQ_MIN * 60_000) { tentativas.delete(ip); return false; }
-  return t.n >= TENT_MAX;
-}
-function erroLogin(ip) {
-  const t = tentativas.get(ip) || { n: 0, ts: Date.now() };
-  t.n++; t.ts = Date.now(); tentativas.set(ip, t);
-}
+/* FREIO CONTRA ADIVINHAÇÃO DE SENHA — ver limitador.js.
+
+   Este login é MULTIUSUÁRIO, e é onde o balde por conta pesa mais: antes,
+   contando só por IP, dava para martelar a conta de UMA pessoa a partir de
+   vários endereços sem disparar nada. Agora as tentativas contra cada pessoa
+   são somadas separadamente — e travar a conta de uma não atrapalha as
+   outras. Aqui dentro há prontuário: é o login mais sensível dos três sites.
+
+   Arquivo próprio, e não o do server.js: os dois módulos guardam o estado em
+   memória e gravam tudo de uma vez, então dividir o mesmo arquivo faria um
+   apagar o que o outro acabou de escrever. */
+const { criarLimitador } = require("./limitador");
+const limite = criarLimitador({ arquivo: path.join(ROOT, "data", "limites-restrito.json") });
+limite.carregar();
+process.on("exit", () => limite.gravar());
+setInterval(() => limite.limpar(), 10 * 60_000).unref();
+
 
 /* -------------------------------- utilidades ----------------------------- */
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -975,7 +980,30 @@ async function recolherAtendimentosSoltos(prontuarioId, pacienteId, procedimento
   return soltos.length;
 }
 
-const clientIp = (req) => String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || req.socket.remoteAddress || "";
+/* O IP REAL de quem está pedindo.
+
+   Atrás do nginx o socket é sempre 127.0.0.1, então o IP verdadeiro precisa
+   chegar por cabeçalho. Só que cabeçalho é texto que o CLIENTE também
+   escreve. O nginx monta `X-Forwarded-For: <o que o cliente mandou>, <IP
+   real>` — ele ACRESCENTA no fim, não substitui. Ler o PRIMEIRO item da lista,
+   como estava aqui, é ler exatamente o que o visitante digitou.
+
+   Na prática isso anulava a trava de força bruta: bastava mandar um
+   X-Forwarded-For diferente a cada tentativa para nenhuma "contar" duas vezes
+   no mesmo IP, e a senha podia ser tentada infinitas vezes.
+
+   Duas correções: o cabeçalho só é aceito quando a conexão de fato veio do
+   nginx local, e usamos o X-Real-IP — que o nginx SOBRESCREVE — ou, na falta
+   dele, o ÚLTIMO item da lista, o único que o nginx escreveu. */
+const DO_PROXY = /^(?:::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/;
+function clientIp(req) {
+  const direto = String(req.socket.remoteAddress || "");
+  if (!DO_PROXY.test(direto)) return direto;                      // conexão direta: só o socket vale
+  const real = String(req.headers["x-real-ip"] || "").trim();
+  if (real) return real;
+  const lista = String(req.headers["x-forwarded-for"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  return lista.length ? lista[lista.length - 1] : direto;
+}
 const agora = () => new Date().toISOString();
 function readBody(req) {
   return new Promise((ok, err) => {
@@ -1454,16 +1482,20 @@ async function rotaApi(req, res, p) {
 
   // login
   if (p === "login" && req.method === "POST") {
-    if (bloqueado(ip)) return json(res, 429, { error: "Muitas tentativas. Aguarde 15 minutos." });
     const { usuario, senha } = await readBody(req);
-    const u = await Q.get("SELECT * FROM g_usuarios WHERE email=? AND ativo=1", String(usuario || "").trim());
+    /* A conta entra na contagem pelo que foi DIGITADO, exista ou não: contar
+       só as reais deixaria o atacante varrer nomes de graça. */
+    const conta = String(usuario || "").trim().toLowerCase();
+    const v = limite.verificar("restrito", ip, conta);
+    if (!v.ok) { res.setHeader("Retry-After", String(v.esperar)); return json(res, 429, { error: v.mensagem }); }
+    const u = await Q.get("SELECT * FROM g_usuarios WHERE email=? AND ativo=1", conta);
     /* Se o usuário não existe, ainda assim gastamos o mesmo tempo de um scrypt.
        Sem isto, "usuário inexistente" responde em ~1ms e "usuário certo, senha
        errada" em ~100ms — diferença que permite descobrir logins válidos por
        cronômetro antes de atacar a senha. */
     const ok = u ? confereSenha(senha, u.senha_hash) : (confereSenha(senha, HASH_ISCA), false);
     if (!ok) {
-      erroLogin(ip);
+      limite.errou("restrito", ip, conta);
       /* A tentativa SEM SUCESSO é a linha mais importante desta trilha: é ela
          que revela alguém tentando entrar. Guardamos o login digitado — não a
          senha, nunca, nem parte dela. */
@@ -1472,7 +1504,7 @@ async function rotaApi(req, res, p) {
         detalhe: { usuario_informado: String(usuario || "").slice(0, 60), existe: !!u } });
       return json(res, 401, { error: "Usuário ou senha incorretos." });
     }
-    tentativas.delete(ip);
+    limite.acertou("restrito", ip, conta);
     const rid = novaSessao(u);
     res.setHeader("Set-Cookie", `rid=${rid}; HttpOnly; SameSite=Lax; Path=/restrito; Max-Age=${SESSAO_HORAS * 3600}${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
     auditar({ req, sessao: { userId: u.id, nome: u.nome, perfil: u.perfil }, acao: "login",
@@ -1659,9 +1691,18 @@ async function rotaApi(req, res, p) {
   }
 
   if (p === "senha" && req.method === "POST") {
+    /* Aqui também se adivinha senha: este endereço recebe a senha ATUAL.
+       Sem freio, quem chegasse a um cookie de sessão poderia testá-la à
+       vontade por aqui, contornando o login. A conta é a de quem está logado. */
+    const vS = limite.verificar("troca-senha", ip, String(s.userId));
+    if (!vS.ok) { res.setHeader("Retry-After", String(vS.esperar)); return json(res, 429, { error: vS.mensagem }); }
     const { atual, nova } = await readBody(req);
     const u = await Q.get("SELECT * FROM g_usuarios WHERE id=?", s.userId);
-    if (!confereSenha(atual, u.senha_hash)) return json(res, 400, { error: "Senha atual incorreta." });
+    if (!confereSenha(atual, u.senha_hash)) {
+      limite.errou("troca-senha", ip, String(s.userId));
+      return json(res, 400, { error: "Senha atual incorreta." });
+    }
+    limite.acertou("troca-senha", ip, String(s.userId));
     if (String(nova || "").length < 8) return json(res, 400, { error: "A nova senha precisa de ao menos 8 caracteres." });
     await Q.run("UPDATE g_usuarios SET senha_hash=? WHERE id=?", hashSenha(nova), s.userId);
     // a senha em si NUNCA entra na trilha, nem cifrada
