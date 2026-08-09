@@ -30,7 +30,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.27.0";
+const SISTEMA_VERSION = "1.28.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +48,20 @@ const SISTEMA_VERSION = "1.27.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.28.0", data: "2026-08-09", titulo: "Arquivar paciente e prontuário", mudancas: [
+    "Arquivar tira o paciente da lista sem apagar nada",
+    "Arquivar tira o prontuário da tela, com o tratamento inteiro guardado",
+    "Nova tela Arquivados, no menu da conta, com uma aba para cada área",
+    "Restaurar devolve o registro à lista de origem com um clique",
+    "Arquivar NÃO é inativar nem dar alta: essas duas continuam à vista",
+    "Quem arquivou e quando ficam registrados na linha do tempo",
+  ] },
+  { versao: "1.27.1", data: "2026-08-09", titulo: "Campo de número em branco", mudancas: [
+    "Salvar com um campo de número vazio deixa de dar erro interno",
+    "O campo em branco vira “não informado”, ou volta ao valor padrão",
+    "Campo obrigatório em branco passa a dizer QUAL falta, em vez de erro",
+    "Vale para as 32 colunas numéricas de todos os cadastros e da agenda",
+  ] },
   { versao: "1.26.0", data: "2026-07-28", titulo: "Prontuário e anamnese só do profissional", mudancas: [
     "O profissional passa a ver apenas os prontuários e as anamneses dele",
     "Vale em todas as telas, no prontuário completo impresso e no histórico",
@@ -729,8 +743,14 @@ async function iniciarRestrito() {
      aqui, e não vira erro de SQL na cara do usuário. */
   for (const t of Object.keys(TAB)) {
     const cols = await Q.all(
-      "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=?", t);
+      `SELECT column_name, data_type, is_nullable, column_default
+         FROM information_schema.columns WHERE table_schema='public' AND table_name=?`, t);
     COLS[t] = new Set(cols.map((c) => c.column_name));
+    /* O TIPO de cada coluna, para decidir o destino do campo em branco — ver
+       `prepararCampos`. Lido uma vez no boot, do próprio banco: uma lista
+       escrita à mão aqui envelheceria na primeira migration. */
+    TIPOS[t] = Object.fromEntries(cols.map((c) => [c.column_name,
+      { tipo: c.data_type, nulavel: c.is_nullable === "YES", padrao: c.column_default != null }]));
     if (!COLS[t].size) console.error(`  ✖ /restrito: a tabela "${t}" não existe no banco — migration faltando?`);
   }
 
@@ -1018,6 +1038,82 @@ function json(res, code, obj) {
 }
 
 /* Tabelas expostas via CRUD genérico e suas colunas graváveis */
+/* ==========================================================================
+   CAMPO DE NÚMERO DEIXADO EM BRANCO
+
+   O navegador não sabe mandar `null`: campo numérico vazio chega como STRING
+   VAZIA. O SQLite engolia calado (guardava `""` numa coluna INTEGER); o
+   PostgreSQL recusa —
+
+       invalid input syntax for type integer: ""
+
+   — e o salvar devolve 500. Apareceu junto com a mudança de banco, e está em
+   TODA tela cujo formulário tenha número opcional: são 32 colunas graváveis
+   pelo formulário, em 8 módulos (agenda, ficha do paciente, convênio,
+   procedimento, sala, prontuário, anamnese, documento).
+
+   O tratamento fica AQUI, na beira do banco, e não em cada tela: tela se
+   esquece, e a próxima coluna numérica que alguém acrescentar já nasceria com
+   o mesmo defeito.
+
+   TRÊS DESTINOS, E A ORDEM ENTRE ELES IMPORTA:
+
+   1. coluna com valor PADRÃO  → SAI da instrução, e o padrão vale.
+   2. coluna que aceita nulo   → NULL, que é o que "não informado" significa.
+   3. obrigatória sem padrão   → 400 dizendo QUAL campo falta, nunca 500.
+
+   O PADRÃO VEM ANTES DO NULO, e é a parte que erra fácil. `pacientes.ativo` é
+   `INTEGER DEFAULT 1` e ACEITA NULO — as duas coisas. Testando o nulo
+   primeiro, um `ativo` em branco viraria NULL; e como toda lista e todo
+   seletor filtram `WHERE ativo=1`, o paciente sumiria do sistema inteiro sem
+   nada avisar. O padrão existe justamente para dizer o que vale quando
+   ninguém informou: é ele a resposta certa para a ausência.
+   ========================================================================== */
+const TIPO_NAO_TEXTO = /^(integer|bigint|smallint|numeric|real|double|boolean|date|timestamp|time)/i;
+const TIPOS = {};
+
+function destinoDoVazio(tabela, coluna) {
+  const meta = TIPOS[tabela] && TIPOS[tabela][coluna];
+  if (!meta || !TIPO_NAO_TEXTO.test(meta.tipo)) return "texto";   // em texto, "" é valor legítimo
+  if (meta.padrao) return "omitir";
+  if (meta.nulavel) return "nulo";
+  return "obrigatorio";
+}
+
+/* Coluna → rótulo legível: a mensagem é para quem preenche o formulário, não
+   para quem lê o banco. */
+const rotuloColuna = (c) => String(c).replace(/_id$/, "").replace(/_/g, " ");
+
+/* `atualizando` muda o que "omitir" significa, e a diferença é visível para
+   quem usa:
+
+   · No CADASTRO, deixar de citar a coluna faz o padrão valer. É o certo.
+   · Na EDIÇÃO, deixar de citá-la faria o valor ANTIGO permanecer — a pessoa
+     limpa a duração do procedimento, salva, e o número volta sozinho. Fica
+     parecendo que o sistema ignorou o que ela fez, e da segunda vez ela
+     desconfia de tudo o que salvou antes.
+
+   Por isso, na edição, a coluna com padrão é escrita como `= DEFAULT`
+   (instrução do próprio PostgreSQL): limpar o campo devolve o valor de
+   fábrica, que é o mesmo resultado do cadastro. `literais` carrega essas
+   colunas separadas porque elas entram na instrução SEM `?` — não há valor a
+   enviar, quem resolve é o banco. */
+function prepararCampos(tabela, colunas, b, atualizando) {
+  const usar = [], valores = [], faltando = [], literais = [];
+  for (const c of colunas) {
+    if (b[c] !== "") { usar.push(c); valores.push(b[c]); continue; }
+    switch (destinoDoVazio(tabela, c)) {
+      case "omitir":
+        if (atualizando) literais.push(c);         // volta ao valor de fábrica
+        break;                                     // no cadastro, o padrão vale sozinho
+      case "nulo": usar.push(c); valores.push(null); break;
+      case "obrigatorio": faltando.push(rotuloColuna(c)); break;
+      default: usar.push(c); valores.push(b[c]);
+    }
+  }
+  return { usar, valores, faltando, literais };
+}
+
 const TAB = {
   // "codigo" NÃO entra: é gerado pelo servidor no cadastro e não se digita
   pacientes: ["nome", "nome_contato", "foto", "juridica", "estrangeiro", "cpf", "rg", "sexo",
@@ -1043,6 +1139,21 @@ const TAB = {
   anamneses: ["paciente_id", "tipo", "dados", "procedimento", "profissional", "profissional_id", "data", "usuario_id"],
   documentos_gestao: ["paciente_id", "tipo", "titulo", "arquivo", "data"],
 };
+
+/* ==========================================================================
+   O QUE PODE SER ARQUIVADO
+
+   Arquivar é decisão de ORGANIZAÇÃO da tela: "tire isto da minha frente". Não
+   diz que a pessoa deixou a clínica (para isso existe `ativo`) nem que o
+   tratamento terminou (para isso existe `status = Alta`). Some da lista,
+   continua no banco, volta num clique.
+
+   As três tabelas usam a MESMA dupla de colunas (`arquivado` 0/1 e
+   `arquivado_em`), o mesmo parâmetro de consulta e a mesma rota — foi o que
+   permitiu que `prontuario_registros`, que já arquivava, entrasse nesta lista
+   sem mudar de comportamento.
+   ========================================================================== */
+const TEM_ARQUIVO = new Set(["pacientes", "prontuario", "prontuario_registros"]);
 
 const UPLOAD_DIR = path.join(ROOT, "restrito", "arquivos");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -2121,18 +2232,59 @@ async function rotaApi(req, res, p) {
         ORDER BY a.data DESC, a.hora DESC, a.id DESC`, pr.paciente_id));
   }
 
-  /* -------- Arquivar / restaurar lançamento (nunca excluir) ------------- */
-  const rm = p.match(/^prontuario_registros\/(\d+)\/(arquivar|restaurar)$/);
+  /* ======================================================================
+     ARQUIVAR E RESTAURAR — paciente, pasta e lançamento pela MESMA rota
+
+     Uma rota para as três, porque é a mesma operação: `arquivado` vira 1, a
+     linha some das listas e volta num clique. Três rotas parecidas
+     divergiriam — e a que ficasse para trás esqueceria de registrar no
+     histórico, que é o que responde "quem tirou isto da tela".
+
+     NADA É APAGADO. Arquivar é organização, não exclusão: o registro continua
+     inteiro no banco, sai nos backups e é lido pela tela de Arquivados.
+
+     PERMISSÃO POR TABELA, não uma só para todas: a recepção organiza a lista
+     de pacientes mas não entra no prontuário; o profissional organiza as
+     pastas DELE e não mexe na lista de pacientes.
+     ====================================================================== */
+  const ARQUIVAVEIS = {
+    pacientes: { perm: "pacientes", oQue: "Paciente", entidade: "paciente" },
+    prontuario: { perm: "prontuario", oQue: "Prontuário", entidade: "prontuario" },
+    prontuario_registros: { perm: "prontuario", oQue: "Lançamento", entidade: "prontuario" },
+  };
+  const rm = p.match(/^(pacientes|prontuario|prontuario_registros)\/(\d+)\/(arquivar|restaurar)$/);
   if (rm && req.method === "POST") {
-    if (!pode(s.perfil, "prontuario")) return json(res, 403, { error: "Sem permissão." });
-    const id = rm[1], arq = rm[2] === "arquivar";
-    const reg = await Q.get("SELECT * FROM prontuario_registros WHERE id=?", id);
-    if (!reg) return json(res, 404, { error: "Lançamento não encontrado." });
-    if (s.perfil === "profissional" && String(reg.usuario_id) !== String(s.userId))
-      return json(res, 403, { error: "Lançamento de outro profissional." });
-    await Q.run("UPDATE prontuario_registros SET arquivado=?, arquivado_em=? WHERE id=?", arq ? 1 : 0, arq ? agora() : null, id);
-    await anotar("prontuario", reg.prontuario_id, (arq ? "Lançamento arquivado: " : "Lançamento restaurado: ") + rotuloTipo(reg.tipo), "", s);
-    return json(res, 200, { ok: true });
+    const def = ARQUIVAVEIS[rm[1]];
+    if (!pode(s.perfil, def.perm)) return json(res, 403, { error: "Sem permissão." });
+    const id = rm[2], arq = rm[3] === "arquivar";
+    const linha = await Q.get(`SELECT * FROM ${rm[1]} WHERE id=?`, id);
+    if (!linha) return json(res, 404, { error: def.oQue + " não encontrado." });
+
+    /* O RECORTE DO PROFISSIONAL vale aqui como vale na leitura: ele só
+       organiza o que é dele. Sem isto, quem não pode nem VER a pasta de outro
+       poderia fazê-la sumir da tela de todo mundo. */
+    if (s.perfil === "profissional") {
+      if (rm[1] === "prontuario_registros" && String(linha.usuario_id) !== String(s.userId))
+        return json(res, 403, { error: "Lançamento de outro profissional." });
+      if (rm[1] === "prontuario") {
+        const recusa = recusaPorDono(s, linha);
+        if (recusa) return json(res, 403, { error: recusa });
+      }
+    }
+
+    await Q.run(`UPDATE ${rm[1]} SET arquivado=?, arquivado_em=? WHERE id=?`,
+      arq ? 1 : 0, arq ? agora() : null, id);
+
+    /* Quem arquivou e quando entram na linha do tempo. Arquivar tira da vista
+       — e "sumiu da lista" sem registro é a diferença entre um sistema que se
+       explica e um que faz alguém desconfiar do banco. */
+    const alvoHist = rm[1] === "prontuario_registros" ? linha.prontuario_id : linha.id;
+    const nome = rm[1] === "prontuario_registros" ? rotuloTipo(linha.tipo)
+               : rm[1] === "prontuario" ? (linha.numero || linha.especialidade || "")
+               : (linha.nome || linha.codigo || "");
+    await anotar(def.entidade, alvoHist,
+      def.oQue + (arq ? " arquivado" : " restaurado") + (nome ? ": " + nome : ""), "", s);
+    return json(res, 200, { ok: true, arquivado: arq ? 1 : 0 });
   }
 
   /* --------- Linha do tempo de um paciente ou de um prontuário ---------- */
@@ -2288,8 +2440,26 @@ async function rotaApi(req, res, p) {
       // lançamentos são sempre lidos dentro de um prontuário
       const prFiltro = (q.get("prontuario_id") || "").trim();
       if (prFiltro && COLS[tabela].has("prontuario_id")) { cond.push("prontuario_id=?"); args.push(prFiltro); }
-      // por padrão os arquivados ficam fora; ?arquivados=1 mostra também
-      if (tabela === "prontuario_registros" && q.get("arquivados") !== "1") cond.push("arquivado=0");
+      /* ================================================================
+         ARQUIVADO SOME DA LISTA
+
+         Um parâmetro, três valores — e não dois parâmetros parecidos, que é
+         como alguém acaba usando o errado:
+
+             (ausente)          só o que NÃO está arquivado   ← o dia a dia
+             ?arquivados=1      inclui os arquivados          ← já era assim
+                                                                nos lançamentos
+             ?arquivados=so     SÓ os arquivados              ← a tela nova
+
+         `so` é o que a tela de Arquivados pede. Sem ele, ela teria de trazer
+         tudo e filtrar no navegador — e a clínica inteira viajaria pelo fio
+         para mostrar os três registros que foram arquivados.
+         ================================================================ */
+      if (TEM_ARQUIVO.has(tabela)) {
+        const modo = q.get("arquivados");
+        if (modo === "so") cond.push("arquivado=1");
+        else if (modo !== "1") cond.push("arquivado=0");
+      }
       // relação de ativos / inativos (com alta)
       const st = (q.get("status") || "").trim();
       if (st && COLS[tabela].has("status")) { cond.push("status=?"); args.push(st); }
@@ -2408,9 +2578,14 @@ async function rotaApi(req, res, p) {
          no CRUD, porque é por onde passam TODAS as gravações de paciente,
          anamnese, prontuário e agenda. */
       proteger(tabela, b);
+      /* Campo em branco tratado pelo que a COLUNA aceita — ver prepararCampos. */
+      const pronto = prepararCampos(tabela, use, b);
+      if (pronto.faltando.length)
+        return json(res, 400, { error: "Preencha: " + pronto.faltando.join(", ") + "." });
+
       const temCriado = COLS[tabela].has("criado");
-      const campos = temCriado ? use.concat("criado") : use;
-      const valores = temCriado ? use.map((c) => b[c]).concat(agora()) : use.map((c) => b[c]);
+      const campos = temCriado ? pronto.usar.concat("criado") : pronto.usar;
+      const valores = temCriado ? pronto.valores.concat(agora()) : pronto.valores;
       const novoId = await Q.inserir(`INSERT INTO ${tabela}(${campos.join(",")}) VALUES(${campos.map(() => "?").join(",")})`, ...valores);
       auditar({ req, sessao: s, acao: "criar", modulo: tabela, entidadeId: novoId,
         resumo: `Cadastrou em ${rotuloModulo(tabela)}: ${rotuloRegistro(tabela, comoVeio)}`,
@@ -2477,7 +2652,15 @@ async function rotaApi(req, res, p) {
       const comoVeio = {}; for (const c of use) comoVeio[c] = b[c];
 
       proteger(tabela, b);          // mesma cifragem do INSERT
-      if (use.length) await Q.run(`UPDATE ${tabela} SET ${use.map((c) => c + "=?").join(",")} WHERE id=?`, ...use.map((c) => b[c]), id);
+
+      /* Campo em branco tratado pelo que a COLUNA aceita — ver prepararCampos. */
+      const pronto = prepararCampos(tabela, use, b, true);
+      if (pronto.faltando.length)
+        return json(res, 400, { error: "Preencha: " + pronto.faltando.join(", ") + "." });
+
+      const atribuicoes = pronto.usar.map((c) => c + "=?").concat(pronto.literais.map((c) => c + "=DEFAULT"));
+      if (atribuicoes.length)
+        await Q.run(`UPDATE ${tabela} SET ${atribuicoes.join(",")} WHERE id=?`, ...pronto.valores, id);
 
       const mudou = diferencas(antesTudo, comoVeio, tabela);
       const nomesMudados = Object.keys(mudou);
@@ -2589,4 +2772,12 @@ async function rotaApi(req, res, p) {
 }
 
 
-module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS, sessao, auditar, registrarEncerrarPainel };
+/* `prepararCampos` e `TIPOS` saem para a suíte poder testar o ramo
+   "obrigatória sem padrão" DIRETO. Pela rota ele é inalcançável hoje: toda
+   coluna NOT NULL sem padrão que o formulário grava já tem uma conferência
+   própria antes ("Selecione o paciente", "Lançamento sem prontuário"), que
+   responde com uma frase melhor. O ramo é REDE — vale para a próxima coluna
+   obrigatória que alguém acrescentar sem lembrar de escrever a conferência.
+   Rede que nunca foi testada não é rede. */
+module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS, sessao, auditar, registrarEncerrarPainel,
+  _paraTeste: { prepararCampos, destinoDoVazio, TIPOS } };
