@@ -46,7 +46,16 @@ if [ "$(id -u)" = "0" ]; then
   SC="systemctl"; SOU_ROOT=1
 else
   SC="sudo -n systemctl"; SOU_ROOT=0
-  if ! sudo -n true 2>/dev/null; then
+  # A CONFERÊNCIA TEM DE USAR UM COMANDO DA LISTA. Antes eu testava com
+  # `sudo -n true` — e `true` não está autorizado, justamente porque a regra é
+  # estreita de propósito. Resultado: com a regra instalada e funcionando, o
+  # deploy parava dizendo que ela faltava.
+  #
+  # `is-active` está na lista. E a permissão é medida pelo que sai na SAÍDA
+  # PADRÃO, não pelo código de retorno: com o serviço parado ele devolve 3, o
+  # que é uma resposta legítima; quando o sudo recusa, a saída vem VAZIA porque
+  # o "a password is required" vai para a saída de erro.
+  if [ -z "$(sudo -n systemctl is-active "$SERVICO" 2>/dev/null)" ]; then
     echo "PAREI: preciso de 'systemctl' sem senha e a regra de sudo não está instalada."
     echo "  Instale uma vez, como root:"
     echo "    sudo cp ci/sudoers-bemestar /etc/sudoers.d/bemestar && sudo chmod 440 /etc/sudoers.d/bemestar"
