@@ -45,6 +45,30 @@ if ! flock -w 600 9; then
 fi
 
 echo "=== entrega iniciada em $(date '+%d/%m/%Y %H:%M:%S') ==="
+
+# ==========================================================================
+#  O DEPLOY.SH É ATUALIZADO ANTES DE RODAR — e isto conserta um impasse real.
+#
+#  O `deploy.sh` faz o `git pull`. Logo, uma correção DENTRO dele só chega ao
+#  servidor se ele rodar até o pull. Se a correção for justamente num passo
+#  ANTERIOR ao pull — uma conferência de permissão que recusa cedo demais, por
+#  exemplo —, o script morre antes e a correção nunca desce. O arquivo que
+#  precisa ser atualizado é o mesmo que teria de rodar para se atualizar.
+#
+#  Aconteceu aqui em 10/08/2026: o teste de permissão usava um comando fora da
+#  lista do sudo, o deploy parava na primeira linha útil, e dois pushes
+#  seguidos com a correção não mudaram nada.
+#
+#  A saída é buscar SÓ ESTE ARQUIVO antes de executá-lo. É uma linha, e ela
+#  garante que a entrega sempre roda a versão mais nova das próprias
+#  instruções. `git fetch` não mexe na árvore; o `checkout` toca um arquivo só.
+# ==========================================================================
+if git fetch --quiet origin main 2>/dev/null; then
+  if ! git diff --quiet HEAD origin/main -- deploy.sh 2>/dev/null; then
+    git checkout origin/main -- deploy.sh && echo "deploy.sh atualizado antes de rodar"
+  fi
+fi
+
 ./deploy.sh
 CODIGO=$?
 echo "=== entrega terminou com código $CODIGO ==="

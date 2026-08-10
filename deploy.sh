@@ -147,6 +147,30 @@ done
 [ -d restrito/arquivos ] && cp -r restrito/arquivos "$COFRE/arquivos"
 verde "     guardados em $COFRE"
 
+# ------------------------------------- 4b. descartar o que o publish gerou
+#
+# O "Publicar" do painel REESCREVE, no lugar, as páginas que estão versionadas:
+# index.html, as 21 páginas de especialidade e de matéria, e o índice de busca.
+# Elas ficam como MODIFICADAS na árvore, e `git pull --ff-only` recusa mexer num
+# arquivo alterado — o deploy parava aqui, sem nunca ter chegado ao pull.
+#
+# Descartar é seguro porque essas páginas SÃO DERIVADAS do banco: o passo 7b as
+# refaz com `--publicar`, a partir do conteúdo que o cliente tem hoje. O que
+# NÃO é derivado (banco, fotos, anexos) já saiu do caminho no passo 4 e está no
+# cofre.
+#
+# Só descarta o que o próprio servidor mudou (estado "M"), e diz quantos foram —
+# um deploy que apaga arquivo em silêncio é um deploy em que não se confia.
+azul "4b/8 Descartando as páginas geradas pelo Publicar"
+MODIFICADOS=$(git status --porcelain | awk '$1 == "M" { print $2 }')
+if [ -n "$MODIFICADOS" ]; then
+  QUANTOS=$(printf '%s\n' "$MODIFICADOS" | wc -l)
+  printf '%s\n' "$MODIFICADOS" | xargs -r git checkout --
+  verde "     $QUANTOS arquivos gerados descartados (serão refeitos no passo 7b)"
+else
+  verde "     nada gerado pendente"
+fi
+
 # ------------------------------------------------------------- 5. pull
 azul "5/8  Baixando a versão nova"
 DE=$(git rev-parse --short HEAD)
@@ -227,6 +251,27 @@ if [ "$SOU_ROOT" = "1" ]; then chown -R "$DONO:$GRUPO" data assets/img/uploads r
 chmod 755 data assets/img/uploads restrito/arquivos 2>/dev/null
 [ -f data/site.db ] && chmod 644 data/site.db
 verde "     de volta no lugar (dono: $DONO:$GRUPO)"
+
+# ------------------------------------------ 7b. refazer as páginas geradas
+#
+# Contrapartida do passo 4b: lá as páginas derivadas foram descartadas para o
+# pull passar; aqui elas voltam, refeitas a partir do BANCO — ou seja, com o
+# conteúdo que o cliente tem hoje, e não com o instantâneo que estava no
+# repositório.
+#
+# Sem isto, o site voltaria ao texto do último commit e as edições feitas no
+# painel desapareceriam das páginas (continuariam no banco, mas ninguém veria).
+#
+# Roda DEPOIS de devolver o banco, senão publica a partir de um banco ausente.
+# Se falhar, o site continua no ar com as páginas anteriores — e o aviso diz o
+# que fazer, em vez de deixar a falha passar em silêncio.
+azul "7b/8 Refazendo as páginas a partir do banco"
+if node server.js --publicar >/dev/null 2>&1; then
+  verde "     páginas republicadas com o conteúdo atual"
+else
+  amarelo "     o --publicar falhou. O site segue no ar com as páginas anteriores."
+  amarelo "     Entre no /admin e clique em Publicar para refazê-las."
+fi
 
 $SC start "$SERVICO"
 sleep 3
