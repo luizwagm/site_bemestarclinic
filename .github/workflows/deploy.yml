@@ -1,0 +1,71 @@
+# ==========================================================================
+#  Entrega automática — BemEstarClinic
+#
+#  Dispara quando um commit chega na main e pede ao servidor que se atualize.
+#  Quem faz o trabalho pesado é o `deploy.sh` LÁ: backup, inventário do banco,
+#  pull, dependências, publish e restauração se algo falhar. Aqui é só o
+#  gatilho — de propósito, para que o mesmo deploy possa ser rodado à mão no
+#  servidor e se comporte igual.
+#
+#  A CHAVE DESTE WORKFLOW NÃO DÁ SHELL. No servidor ela está presa a um
+#  `command=` que roda só a entrega deste site (ver ci/entregar.sh). Mesmo que
+#  o segredo vaze, ou que uma Action de terceiro o leia, o que se consegue é
+#  reentregar este site — não entrar no servidor.
+# ==========================================================================
+name: Entregar em produção
+
+on:
+  push:
+    branches: [main]
+  # Permite disparar à mão pela aba Actions — útil para reentregar sem um
+  # commit vazio, por exemplo depois de mexer em algo no servidor.
+  workflow_dispatch:
+
+# Duas entregas ao mesmo tempo mexeriam no mesmo banco. O GitHub segura a
+# segunda até a primeira acabar; `cancel-in-progress: false` porque cancelar um
+# deploy no meio é pior que esperar — ele pode estar com o banco no cofre.
+concurrency:
+  group: entrega-bemestar
+  cancel-in-progress: false
+
+jobs:
+  entregar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Preparar a chave e o host conhecido
+        env:
+          CHAVE: ${{ secrets.SSH_CHAVE_ENTREGA }}
+          HOST_CONHECIDO: ${{ secrets.SSH_HOST_CONHECIDO }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$CHAVE" > ~/.ssh/id_entrega
+          chmod 600 ~/.ssh/id_entrega
+          # O host conhecido é FIXADO, não aceito na hora. Com
+          # StrictHostKeyChecking=no, qualquer servidor que responda no meio do
+          # caminho receberia a conexão — e o segredo junto.
+          printf '%s\n' "$HOST_CONHECIDO" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Pedir a entrega
+        env:
+          DESTINO: ${{ secrets.SSH_DESTINO }}
+        run: |
+          set -o pipefail
+          # Nenhum comando é enviado: o servidor ignora o que viesse aqui e roda
+          # o `command=` preso à chave. O `-T` evita pedir terminal, que o
+          # `restrict` recusa.
+          ssh -T -i ~/.ssh/id_entrega \
+              -o BatchMode=yes -o ConnectTimeout=20 \
+              -o StrictHostKeyChecking=yes \
+              "$DESTINO" 2>&1 | tee saida-da-entrega.txt
+
+      - name: Guardar o log da entrega
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-da-entrega
+          path: saida-da-entrega.txt
+          retention-days: 30
+          if-no-files-found: ignore

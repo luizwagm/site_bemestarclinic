@@ -28,6 +28,33 @@ COFRE="/tmp/bemestar-deploy-$$"
 
 cd "$APP_DIR" || { echo "Diretório $APP_DIR não existe"; exit 1; }
 
+# ==========================================================================
+#  ROOT OU O USUÁRIO DO SERVIÇO — e isto é decisão de segurança, não de gosto.
+#
+#  Este script VEM DO REPOSITÓRIO. Se a entrega automática o rodasse como root,
+#  quem invadisse o repositório deste site viraria dono do servidor inteiro:
+#  os onze sites, o Postgres com os prontuários e os certificados. Rodando como
+#  `deploy` — o mesmo usuário que já executa a aplicação —, o pior que um commit
+#  malicioso alcança é o próprio site, que é o poder que ele já tinha.
+#
+#  O que exige raiz é só parar e subir o serviço, e para isso existe uma regra
+#  de sudo com esses verbos e mais nada (ver ci/sudoers-bemestar).
+#
+#  `sudo ./deploy.sh` continua funcionando: aí já somos root e o sudo some.
+# ==========================================================================
+if [ "$(id -u)" = "0" ]; then
+  SC="systemctl"; SOU_ROOT=1
+else
+  SC="sudo -n systemctl"; SOU_ROOT=0
+  if ! sudo -n true 2>/dev/null; then
+    echo "PAREI: preciso de 'systemctl' sem senha e a regra de sudo não está instalada."
+    echo "  Instale uma vez, como root:"
+    echo "    sudo cp ci/sudoers-bemestar /etc/sudoers.d/bemestar && sudo chmod 440 /etc/sudoers.d/bemestar"
+    echo "  Ou rode com sudo:  sudo ./deploy.sh"
+    exit 1
+  fi
+fi
+
 azul()    { printf "\033[1;34m%s\033[0m\n" "$1"; }
 verde()   { printf "\033[1;32m%s\033[0m\n" "$1"; }
 amarelo() { printf "\033[1;33m%s\033[0m\n" "$1"; }
@@ -56,7 +83,7 @@ restaurar_e_sair() {
     mkdir -p data && cp "$BACKUP" data/site.db
     amarelo "Banco restaurado do backup: $BACKUP"
   fi
-  systemctl start "$SERVICO" 2>/dev/null
+  $SC start "$SERVICO" 2>/dev/null
   rm -rf "$COFRE"
   exit 1
 }
@@ -93,7 +120,7 @@ echo "     $ANTES"
 
 # ------------------------------------------------------------ 3. parar
 azul "3/8  Parando o serviço"
-systemctl stop "$SERVICO" 2>/dev/null
+$SC stop "$SERVICO" 2>/dev/null
 sleep 1
 verde "     parado (o SQLite solta o arquivo antes de mexermos nele)"
 
@@ -179,17 +206,20 @@ done
 # O dono precisa ser o usuário do serviço, não um palpite: com o dono errado o
 # SQLite responde "attempt to write a readonly database" e o painel não salva
 # nada. O systemd sem User= significa root.
-DONO=$(systemctl show "$SERVICO" -p User --value 2>/dev/null)
+DONO=$($SC show "$SERVICO" -p User --value 2>/dev/null)
 [ -z "$DONO" ] && DONO="root"
-GRUPO=$(systemctl show "$SERVICO" -p Group --value 2>/dev/null)
+GRUPO=$($SC show "$SERVICO" -p Group --value 2>/dev/null)
 [ -z "$GRUPO" ] && GRUPO="$DONO"
-chown -R "$DONO:$GRUPO" data assets/img/uploads restrito/arquivos 2>/dev/null
+# O chown so serve quando o deploy roda como ROOT: ai os arquivos nasceriam de
+# root e o servico nao conseguiria escrever ("attempt to write a readonly
+# database", sem erro na tela). Como o proprio dono, e comando sem efeito.
+if [ "$SOU_ROOT" = "1" ]; then chown -R "$DONO:$GRUPO" data assets/img/uploads restrito/arquivos 2>/dev/null; fi
 # a pasta precisa ser gravável: o SQLite cria o -journal ao lado do banco
 chmod 755 data assets/img/uploads restrito/arquivos 2>/dev/null
 [ -f data/site.db ] && chmod 644 data/site.db
 verde "     de volta no lugar (dono: $DONO:$GRUPO)"
 
-systemctl start "$SERVICO"
+$SC start "$SERVICO"
 sleep 3
 
 # ----------------------------------------------------------- 7. testar
