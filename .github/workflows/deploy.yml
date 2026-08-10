@@ -1,35 +1,139 @@
 # ==========================================================================
 #  Entrega automática — BemEstarClinic
 #
-#  Dispara quando um commit chega na main e pede ao servidor que se atualize.
-#  Quem faz o trabalho pesado é o `deploy.sh` LÁ: backup, inventário do banco,
-#  pull, dependências, publish e restauração se algo falhar. Aqui é só o
-#  gatilho — de propósito, para que o mesmo deploy possa ser rodado à mão no
-#  servidor e se comporte igual.
+#  Dois trabalhos em sequência: PROVAR e ENTREGAR. O segundo só existe se o
+#  primeiro passar (`needs`), então uma suíte vermelha não vira site no ar.
+#
+#  Isto importa mais aqui do que na maioria: do outro lado há paciente marcando
+#  consulta e prontuário no Postgres. O `deploy.sh` protege o CONTEÚDO — faz
+#  backup, compara o inventário e restaura se algo sumir —, mas ele não tem como
+#  saber se o código novo está com defeito. Quem sabe disso é a suíte.
 #
 #  A CHAVE DESTE WORKFLOW NÃO DÁ SHELL. No servidor ela está presa a um
-#  `command=` que roda só a entrega deste site (ver ci/entregar.sh). Mesmo que
-#  o segredo vaze, ou que uma Action de terceiro o leia, o que se consegue é
-#  reentregar este site — não entrar no servidor.
+#  `command=` que roda só a entrega deste site. Provado antes de ligar: com a
+#  chave presa a um `echo`, pedir `cat /etc/shadow`, pedir o caminho do deploy e
+#  pedir terminal devolveram todos o echo, e o túnel para a porta do Postgres foi
+#  recusado.
 # ==========================================================================
-name: Entregar em produção
+name: Provar e entregar
 
 on:
   push:
     branches: [main]
-  # Permite disparar à mão pela aba Actions — útil para reentregar sem um
-  # commit vazio, por exemplo depois de mexer em algo no servidor.
+  # Também roda em pull request, mas aí SÓ a prova: ninguém entrega a partir de
+  # um branch que ainda está em discussão.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Duas entregas ao mesmo tempo mexeriam no mesmo banco. O GitHub segura a
-# segunda até a primeira acabar; `cancel-in-progress: false` porque cancelar um
-# deploy no meio é pior que esperar — ele pode estar com o banco no cofre.
 concurrency:
   group: entrega-bemestar
   cancel-in-progress: false
 
 jobs:
+  # ======================================================================
+  #  1. PROVAR — o portão
+  # ======================================================================
+  provar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    # Postgres descartável, só para esta execução. O sistema de gestão vive
+    # nele, e sem banco a suíte do /restrito não sai do lugar. As migrations
+    # sobem o esquema do zero e são idempotentes — foi para isso que elas
+    # substituíram a lista de ALTER TABLE no boot.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bemestar
+          POSTGRES_PASSWORD: senha-de-prova-descartavel
+          POSTGRES_DB: bemestar_gestao
+        ports: ["5432:5432"]
+        # Sem o health check o passo seguinte corre antes de o banco aceitar
+        # conexão, e a falha aparece como "connection refused" — que parece
+        # erro de código e não de tempo.
+        options: >-
+          --health-cmd "pg_isready -U bemestar"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: bemestar
+      PGPASSWORD: senha-de-prova-descartavel
+      PGDATABASE: bemestar_gestao
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A mesma linha do servidor (Node 22). Provar em outra versão é provar
+      # outro programa — e o `node:sqlite` mudou de comportamento entre versões.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+
+      # ------------------------------------------------------------------
+      #  Conferências estáticas — baratas e pegam o que mais quebrou aqui
+      # ------------------------------------------------------------------
+      - name: Todo JavaScript compila
+        run: |
+          erros=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "ERRO de sintaxe: $f"; erros=1; }
+          done < <(git ls-files '*.js' '*.cjs')
+          exit $erros
+
+      - name: Todo shell script compila
+        run: |
+          erros=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "ERRO de sintaxe: $f"; erros=1; }
+          done < <(git ls-files '*.sh')
+          exit $erros
+
+      # Um `\r` no fim da linha faz o bash ler "bash\r" como interpretador e o
+      # script morre com "no such file or directory" — apontando para um arquivo
+      # que existe. O .gitattributes previne; isto CONFERE, porque prevenção sem
+      # conferência é promessa.
+      - name: Nenhum script com fim de linha do Windows
+        run: |
+          if git ls-files '*.sh' | xargs grep -lP '\r$' 2>/dev/null | grep .; then
+            echo "Os arquivos acima têm CRLF — o bash não roda assim."
+            exit 1
+          fi
+          echo "todos com LF"
+
+      # ------------------------------------------------------------------
+      #  Suítes
+      # ------------------------------------------------------------------
+      - name: Suíte do limitador de tentativas
+        run: node testar-limitador.js
+
+      - name: Preparar o banco de prova
+        run: node migrar.js
+
+      # A chave é gerada AQUI e morre com a execução. Ela cifra dado pessoal em
+      # produção; a de prova não pode ter relação nenhuma com aquela, e não pode
+      # ficar guardada em lugar algum.
+      - name: Suíte do campo vazio e do /restrito
+        env:
+          DADOS_CHAVE: ${{ github.run_id }}-prova-descartavel-nao-usar-em-producao
+          PORTA_TESTE: 5197
+        run: node testar-campo-vazio.cjs
+
+  # ======================================================================
+  #  2. ENTREGAR — só depois do portão, e só na main
+  # ======================================================================
   entregar:
+    needs: provar
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -42,9 +146,9 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$CHAVE" > ~/.ssh/id_entrega
           chmod 600 ~/.ssh/id_entrega
-          # O host conhecido é FIXADO, não aceito na hora. Com
-          # StrictHostKeyChecking=no, qualquer servidor que responda no meio do
-          # caminho receberia a conexão — e o segredo junto.
+          # Host FIXADO, não aceito na hora. Com StrictHostKeyChecking=no,
+          # qualquer servidor que responda no meio do caminho receberia a
+          # conexão — e a chave junto.
           printf '%s\n' "$HOST_CONHECIDO" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
@@ -54,8 +158,7 @@ jobs:
         run: |
           set -o pipefail
           # Nenhum comando é enviado: o servidor ignora o que viesse aqui e roda
-          # o `command=` preso à chave. O `-T` evita pedir terminal, que o
-          # `restrict` recusa.
+          # o `command=` preso à chave.
           ssh -T -i ~/.ssh/id_entrega \
               -o BatchMode=yes -o ConnectTimeout=20 \
               -o StrictHostKeyChecking=yes \
