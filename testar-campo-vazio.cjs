@@ -132,8 +132,15 @@ async function limpar() {
   eq(Number((await app("/restrito/api/pacientes/" + p2)).dados.ativo), 1,
      "e `ativo` fica valendo 1 (o padrão), NÃO nulo");
 
+  /* `Array.isArray` e não `|| []`: quando a rota devolve um ERRO, `dados` vem
+     como objeto (`{error: "…"}`), e `objeto.some` não existe — a suíte estourava
+     com TypeError no meio, escondendo atrás de um rastro de pilha as seis
+     falhas que ela já tinha detectado. Foi assim que uma chave de cifra inválida
+     no CI apareceu como "a suíte quebrou" em vez de "o /restrito respondeu 503".
+
+     Suíte que morre não reprova: ela deixa de contar. */
   const lista = await app("/restrito/api/pacientes?ativo=1");
-  ok((lista.dados || []).some((x) => x.id === p2),
+  ok(Array.isArray(lista.dados) && lista.dados.some((x) => x.id === p2),
      "por isso ele continua aparecendo na lista de ativos");
 
   /* ---------------------------------------------------------------------

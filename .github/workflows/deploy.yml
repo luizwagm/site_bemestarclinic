@@ -119,12 +119,20 @@ jobs:
       - name: Preparar o banco de prova
         run: node migrar.js
 
-      # A chave é gerada AQUI e morre com a execução. Ela cifra dado pessoal em
-      # produção; a de prova não pode ter relação nenhuma com aquela, e não pode
-      # ficar guardada em lugar algum.
+      # A CHAVE PRECISA SER BASE64 DE 32 BYTES EXATOS — não um texto qualquer.
+      # `cripto.js` decodifica e confere o tamanho; se não bater, ele recusa a
+      # chave, a camada de gestão para de responder e TODA rota do /restrito
+      # devolve 503. Na primeira execução deste workflow eu tinha posto uma
+      # frase no lugar, e o sintoma foi "o banco de dados não respondeu" — que
+      # parece falta de Postgres, e não chave malformada.
+      #
+      # Gerada aqui e morta com a execução: ela cifra dado pessoal em produção,
+      # e a de prova não pode ter relação nenhuma com aquela.
+      - name: Gerar a chave de cifra da prova
+        run: echo "DADOS_CHAVE=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
+
       - name: Suíte do campo vazio e do /restrito
         env:
-          DADOS_CHAVE: ${{ github.run_id }}-prova-descartavel-nao-usar-em-producao
           PORTA_TESTE: 5197
         run: node testar-campo-vazio.cjs
 
