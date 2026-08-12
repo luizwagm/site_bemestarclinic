@@ -6,6 +6,60 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.21.0 — 2026-08-12 · a foto que chega pelo painel
+
+Até aqui o `/api/upload` gravava o base64 **cru** no disco, sem olhar. Agora
+passa pelo `imagem.js` (novo), sobre o **sharp**.
+
+### O que mudou na prática
+
+| | Antes | Depois |
+|---|---|---|
+| Metadado da foto | ia inteiro para o site | **descartado** |
+| Foto de celular em pé | saía deitada | girada nos pixels |
+| 3000×2000, 35 kB | igual | 1333×2000 WEBP, 5 kB |
+| Arquivo disfarçado de imagem | **gravado** | recusado com 400 |
+
+- **O motivo principal é privacidade, não peso.** O EXIF de foto de celular
+  costuma trazer **coordenadas de GPS**, e numa clínica a foto pode ter sido
+  tirada dentro do consultório. O sharp descarta todo metadado por padrão — não
+  acrescentar `.withMetadata()` aqui.
+
+- **A ordem importa:** `.rotate()` **antes** de gravar. O celular não gira os
+  pixels, grava "está de lado" no EXIF. Apagar o metadado sem aplicar a rotação
+  deitaria toda foto de celular no site.
+
+- **O tipo declarado no `data:` URL é texto que o cliente escreve.** Com o sharp
+  quem decide a extensão é o que ele conseguiu DECODIFICAR; o que não abre como
+  imagem é recusado em vez de ir para o disco.
+
+- **`imagem.js` degrada de propósito.** O sharp é módulo nativo: se o `npm ci`
+  do servidor não instalar, um `require` solto derrubaria o processo — e com ele
+  o site, o /admin e o /restrito, por causa de um redimensionamento de foto. Sem
+  o sharp, o upload volta ao comportamento antigo e o boot **grita no log**.
+  Mesma escolha do `db.js`. O CI tem passo próprio que falha se o sharp não
+  carregar, porque essa degradação seria silenciosa.
+
+- GIF passa inteiro (converter mataria a animação).
+
+### Ainda NÃO feito
+
+As **17 imagens que já estão no site** continuam em JPG/PNG. Convertê-las não é
+só rodar o sharp: os caminhos estão gravados no banco (`portfolio.image`,
+`team.photo`, `posts.image`, `settings`), e o banco de produção **não é** o
+local. Exige migração no servidor que troque arquivo e referência juntos, com
+trava. Fica para uma rodada própria.
+
+Testado: `testar-imagem.cjs` 9/9 + integração pelo `/api/upload` real (login,
+envio de foto com GPS, conferência do arquivo gravado, recusa do disfarçado).
+
+**Armadilha do teste:** montar a amostra deitada com
+`withExif({IFD0:{Orientation:"6"}})` **não funciona** — o sharp lê de volta como
+orientation 1 e o teste acusa defeito inexistente. Use
+`withMetadata({orientation: 6})`.
+
+---
+
 ## 1.20.0 — 2026-08-12 · SEO e compartilhamento
 
 Rodada a partir do levantamento do LA Sentinela de 12/08/2026 (19 pendências).

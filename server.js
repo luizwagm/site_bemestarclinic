@@ -12,6 +12,7 @@ const crypto = require("node:crypto");
 const { abrirBanco, DRIVER_NOME, DRIVER_AVISO } = require("./db");
 const { criarLimitador } = require("./limitador");
 const { agendarBackups } = require("./backup");
+const { tratarUpload, disponivel: imagemPronta } = require("./imagem");
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir uma cópia de teste
@@ -20,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.20.0";
+const APP_VERSION = "1.21.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -1874,9 +1875,20 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
         const m = /^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/.exec(dataUrl || "");
         if (!m) return json(res, 400, { error: "Envie uma imagem PNG, JPG, WEBP ou GIF." });
         const safe = slug(path.parse(name || "foto").name).slice(0, 40) || "foto";
-        const ext = "." + m[1].split("/")[1].replace("jpeg", "jpg");
-        const file = `${Date.now().toString(36)}-${safe}${ext}`;
-        fs.writeFileSync(path.join(UPLOAD_DIR, file), Buffer.from(m[2], "base64"));
+        /* O tipo declarado no `data:` é TEXTO que o cliente escreve — não prova
+           nada sobre o conteúdo. Com o sharp instalado, quem decide a extensão
+           é o que ele conseguiu DECODIFICAR; o que não abre como imagem é
+           recusado em vez de ir para o disco. */
+        const extEnviada = "." + m[1].split("/")[1].replace("jpeg", "jpg");
+        const bruto = Buffer.from(m[2], "base64");
+        const r = await tratarUpload(bruto, extEnviada);
+        if (!r.buffer) {
+          console.warn(`  ⚠ upload recusado: ${r.motivo}`);
+          return json(res, 400, { error: "Não consegui ler esta imagem. Abra e salve o arquivo de novo, depois envie." });
+        }
+        const file = `${Date.now().toString(36)}-${safe}${r.ext}`;
+        fs.writeFileSync(path.join(UPLOAD_DIR, file), r.buffer);
+        console.log(`  · upload ${file} ${r.tratada ? `— ${r.motivo}` : `(sem tratamento: ${r.motivo})`}`);
         return json(res, 200, { ok: true, path: `/assets/img/uploads/${file}` });
       }
       if (p === "/api/publish" && req.method === "POST") return json(res, 200, { ok: true, ...publish() });
@@ -2050,6 +2062,9 @@ servidor.listen(PORT, process.env.HOST || "127.0.0.1", async () => {
   console.log(`  · Site:   http://localhost:${PORT}/`);
   console.log(`  · Painel: http://localhost:${PORT}/admin/`);
   console.log(`  · Banco do site:    ${DRIVER_NOME}${DRIVER_AVISO ? " ⚠ " + DRIVER_AVISO : ""} (data/site.db)`);
+  console.log(imagemPronta()
+    ? `  · Foto do painel:   tratada (gira pelo EXIF, apaga metadado/GPS, reduz a 2000px, grava WEBP)`
+    : `  · Foto do painel:   ⚠ SEM TRATAMENTO — o sharp não carregou; rode "npm ci". A foto vai para o site como veio, COM os metadados (o EXIF do celular costuma trazer GPS).`);
   if (ERRO_GESTAO) {
     console.log(`  · Banco da gestão:  ✖ INDISPONÍVEL — /restrito fora do ar (site e /admin OK)`);
   } else {

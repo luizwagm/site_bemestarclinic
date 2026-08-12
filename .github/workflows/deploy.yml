@@ -116,6 +116,16 @@ jobs:
       - name: Suíte do limitador de tentativas
         run: node testar-limitador.js
 
+      # O `sharp` é módulo NATIVO: se o binário não vier pronto para esta
+      # arquitetura, o require falha e o upload volta a gravar a foto CRUA — com
+      # o EXIF e o GPS que ela trouxer. O `imagem.js` degrada de propósito em vez
+      # de derrubar o servidor, e é justamente por isso que a falha seria
+      # silenciosa. Este passo é quem grita.
+      - name: Suíte do tratamento de imagem
+        run: |
+          node -e "require('sharp')" || { echo "sharp não carregou nesta máquina"; exit 1; }
+          node testar-imagem.cjs
+
       - name: Preparar o banco de prova
         run: node migrar.js
 
