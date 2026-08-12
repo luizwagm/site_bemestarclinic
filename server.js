@@ -20,7 +20,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.19.0";
+const APP_VERSION = "1.20.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -751,9 +751,16 @@ function limparRicos(tabela, obj) {
    caso não declaramos nada, e o CSS acerta a proporção quando a imagem chega.
    ========================================================================== */
 function medirImagem(url) {
-  const m = /^\/assets\/img\/uploads\/([A-Za-z0-9._-]+)$/.exec(String(url || ""));
-  if (!m) return null;
-  const arq = path.join(UPLOAD_DIR, m[1]);
+  /* Vale para QUALQUER imagem nossa sob /assets/img/, não só os uploads: as
+     fotos do Nosso Espaço e dos profissionais moram em subpastas próprias e
+     também precisam de width/height, senão a página pula quando carregam (CLS).
+     `..` é recusado explicitamente — a classe [A-Za-z0-9._-] o aceitaria — e o
+     caminho resolvido ainda tem de cair dentro de assets/img. */
+  const m = /^\/assets\/img\/((?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+)$/.exec(String(url || ""));
+  if (!m || m[1].split("/").includes("..")) return null;
+  const raiz = path.join(ROOT, "assets", "img");
+  const arq = path.resolve(raiz, m[1]);
+  if (arq !== raiz && !arq.startsWith(raiz + path.sep)) return null;
   let b;
   try { b = fs.readFileSync(arq); } catch { return null; }
 
@@ -799,6 +806,44 @@ function medirImagem(url) {
 function medidasDoImg(url) {
   const d = medirImagem(url);
   return d && d.w && d.h ? ` width="${d.w}" height="${d.h}"` : "";
+}
+
+/* ==========================================================================
+   TÍTULO DA ABA (<title>) — alvo de 30 a 62 caracteres.
+
+   Acima de ~62 o Google corta na exibição, e o corte cai no FIM, justamente
+   onde costuma estar a cidade. Abaixo de ~30 sobra espaço e falta o termo pelo
+   qual as pessoas procuram.
+
+   Só o <title> passa por aqui. O <h1> e o og:title continuam com o título
+   INTEIRO que o cliente escreveu — encurtar o cartão de compartilhamento não
+   traria ganho nenhum e tiraria contexto de quem recebe o link.
+   ========================================================================== */
+const MARCA_TITULO = "BemEstarClinic";
+function tituloTag(base, local = true) {
+  let t = String(base || "").replace(/\s+/g, " ").trim();
+  if (!t) return MARCA_TITULO;
+
+  if (t.length > 62) {
+    /* 1º corte: na pontuação que FECHA a ideia. "Ozonioterapia e Detox Iônico:
+       como funciona o Protocolo Integrativo" vira "Ozonioterapia e Detox
+       Iônico" — frase completa, palavra principal na frente. Cortar direto em
+       62 deixaria "…como funciona o Protocolo", pendurado, que lê como título
+       quebrado no resultado de busca. */
+    const m = /^(.{20,62}?)\s*([?:—–|])/.exec(t);
+    if (m) t = m[1] + (m[2] === "?" ? "?" : "");
+  }
+  if (t.length > 62) {
+    // 2º corte: palavra inteira, e só se ainda sobrar título de verdade
+    const corte = t.slice(0, 62);
+    const esp = corte.lastIndexOf(" ");
+    t = esp >= 40 ? corte.slice(0, esp).replace(/[\s,;:.—–-]+$/, "") : t;
+  }
+
+  // curto demais ganha marca (e a cidade, que é o que traz busca local)
+  const sufixos = local ? [` | ${MARCA_TITULO} Caruaru`, ` | ${MARCA_TITULO}`] : [` | ${MARCA_TITULO}`];
+  if (t.length < 45) for (const s of sufixos) if (t.length + s.length <= 62) return t + s;
+  return t;
 }
 
 function blocoTexto(valor) {
@@ -854,11 +899,21 @@ function publish() {
   const team = db.prepare("SELECT * FROM team ORDER BY sort,id").all();
   const posts = db.prepare("SELECT * FROM posts ORDER BY date DESC, id DESC").all();
   const dateBR = (iso) => { const [y, m, d] = String(iso || "").split("-"); return d ? `${d}/${m}/${y}` : iso || ""; };
-  const postCard = (p) => `<article class="post-card" data-reveal>
+  /* NÍVEL DO TÍTULO DO CARD — o mesmo card é usado em dois contextos:
+     · na home ele vem DEPOIS de um <h2 class="section__title">, então é h3;
+     · em /blog/ e /especialidades/ ele vem logo depois do <h1> da página, e h3
+       ali pularia um nível (quebra a leitura por leitor de tela e enfraquece a
+       estrutura do conteúdo).
+     `nivelH` só aceita 2 ou 3: estas funções também são chamadas dentro de
+     .map(), que passaria o ÍNDICE ou o ARRAY como argumento — sem a
+     normalização, o 3º post da lista viraria h2 sozinho. */
+  const nivelH = (n) => (n === 2 ? 2 : 3);
+
+  const postCard = (p, nv) => `<article class="post-card" data-reveal>
             <a class="post-card__media" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true"><img src="${esc(p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
             <div class="post-card__body">
               <time class="post-card__date" datetime="${esc(p.date)}">${dateBR(p.date)}</time>
-              <h3 class="post-card__title"><a href="/blog/${esc(p.slug)}/">${esc(p.title)}</a></h3>
+              <h${nivelH(nv)} class="post-card__title"><a href="/blog/${esc(p.slug)}/">${esc(p.title)}</a></h${nivelH(nv)}>
               <p class="post-card__excerpt">${esc(p.excerpt)}</p>
               <a class="post-card__more" href="/blog/${esc(p.slug)}/">Ler matéria →</a>
             </div>
@@ -867,16 +922,21 @@ function publish() {
   const stats = JSON.parse(S.stats || "[]").map((s) =>
     `<div class="stat"><dd class="stat__num">${esc(s.num)}</dd><dt class="stat__label">${esc(s.label)}</dt></div>`).join("\n            ");
 
-  const svcCard = (s, i) => `<article class="card" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
+  const svcCard = (s, i, nv) => `<article class="card" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}>
             <div class="service__icon">${ICONS[i % ICONS.length]}</div>
-            <h3 class="service__title">${esc(s.title)}</h3>
+            <h${nivelH(nv)} class="service__title">${esc(s.title)}</h${nivelH(nv)}>
             <p class="service__text">${esc(s.text)}</p>
             <a class="service__more" href="/especialidades/${esc(s.slug)}/">Saiba mais →</a>
           </article>`;
-  const servicesHtml = services.slice(0, 9).map(svcCard).join("\n          ");
-  const servicesAllHtml = services.map(svcCard).join("\n          ");
+  // home: sob o <h2> da seção Especialidades → h3
+  const servicesHtml = services.slice(0, 9).map((s, i) => svcCard(s, i, 3)).join("\n          ");
+  // /especialidades/: logo abaixo do <h1> da página → h2
+  const servicesAllHtml = services.map((s, i) => svcCard(s, i, 2)).join("\n          ");
 
-  const worksHtml = works.map((w, i) => `<figure class="work" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}><img src="${esc(w.image)}" alt="${esc(w.title)}${w.subtitle ? ` — ${esc(w.subtitle)}` : ""}, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"><figcaption class="work__label">${esc(w.title)}<small>${esc(w.subtitle || "")}</small></figcaption></figure>`).join("\n          ");
+  // width/height medidos no próprio arquivo: sem eles o navegador não reserva o
+  // espaço e a galeria do Nosso Espaço empurra o resto da página quando as fotos
+  // chegam — é exatamente o CLS que o Core Web Vitals mede.
+  const worksHtml = works.map((w, i) => `<figure class="work" data-reveal${i % 3 ? ` data-reveal-delay="${i % 3}"` : ""}><img src="${esc(w.image)}" alt="${esc(w.title)}${w.subtitle ? ` — ${esc(w.subtitle)}` : ""}, na BemEstarClinic em Caruaru-PE" loading="lazy" decoding="async"${medidasDoImg(w.image)}><figcaption class="work__label">${esc(w.title)}<small>${esc(w.subtitle || "")}</small></figcaption></figure>`).join("\n          ");
 
   const bullets = JSON.parse(S.about_bullets || "[]").map((b) => `<li>${CHECK} ${esc(b)}</li>`).join("\n            ");
 
@@ -938,6 +998,12 @@ function publish() {
       address: { "@type": "PostalAddress",
         streetAddress: "Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Empresarial Nordeste Corporate",
         addressLocality: "Caruaru", addressRegion: "PE", postalCode: "55016-445", addressCountry: "BR" },
+      /* Coordenadas conferidas pelo cliente no Google Maps (12/08/2026). É o que
+         o Google usa para decidir se a clínica aparece na busca do mapa e no
+         bloco local — endereço por extenso sozinho depende de geocodificação. */
+      geo: { "@type": "GeoCoordinates", latitude: -8.260997, longitude: -35.966046 },
+      // mesmos perfis declarados no Organization: um perfil só, duas entidades
+      sameAs: [`https://www.instagram.com/${S.instagram}/`, "https://www.doctoralia.com.br/clinicas/bemestarclinic"],
       // presencial só em Caruaru; online sem fronteira
       areaServed: [
         { "@type": "City", name: "Caruaru", containedInPlace: { "@type": "State", name: "Pernambuco" } },
@@ -978,7 +1044,8 @@ function publish() {
   html = setMarker(html, "FOOTER_ESP", "            " + footerEsp);
   // o e-mail do rodapé vinha fixo no HTML e divergia do cadastrado no painel
   html = setMarker(html, "FOOTER_EMAIL", `          <a href="mailto:${esc(S.contact_email)}">${esc(S.contact_email)}</a>`);
-  html = setMarker(html, "BLOG", "          " + posts.slice(0, 3).map(postCard).join("\n          "));
+  // home: sob o <h2> da seção Feed → h3
+  html = setMarker(html, "BLOG", "          " + posts.slice(0, 3).map((p) => postCard(p, 3)).join("\n          "));
   html = setMarker(html, "FORM_SERVICES", "                " + opcoesDoFormulario(services));
   html = setMarker(html, "CNPJ", S.cnpj);
   // atualiza QUALQUER wa.me/<numero> restante (footer etc.)
@@ -1013,7 +1080,8 @@ function publish() {
   for (const [i, sv] of services.entries()) {
     if (!sv.slug) continue;
     const paragraphs = blocoTexto(sv.content || sv.text);
-    const others = services.filter((x) => x.id !== sv.id).slice(0, 3).map(svcCard).join("\n          ");
+    // "Outras especialidades" já tem um <h2> próprio acima → h3
+    const others = services.filter((x) => x.id !== sv.id).slice(0, 3).map((s, i) => svcCard(s, i, 3)).join("\n          ");
     // meta description própria: prefixo local + resumo, cortado em palavra inteira (≤158)
     const prefixo = `${sv.title} em Caruaru-PE e online. `;
     const resto = String(sv.text || "").replace(/\s+/g, " ").trim();
@@ -1022,8 +1090,12 @@ function publish() {
       const corte = metaEsp.slice(0, 155);
       metaEsp = corte.slice(0, corte.lastIndexOf(" ")) + "…";
     }
+    /* Três degraus, do mais completo ao mais enxuto. O 3º faltava: com um nome
+       longo ("Protocolo Integrativo: Ozonioterapia e Detox Iônico"), até o
+       formato curto passava de 62 e o Google cortava fora a cidade. */
     const tLongo = `${sv.title} em Caruaru-PE e Online`;
-    const espTitleTag = tLongo.length <= 62 ? tLongo : `${sv.title} — Caruaru-PE`;
+    const tMedio = `${sv.title} — Caruaru-PE`;
+    const espTitleTag = tLongo.length <= 62 ? tLongo : (tMedio.length <= 62 ? tMedio : tituloTag(sv.title));
     const ej = { "@context": "https://schema.org", "@graph": [
       { "@type": "MedicalWebPage", name: `${sv.title} — BemEstarClinic`, url: `${SITE}/especialidades/${sv.slug}/`,
         description: sv.text, inLanguage: "pt-BR",
@@ -1185,22 +1257,35 @@ function publish() {
   const postTpl = fs.readFileSync(path.join(ROOT, "src", "post.html"), "utf8");
   fs.mkdirSync(path.join(ROOT, "blog"), { recursive: true });
   fs.writeFileSync(path.join(ROOT, "blog", "index.html"),
-    aplicarTextos(blogTpl, S).replaceAll("{{POSTS_HTML}}", "          " + (posts.map(postCard).join("\n          ") || '<p class="blog-empty">Em breve, novidades por aqui! 🪷</p>'))
+    // /blog/: logo abaixo do <h1> da página → h2
+    aplicarTextos(blogTpl, S).replaceAll("{{POSTS_HTML}}", "          " + (posts.map((p) => postCard(p, 2)).join("\n          ") || '<p class="blog-empty">Em breve, novidades por aqui! 🪷</p>'))
       .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
   const keepPosts = new Set(posts.map((x) => x.slug));
   for (const d of fs.readdirSync(path.join(ROOT, "blog"), { withFileTypes: true }))
     if (d.isDirectory() && !keepPosts.has(d.name)) fs.rmSync(path.join(ROOT, "blog", d.name), { recursive: true, force: true });
   for (const po of posts) {
     const paragraphs = blocoTexto(po.content);
-    const pj = { "@context": "https://schema.org", "@type": "Article",
-      headline: po.title, description: po.excerpt, image: po.image, datePublished: po.date, inLanguage: "pt-BR",
+    // sem medida no arquivo (imagem de fora), quem reserva o espaço é o CSS
+    const dimsPost = medidasDoImg(po.image);
+    /* BlogPosting (subtipo de Article) descreve melhor uma matéria de feed e é o
+       que o Google espera no resultado enriquecido.
+       A IMAGEM PRECISA SER ABSOLUTA: foto enviada pelo painel chega como
+       "/assets/img/uploads/…", e URL relativa dentro do JSON-LD é inválida — o
+       validador descarta o bloco inteiro e o post fica sem schema nenhum.
+       Foto do Unsplash já vem com http e passa direto. */
+    const imgAbs = po.image ? (po.image.startsWith("http") ? po.image : SITE + po.image) : `${SITE}/assets/img/og-image.png`;
+    const pj = { "@context": "https://schema.org", "@type": "BlogPosting",
+      headline: po.title, description: po.excerpt, image: imgAbs, datePublished: po.date, inLanguage: "pt-BR",
       author: { "@type": "Organization", name: "BemEstarClinic", url: `${SITE}/` },
-      publisher: { "@id": `${SITE}/#org` }, mainEntityOfPage: `${SITE}/blog/${po.slug}/` };
+      publisher: { "@id": `${SITE}/#org` }, mainEntityOfPage: `${SITE}/blog/${po.slug}/`,
+      isPartOf: { "@id": `${SITE}/#site` } };
     fs.mkdirSync(path.join(ROOT, "blog", po.slug), { recursive: true });
     fs.writeFileSync(path.join(ROOT, "blog", po.slug, "index.html"),
-      aplicarTextos(postTpl, S).replaceAll("{{TITLE}}", esc(po.title)).replaceAll("{{EXCERPT}}", esc(po.excerpt))
-        .replaceAll("{{SLUG}}", esc(po.slug)).replaceAll("{{IMAGE}}", esc(po.image))
-        .replaceAll("{{IMAGE_DIMS}}", medidasDoImg(po.image))
+      aplicarTextos(postTpl, S).replaceAll("{{TITLE_TAG}}", esc(tituloTag(po.title)))
+        .replaceAll("{{TITLE}}", esc(po.title)).replaceAll("{{EXCERPT}}", esc(po.excerpt))
+        .replaceAll("{{SLUG}}", esc(po.slug)).replaceAll("{{IMAGE_ABS}}", esc(imgAbs)).replaceAll("{{IMAGE}}", esc(po.image))
+        .replaceAll("{{IMAGE_DIMS}}", dimsPost)
+        .replaceAll("{{COVER_CLASS}}", dimsPost ? "" : " post__cover--reserva")
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
         .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(pj, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
@@ -1429,10 +1514,16 @@ function aplicarTextos(html, S) {
     if (!html.includes(`<!--#${MARCA}-->`)) continue;
     html = setMarker(html, MARCA, chave.startsWith("img_") ? tagImagem(chave, S) : (S[chave] ?? ""));
   }
-  // imagem de compartilhamento (og:image / twitter:image) em todas as páginas
+  /* Imagem de compartilhamento (og:image / twitter:image) em todas as páginas.
+     EXCEÇÃO: quando o valor é um {{PLACEHOLDER}}, a página tem imagem PRÓPRIA e
+     quem a preenche é o publish logo adiante. Sem essa guarda, esta troca
+     acontecia antes da substituição e apagava a capa de cada post — os 9 posts
+     saíam com o mesmo cartão genérico, que é justamente o que faz alguém NÃO
+     compartilhar. Só a página com imagem fixa segue o que está no painel. */
   if (S.img_og) {
     const abs = S.img_og.startsWith("http") ? S.img_og : "https://bemestarclinic.com" + S.img_og;
-    html = html.replace(/(<meta (?:property|name)="(?:og|twitter):image" content=")[^"]*(")/g, `$1${abs}$2`);
+    html = html.replace(/(<meta (?:property|name)="(?:og|twitter):image" content=")([^"]*)(")/g,
+      (todo, ini, valor, fim) => (/^\{\{.+\}\}$/.test(valor.trim()) ? todo : `${ini}${abs}${fim}`));
   }
   return html;
 }

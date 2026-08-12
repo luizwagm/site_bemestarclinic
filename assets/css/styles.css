@@ -334,7 +334,13 @@ p { margin: 0 0 1rem; }
   position: relative; margin: 0 0 1.3rem; border-radius: var(--radius); overflow: hidden;
   box-shadow: var(--shadow-soft); break-inside: avoid; border: 1px solid var(--line);
 }
-.work img { width: 100%; transition: transform .6s ease; }
+/* `height: auto` é OBRIGATÓRIO agora que o publish emite width/height nas fotos:
+   sem ele o atributo height vira dica de apresentação e o navegador usaria 900px
+   de altura fixa numa coluna de ~350px — a foto sairia esticada. Com ele, o
+   navegador deriva a proporção dos atributos, reserva o espaço (que é o ganho de
+   CLS) e desenha na proporção certa. A galeria tem retrato e paisagem misturados,
+   então nada de aspect-ratio fixo aqui. */
+.work img { width: 100%; height: auto; transition: transform .6s ease; }
 .work:hover img { transform: scale(1.05); }
 .work__label {
   position: absolute; inset-inline: 0; bottom: 0; padding: 2rem 1.2rem .95rem;
@@ -576,6 +582,17 @@ p { margin: 0 0 1rem; }
   border-radius: var(--radius); box-shadow: var(--shadow-soft);
 }
 @media (max-width: 640px) { .post__cover img { max-height: 60vh; } }
+/* Capa vinda de FORA (Unsplash): a publicação não consegue medir o arquivo, então
+   não há width/height para o navegador reservar o espaço — e o texto salta quando
+   a foto chega (CLS). Aqui a proporção é reservada pelo CSS. A capa NOSSA continua
+   com a regra de cima, que é fluida de propósito: a clínica sobe foto de WhatsApp
+   em pé, e forçar 16/10 nela recortaria a imagem.
+   Vem DEPOIS de `.post__cover img` de propósito — mesma especificidade (0,1,1),
+   quem decide é a ordem. */
+.post__cover--reserva img {
+  width: 100%; height: auto; max-height: none;
+  aspect-ratio: 16 / 10; object-fit: cover;
+}
 
 /* Tiles de contato com altura igualada (sem o mapa) */
 .contact { align-items: stretch; }
