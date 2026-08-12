@@ -1,30 +1,57 @@
-# BemEstarClinic — site + gerenciador + sistema de gestão
+# BemEstarClinic
 
-Site da **BemEstarClinic** (psicanálise, ozonioterapia e terapias integrativas,
-Caruaru-PE), com painel de conteúdo (`/admin`) e o **sistema de gestão da clínica**
-(`/restrito`) — pacientes, agenda, prontuário e anamneses.
+Site institucional, painel de conteúdo e **sistema de gestão clínica** da
+BemEstarClinic — psicanálise, psicologia, ozonioterapia e terapias integrativas,
+em Caruaru-PE.
 
 - **Domínio:** bemestarclinic.com · **Porta interna:** 5185 · **Serviço:** `bemestar.service`
-- **Stack:** Node puro (`node:http`) + SQLite via **`better-sqlite3`**. Exige **Node ≥ 20**.
+- **Versões:** site `1.20.0` (`APP_VERSION`) · gestão `1.28.0` (`SISTEMA_VERSION`)
 
-## As três áreas
+As duas séries são independentes e sobem em separado: o site é registrado em
+[`CHANGELOG.md`](CHANGELOG.md); a gestão, em `HISTORICO_VERSOES` dentro do
+`restrito.js`, e aparece na tela *Sobre o sistema*.
+
+## Sobre
+
+Um único processo Node atende três áreas independentes, que compartilham apenas
+a porta:
 
 | Área | O que é | Banco | Sessão |
 |---|---|---|---|
-| `/` | site público (estático, gerado pelo publish) | — | — |
-| `/admin/` | painel de conteúdo do site | `data/site.db` | cookie `sid` |
-| `/restrito/` | **sistema de gestão da clínica** | `data/gestao.db` | cookie `rid` |
+| `/` | site público, estático, gerado pelo botão **Publicar** | — | — |
+| `/admin/` | painel de conteúdo do site | SQLite · `data/site.db` | cookie `sid` |
+| `/restrito/` | **sistema de gestão da clínica** | **PostgreSQL** · `bemestar_gestao` | cookie `rid` |
 
-O `/restrito` é um app **independente** (`restrito.js` + `restrito/app.html`):
-banco, login e sessão próprios. O `server.js` só delega o que começa com
-`/restrito` — e isso acontece **antes** do modo manutenção, para a equipe seguir
-atendendo mesmo com o site fechado ao público.
+O `server.js` delega para o `restrito.js` tudo que começa com `/restrito` — e
+isso acontece **antes** do modo manutenção, para a equipe seguir atendendo mesmo
+com o site fechado ao público. Uma falha do PostgreSQL **não derruba o site**: as
+duas outras áreas vivem no SQLite e continuam no ar.
 
-## Site e painel
+## Objetivo
 
-Nada é editado no HTML. O conteúdo vive em `data/site.db` e o botão **Publicar**
-regenera os estáticos. `CAMPOS` no `server.js` é a fonte única do que é editável:
-campo novo = 1 linha em `CAMPOS` + `<!--#CHAVE-->` no HTML.
+- Dar à clínica o controle do próprio site, sem depender de programador para
+  trocar um texto ou uma foto.
+- Substituir a ficha de papel por **prontuário eletrônico**, com anamnese
+  padronizada, agenda sem choque de horário e impressão em papel timbrado.
+- Proteger dado sensível de paciente: criptografia no banco, recorte de acesso
+  por perfil aplicado no servidor e trilha de auditoria.
+
+## Principais funcionalidades
+
+**Site e painel**
+- 84 campos editáveis em 19 grupos; 16 páginas de especialidade e blog.
+- Publicação por um clique, modo manutenção em duas camadas e contador de
+  acessos com IP pseudonimizado.
+- SEO calculado na publicação: título ajustado à faixa de exibição do buscador,
+  dimensões reais das imagens e cartão de compartilhamento por matéria.
+
+**Sistema de gestão**
+- Cadastros: pacientes, profissionais, convênios, procedimentos e salas.
+- Agenda com validação de expediente, choque de profissional e choque de sala.
+- Anamneses em três modelos (27 seções, 89 campos), que geram tela e impressão.
+- Prontuário como **pasta por paciente + procedimento**, com lançamentos datados.
+- Relatórios, arquivamento, auditoria e backup do banco pelo painel.
+- Perfis **admin**, **secretaria** e **profissional**, com bloqueio no servidor.
 
 ## O caminho do paciente (regra de negócio)
 
@@ -41,143 +68,129 @@ prontuário PR-AAAA-00000 — um por paciente + PROCEDIMENTO
 próximos agendamentos já nascem vinculados
 ```
 
-- **Todo paciente tem um código próprio**, gerado no cadastro. Com ele — ou com
-  nome e CPF (com ou sem máscara) — se acha a pessoa em Agendamento, Prontuário,
-  Documentos e Anamneses.
-- **O agendamento nunca abre prontuário.** Ele só se pendura numa pasta que já
-  exista para aquele paciente naquele procedimento. Quem abre a pasta é a
-  **anamnese finalizada**.
-- **A chave da pasta é o NOME do procedimento, não o id da linha.** "Ozonioterapia
-  (Consulta)" e "(Sessão)" são o mesmo tratamento e caem no mesmo prontuário.
-- **Cada procedimento aponta o modelo de anamnese que pede** (campo no cadastro de
-  Procedimentos). É o que faz o agendamento oferecer "Preencher anamnese" já no
-  formulário certo.
-- **O prontuário mostra seus vínculos**: as anamneses (pode ser mais de uma ao
-  longo do tratamento) e os agendamentos. Ambos saem na impressão.
-- Enquanto está em **rascunho**, a anamnese não cria nada. Depois de
-  **finalizada** vira documento fechado (só leitura) até ser reaberta — reabrir
-  **não** desfaz o prontuário, que já pode ter lançamentos e agenda pendurados.
+- **O agendamento nunca abre prontuário.** Quem abre a pasta é a anamnese
+  **finalizada**.
+- **A chave da pasta é o NOME do procedimento**, não o id da linha:
+  "Ozonioterapia (Consulta)" e "(Sessão)" caem no mesmo prontuário.
+- **Reabrir a anamnese não desfaz o prontuário**, que já pode ter lançamentos.
+- **Arquivar ≠ inativar ≠ dar alta** — são três conceitos distintos, de
+  propósito.
 
-## Sistema de gestão (/restrito)
+## Tecnologias
 
-**Login inicial:** `admin` · senha `bemestar-gestao` — **trocar no primeiro acesso**.
+- **Node.js ≥ 20** (CI em 22), com `node:http` — sem framework.
+- **PostgreSQL** (`pg`) no sistema de gestão; **SQLite** (`better-sqlite3`) no
+  site e no painel.
+- **AES-256-GCM** para os dados sensíveis, **scrypt** para as senhas.
+- HTML, CSS e JavaScript sem framework nas três interfaces.
+- nginx como proxy reverso, systemd como serviço, GitHub Actions na entrega.
 
-Menu: **Painel · Cadastros · Agendamento · Documentos · Relatórios**, com
-*Cadastros* → Pacientes, Profissionais, Convênios, Procedimentos, Salas,
-**Anamneses** (submenu: Todas / Psicanálise / Ozonioterapia / Terapias
-Integrativas) e Prontuário.
+Apenas duas dependências de produção: `better-sqlite3` e `pg`.
 
-### Anamneses
-Três modelos, definidos em `MODELOS_ANAMNESE` no `restrito.js` — **fonte única**
-que monta o formulário na tela *e* a versão impressa. As respostas ficam em
-`anamneses.dados` como JSON, então **acrescentar pergunta não exige mexer no
-banco**: basta editar o modelo.
+## Estrutura
 
-Ao escolher o paciente, o bloco *Dados pessoais* é preenchido sozinho com o
-cadastro (nome, nascimento, CPF, RG, estado civil, escolaridade, profissão,
-religião, contato, convênio, endereço) — em tela e na impressão.
-
-### Impressão
-Todas as impressões saem no **papel timbrado da clínica** (`timbreHTML`): marca
-oficial inline, faixa violeta→champagne, e rodapé com CNPJ, endereço e o aviso
-de dado sensível. O cabeçalho fica num `<thead>` de tabela de página, técnica que
-faz o navegador **repeti-lo a cada quebra de página**.
-
-- **Ficha do paciente** — cadastro completo.
-- **Anamnese** — dados pessoais + respostas (caixas ☒/☐, matrizes e listas) + assinaturas.
-- **Prontuário completo** — tudo do paciente **em sequência cronológica**: resumo
-  com período de tratamento, cada anamnese em página própria, a evolução clínica
-  numerada e a tabela de atendimentos. Feito para o caso de 1+ ano de tratamento.
-- **Agenda** — em paisagem, agrupada por dia.
-
-### Regras de agenda
-Início e fim próprios (o fim é sugerido pela duração do procedimento). Valida:
-expediente 06h–22h, fim depois do início, sem choque **do profissional** e sem
-choque **da sala**. Cancelados não bloqueiam horário.
-
-### Perfis
-- **admin** — tudo.
-- **secretaria/recepção** — cadastros, agenda e relatórios. **Não vê prontuário
-  nem anamnese** (dado clínico sensível) — bloqueado no servidor, não só na tela.
-- **profissional** — sua agenda, **seus lançamentos** de prontuário e as anamneses
-  (as anamneses são visíveis a todos os profissionais; os lançamentos, não).
-
-## Banco de dados
-
-SQLite, dois arquivos: `data/site.db` (conteúdo do site) e `data/gestao.db`
-(clínica). Quem abre os dois é o **`db.js`**, e só ele — nenhum outro arquivo
-importa driver direto.
-
-O driver preferido é o **`better-sqlite3`**. Se `node_modules` não existir, o
-`db.js` cai sozinho no `node:sqlite` de fábrica e o sistema continua no ar, só
-com um aviso no boot e no `verificar.sh`. Motivo da preferência: o `node:sqlite`
-é marcado como **experimental** pelo próprio Node — uma atualização do Node
-poderia mudar a interface e derrubar a clínica. Mesma engine, mesmo arquivo
-`.db`, mesmo SQL; trocar de driver **não migra nada**.
-
-```bash
-npm ci --omit=dev       # instala o driver (o deploy.sh já faz isso)
+```
+server.js         site público, painel /admin, publicação, CEP, acessos
+restrito.js       sistema de gestão inteiro
+pg.js             adaptador do PostgreSQL (traduz o dialeto, decifra na leitura)
+db.js             único ponto que abre SQLite
+cripto.js         cifragem dos dados sensíveis
+backup.js         backup diário dentro do processo
+migrations/       esquema do PostgreSQL, versionado
+src/              modelos das páginas internas — a ENTRADA da publicação
+admin/            painel de conteúdo
+restrito/         interface da gestão (app.html) e anexos de paciente
+assets/           css, js, imagens e índice de busca
+nginx/  ci/  .github/    vhost, entrega no servidor e pipeline
 ```
 
-## Backup
+> **src/ é a fonte; as pastas de página são a saída.** Editar direto
+> `especialidades/index.html` ou `agendar/index.html` funciona até o próximo
+> clique em **Publicar**, que sobrescreve tudo a partir de `src/`.
 
-O sistema tira backup **sozinho, todo dia**, sem depender de cron: `backup.js`
-roda dentro do processo e, de hora em hora, pergunta se já passaram 24h desde a
-última cópia. Se a máquina estava desligada na hora marcada, a cópia sai no
-próximo boot em vez de ser pulada.
-
-- **Como copia:** `VACUUM INTO` — o backup online do SQLite. Sai consistente com
-  o sistema em uso e gravando (testado com escrita concorrente). Copiar o `.db`
-  com `cp` **não** dá essa garantia: o WAL fica em outro arquivo.
-- **Confere sozinho:** toda cópia é aberta e passa por `integrity_check` antes de
-  contar como válida. Cópia quebrada é apagada e vira erro no log.
-- **Onde:** `backups/` (fora do git). Guarda as **30** últimas de cada banco.
-- **Ajuste:** `BACKUP_HORAS` e `BACKUP_MANTER` no ambiente do serviço.
+## Como executar
 
 ```bash
-node server.js --backup          # copia agora
-node server.js --backup-status   # quando foi a última, quantas existem
-sudo ./restaurar.sh              # lista os backups disponíveis
-sudo ./restaurar.sh gestao       # restaura o gestao.db mais recente
+npm ci --omit=dev      # instala os drivers
+node migrar.js         # aplica as migrations pendentes
+npm start              # sobe na porta 5185 (ou defina PORT)
 ```
 
-O `restaurar.sh` confere a integridade do backup **antes** de sobrescrever,
-guarda o banco atual como `.antes-da-restauracao`, e pede confirmação digitada —
-restaurar o `gestao.db` descarta tudo que foi lançado depois daquela cópia.
+O `.env` (modelo em `.env.exemplo`) precisa de `DADOS_CHAVE` — 32 bytes em
+base64, geradas com `openssl rand -base64 32` — e das credenciais do PostgreSQL.
+**O serviço se recusa a subir sem a chave**, de propósito: subir sem ela
+significaria voltar a gravar prontuário em texto puro sem ninguém perceber.
 
-> As cópias ficam no **mesmo servidor**. Isso cobre erro humano e corrupção, mas
-> não perda da máquina. Cópia externa (outro servidor ou storage) ainda é uma
-> pendência — ver o final deste arquivo.
+Em produção as variáveis vêm do systemd, por `EnvironmentFile=/etc/bemestar.env`.
 
-## Operação — a ordem importa
+### Operação no servidor — a ordem importa
 
 ```bash
-./verificar.sh          # só lê: commit, driver, permissões, contagens, backups
-sudo ./deploy.sh        # backup → para → protege bancos → pull → npm ci → devolve → sobe → confere
+./verificar.sh          # só LÊ: commit, driver, permissões, contagens, backups
+sudo ./deploy.sh        # backup → para → protege bancos → pull → npm ci → sobe → confere
 ```
 
-- **Nunca `git pull` puro.** Os bancos não são versionados; o `deploy.sh` tira
-  `site.db` **e** `gestao.db` (mais `restrito/arquivos`) do caminho antes do pull.
-- **`git pull` não reinicia o Node.** Alterou `server.js` ou `restrito.js`? Reinicie.
+- **Nunca `git pull` puro.** Os bancos não são versionados; o `deploy.sh` os tira
+  do caminho antes do pull.
+- **`git pull` não reinicia o Node.** Alterou `server.js` ou `restrito.js`?
+  Reinicie — o sintoma típico de esquecer é uma função nova responder
+  "Rota não encontrada".
 - **`git pull` não instala dependência.** O `deploy.sh` roda `npm ci` no passo 6.
-- **Editou texto/foto no painel?** Clique em **Publicar**.
+- **Editou texto ou foto no painel?** Clique em **Publicar**.
+
+### Testes
+
+```bash
+node testar-limitador.js       # freio de tentativas de senha
+node testar-campo-vazio.cjs    # sobe o servidor e testa por HTTP (exige PostgreSQL)
+```
+
+Os dois rodam no pipeline antes de qualquer entrega — suíte vermelha não vira
+site no ar.
+
+## Documentação
+
+A documentação completa está em [`docs/`](docs/):
+
+| Documento | Conteúdo |
+|---|---|
+| [Documentação Técnica](docs/documentacao-tecnica.pdf) | Arquitetura, APIs, segurança, configuração, deploy, testes e pontos de atenção |
+| [Documentação de Produto](docs/documentacao-produto.pdf) | Funcionalidades, personas, jornadas, regras de negócio e requisitos |
+| [Documentação de Banco de Dados](docs/documentacao-banco-de-dados.pdf) | 22 tabelas, diagrama ER, integridade, migrations e proteção dos dados |
+| [Documentação de Protótipo](docs/documentacao-prototipo.pdf) | Identidade visual, telas, componentes, estados e navegação |
+
+Complementares: [`CHANGELOG.md`](CHANGELOG.md) (histórico do site),
+[`POSTGRES.md`](POSTGRES.md) (instalação e virada do banco) e
+[`.env.exemplo`](.env.exemplo) (variáveis de ambiente).
+
+> Os PDFs refletem o site **1.20.0** e a gestão **1.28.0**. Ao subir versão que
+> mude arquitetura, banco ou telas, vale regerá-los — a defasagem do README é
+> justamente o que esta análise encontrou como principal problema de
+> documentação.
 
 ## LGPD
 
-O `gestao.db` guarda CPF, endereço, anamnese e prontuário — **dado pessoal
-sensível** (art. 5º, II). Por isso: app escuta só em `127.0.0.1`, `/restrito`
-exige login e envia `noindex`, `/data`, `/backups` e `.db` respondem 404,
-`/restrito` está no `Disallow` do robots, e o backup diário cobre o `gestao.db`
-junto com o do site.
+O banco da gestão guarda CPF, endereço, anamnese e prontuário — **dado pessoal
+sensível** (art. 5º, II). Por isso: 48 colunas são cifradas com chave que vive
+fora do banco, a aplicação escuta só em `127.0.0.1`, `/admin` e `/restrito`
+enviam `noindex`, `/data`, `/backups` e arquivos `.db`/`.sql` respondem 404, e o
+registro de visitas guarda apenas o hash do IP, com retenção de 12 meses.
 
-**Atenção:** os arquivos em `backups/` são cópias completas do banco sensível.
-Eles herdam a mesma exigência de proteção do original — não copie para fora do
-servidor sem criptografia, e mantenha a pasta fora do alcance do nginx (já está:
-`backups` é diretório bloqueado no `server.js` e não é servido).
+**Um backup sem a chave não serve para restaurar.** Guarde as duas coisas — em
+lugares separados, mas ambas.
 
 ## Pendências conhecidas
 
-- **Backup externo (offsite).** Hoje as cópias ficam na mesma máquina. Perda do
-  servidor = perda de tudo. Falta definir destino e criptografia.
-- **Restauração nunca foi ensaiada em produção.** O mecanismo está testado, o
-  procedimento no servidor real não.
+- **Backup externo.** As cópias ficam na mesma máquina; perda do servidor =
+  perda de tudo. Falta destino externo com criptografia.
+- **Restauração nunca ensaiada em produção.** O mecanismo está testado; o
+  procedimento no servidor real, não.
+- **Custódia da `DADOS_CHAVE` não documentada** — onde fica a cópia, quem tem
+  acesso, como se recupera.
+- **Sem chaves estrangeiras no banco.** Os relacionamentos são mantidos apenas
+  pela aplicação; já produziu dois defeitos de vínculo órfão, ambos corrigidos.
+  Ver o documento de Banco de Dados, capítulo 6.
+- **`visit_salt` não rotacionado** — esteve exposto em repositório público.
+- Fotos do topo, do atendimento online e as capas do blog ainda são de banco de
+  imagens.
+- IDs de GA4/GTM/Pixel/Clarity/Hotjar vazios em `assets/js/config.js`.

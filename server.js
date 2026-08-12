@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.21.0";
+const APP_VERSION = "1.22.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -1570,6 +1570,11 @@ if (process.argv.includes("--backup-status")) {
 }
 
 const servidor = http.createServer(async (req, res) => {
+  /* LA Sentinela: conta esta requisição. Não interfere na resposta — só
+     pendura um ouvinte no "finish" e mede depois que ela terminou. Fica no
+     topo de propósito, para que 404, 503 e erro também sejam contados. */
+  sentinela.contar(req, res);
+
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
   // Cabeçalhos de segurança em toda resposta
@@ -2046,6 +2051,34 @@ async function gestaoNoAr() {
     console.error("    religa sozinho no primeiro acesso ao /restrito.\n");
   }
 })();
+
+/* ==========================================================================
+   LA SENTINELA — conector de monitoramento
+
+   Conta cada requisição e manda um "beat" assinado (HMAC-SHA256) para o
+   gerenciador: acessos, IPs únicos por janela, faixas de status, tempo de
+   resposta, e os recursos da máquina. Só ESCREVE para fora — não abre porta.
+
+   POR QUE AQUI, e não junto dos outros require lá em cima: construir o conector
+   já LIGA o laço de envio. Aqui ele nasce depois do banco e imediatamente antes
+   do `listen`, que é a ordem certa — precisa existir antes da primeira
+   requisição chegar (o handler chama `sentinela.contar`), mas não faz sentido
+   começar a bater antes de o servidor estar de pé.
+
+   O SEGREDO NÃO FICA NO CÓDIGO. Este repositório é PÚBLICO: um segredo commitado
+   aqui vira permanente no histórico do GitHub, e este projeto já pagou esse
+   preço duas vezes (o `visit_salt` e o `data/site.db` com hash de senha seguem
+   no histórico). Ele vem do ambiente — `.env` no local (que está no
+   .gitignore), `EnvironmentFile` do systemd em produção, igual às credenciais
+   do PostgreSQL. Sem o segredo o conector fica INATIVO e avisa no boot; o site
+   segue normal.
+   ========================================================================== */
+const { conectorSentinela } = require("./lasentinela");
+const sentinela = conectorSentinela({
+  url: process.env.SENT_URL || "http://localhost:5191",
+  siteId: Number(process.env.SENT_SITE) || 1,
+  segredo: process.env.SENT_SEGREDO,
+});
 
 /* O listen fica FORA do laço de tentativas, e nunca depois dele.
 

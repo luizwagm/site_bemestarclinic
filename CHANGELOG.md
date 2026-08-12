@@ -6,6 +6,37 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.22.0 — 2026-08-12 · conector do LA Sentinela
+
+Primeira instalação do monitoramento num site real. Três pontos no `server.js`:
+o `require`, a construção do conector (ambos logo **antes** do `listen`) e o
+`sentinela.contar(req, res)` no **topo** do handler.
+
+- **Por que antes do `listen`, e não junto dos outros `require`:** construir o
+  conector já LIGA o laço de envio. Ali ele nasce depois do banco e antes da
+  primeira requisição — o handler chama `contar`, então precisa existir; e não
+  faz sentido começar a bater antes de o servidor estar de pé.
+
+- **Por que no TOPO do handler:** assim 404, 503 e erro entram na conta. Não
+  interfere na resposta — só pendura um ouvinte no `finish`.
+
+- **O SEGREDO NÃO ESTÁ NO CÓDIGO.** Este repositório é **público**; segredo
+  commitado aqui fica permanente no histórico do GitHub, e o projeto já pagou
+  esse preço duas vezes (`visit_salt` e `data/site.db` com hash de senha seguem
+  lá). Vem de `SENT_SEGREDO` no ambiente — `.env` no local, `EnvironmentFile` do
+  systemd em produção, igual às credenciais do PostgreSQL. Documentado no
+  `.env.exemplo`. **Sem o segredo o conector fica inativo e avisa no boot**; o
+  site segue normal.
+
+Provado ponta a ponta: servidor de teste na 5199, tráfego variado, e o beat
+CHEGOU — o banco do Sentinela registrou `site_id 1, hits 5, s2xx 4, s4xx 1,
+tempo_med 15ms`, batendo com o que foi gerado. Assinatura HMAC aceita.
+
+**Para valer em produção falta `SENT_SEGREDO` em `/etc/bemestar.env`** — deploy
+sozinho não liga o conector.
+
+---
+
 ## 1.21.0 — 2026-08-12 · a foto que chega pelo painel
 
 Até aqui o `/api/upload` gravava o base64 **cru** no disco, sem olhar. Agora
