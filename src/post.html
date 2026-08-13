@@ -63,7 +63,10 @@
         </div>
       </header>
       <div class="container container--narrow">
-        <figure class="post__cover{{COVER_CLASS}}"><img src="{{IMAGE}}" alt="{{TITLE}}"{{IMAGE_DIMS}}></figure>
+        <!-- Capa é o LCP desta página: NADA de loading="lazy" aqui (adiaria justamente
+             o que o Core Web Vitals cronometra). `fetchpriority="high"` faz o oposto —
+             manda o navegador buscá-la na frente das outras. -->
+        <figure class="post__cover{{COVER_CLASS}}"><img src="{{IMAGE}}" alt="{{TITLE}}"{{IMAGE_DIMS}} fetchpriority="high" decoding="async"></figure>
         <div class="esp__content">
         {{CONTENT_HTML}}
         </div>

@@ -1,0 +1,55 @@
+# BemEstarClinic
+
+> Cuidamos da sua saúde mental, física e do seu bem-estar de forma completa e acessível: equipe de especialistas e uma ampla variedade de tratamentos integrativos para você e sua família — presencial em Caruaru e online.
+
+Clínica em Caruaru-PE, com atendimento presencial e online para todo o Brasil.
+
+- Endereço: Empresarial Nordeste Corporate — Rua Arthur Antônio da Silva, 481, 7º andar, Sala 707 — Universitário, Caruaru-PE · CEP 55016-445
+- WhatsApp: (81) 9.7303-7762 (https://wa.me/5581973037762)
+- Telefone: (81) 4105-1109
+- E-mail: faleconosco@bemestarclinic.com
+- Horário: Seg. a sex. · 8h às 18h (BRT) Online: horários estendidos
+- Agendamento: https://bemestarclinic.com/agendar/
+
+## Especialidades
+
+- [Psicanálise (Individual e Casal)](https://bemestarclinic.com/especialidades/psicanalise-individual-e-casal/): Escuta qualificada baseada em Freud para compreender conflitos internos, emoções reprimidas e padrões inconscientes. Online e presencial.
+- [Protocolo Integrativo (Ozonioterapia e Detox Iônico)](https://bemestarclinic.com/especialidades/protocolo-integrativo-ozonioterapia-e-detox-ionico/): Ozônio medicinal + Detox Iônico: desintoxicação, imunidade, redução de inflamações e mais disposição física e mental.
+- [Acupuntura](https://bemestarclinic.com/especialidades/acupuntura/): Terapia milenar da Medicina Tradicional Chinesa, reconhecida pela OMS: equilíbrio energético, alívio de dores e bem-estar.
+- [Fitoterapia](https://bemestarclinic.com/especialidades/fitoterapia/): O poder das plantas medicinais: chás, extratos, tinturas e cápsulas para tratar e equilibrar, com menos efeitos colaterais.
+- [Terapia Floral](https://bemestarclinic.com/especialidades/terapia-floral/): Essências florais para equilíbrio emocional em todas as idades — de bebês a adultos, inclusive em fases de transição.
+- [Aromaterapia](https://bemestarclinic.com/especialidades/aromaterapia/): Óleos essenciais que atuam pelo olfato e pela pele: menos estresse, sono melhor, alívio de dores e mais equilíbrio.
+- [Avaliação Psicológica e Psicossocial](https://bemestarclinic.com/especialidades/avaliacao-psicologica-e-psicossocial/): Avaliação online regulamentada (CFP nº 11/2018) com resultado em até 24h — solução ágil para colaboradores e empresas.
+- [Ventosaterapia](https://bemestarclinic.com/especialidades/ventosaterapia/): Técnica milenar com copos de vácuo: alívio de dores, melhora da circulação e relaxamento muscular profundo.
+- [Psicologia](https://bemestarclinic.com/especialidades/psicologia/): Psicoterapia individual, de casal, infantil e corporativa — saúde mental com abordagens integrativas e personalizadas.
+- [Exame de Biorressonância](https://bemestarclinic.com/especialidades/exame-de-biorressonancia/): Exame não invasivo que analisa as frequências do organismo para detectar desequilíbrios antes dos sintomas.
+- [Homeopatia](https://bemestarclinic.com/especialidades/homeopatia/): Sistema terapêutico da 'cura pelo semelhante': estimula a autocura tratando corpo, emoções e mente como um todo.
+- [Kinesioterapia (Fitas Elásticas)](https://bemestarclinic.com/especialidades/kinesioterapia-fitas-elasticas/): Kinesio Taping: fitas elásticas em pontos estratégicos para aliviar dores, estabilizar músculos e acelerar a reabilitação.
+- [Saúde e Segurança do Trabalhador](https://bemestarclinic.com/especialidades/saude-e-seguranca-do-trabalhador/): Exames ocupacionais completos (admissional ao demissional), avaliações e serviços de segurança para empresas.
+- [Riscos Psicossociais (NR-1)](https://bemestarclinic.com/especialidades/riscos-psicossociais-nr-1/): Sua empresa em conformidade com a NR-1: identificação, avaliação e gestão dos riscos psicossociais com time interdisciplinar.
+- [Nutrição](https://bemestarclinic.com/especialidades/nutricao/): Nutrição Clínica, Esportiva, Funcional e Integrativa: planos alimentares personalizados para saúde e resultados.
+- [Diversas Especialidades](https://bemestarclinic.com/especialidades/diversas-especialidades/): Saúde completa: uma abordagem integral com diferentes áreas unidas pelo seu bem-estar físico, emocional e preventivo.
+
+## Profissionais
+
+- [Guia de profissionais](https://bemestarclinic.com/profissionais/): equipe por especialidade.
+  - Dr. Prof. Ronalldo JM — Presidente · Psicanalista clínico
+  - Dr. Prof. Samuel Teixdan — Diretor · Psicanalista clínico
+  - Dra. Núbia Tatiane Fernandes — Psicóloga
+  - Dr. Jailson Cavalcanti — Nutrição Clínica, Esportiva e Funcional
+  - Dra. Letícia Vital — Nutrição Clínica e Esportiva
+  - Dra. Tainá Brito — Nutrição Clínica
+  - Dra. Lorena Espósito — Nutrição Clínica
+  - Dra. Brunna Ferreira — Nutrição Clínica
+  - Dra. Jheniffer Melo — Nutrição Clínica, Funcional e Integrativa
+
+## Feed
+
+- [Quando procurar um psicanalista? 7 sinais de que a terapia pode ajudar](https://bemestarclinic.com/blog/quando-procurar-um-psicanalista-7-sinais-de-que-a-terapia-pode-ajudar/) (2026-07-15): Ansiedade constante, padrões que se repetem, luto que não passa: veja os sinais de que uma escuta qualificada pode transformar seu momento.
+- [NR-1 e riscos psicossociais: o que muda para a sua empresa](https://bemestarclinic.com/blog/nr-1-e-riscos-psicossociais-o-que-muda-para-a-sua-empresa/) (2026-07-08): A norma agora exige a gestão dos riscos psicossociais no trabalho. Entenda as obrigações — e como se adequar sem dor de cabeça.
+- [Ozonioterapia e Detox Iônico: como funciona o Protocolo Integrativo](https://bemestarclinic.com/blog/ozonioterapia-e-detox-ionico-como-funciona-o-protocolo-integrativo/) (2026-06-30): Duas terapias que se potencializam: entenda o passo a passo do protocolo que une desintoxicação, imunidade e mais energia.
+
+## Institucional
+
+- [Política de Privacidade](https://bemestarclinic.com/privacidade/): tratamento de dados pessoais conforme a LGPD.
+- CNPJ: 02.192.745/0001-25

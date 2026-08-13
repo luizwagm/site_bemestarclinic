@@ -6,6 +6,76 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.23.0 — 2026-08-13 · llms.txt, dados estruturados do Feed e WEBP do acervo
+
+Segunda rodada do LA Sentinela (13/08): **19 → 7 pendências**.
+
+### Acrescentado
+
+- **`llms.txt`** (llmstxt.org) — o equivalente do robots.txt para assistentes de
+  IA: resumo em Markdown do que a clínica é e do que há no site. Quem responde
+  "qual clínica de ozonioterapia tem em Caruaru?" hoje é cada vez mais um
+  assistente, e ele acerta muito mais lendo isto do que rastreando HTML.
+  **Gerado no publish**, como o sitemap — arquivo escrito à mão envelheceria a
+  cada especialidade ou matéria nova. Tudo sai do BANCO; campo não preenchido
+  simplesmente não aparece.
+
+- **`imagens-webp.js`** — converte para WEBP as imagens que já estavam no site
+  (as novas já chegam convertidas desde a 1.21.0). Local: **1322 kB → 818 kB
+  (−38%)**; o `og-image.png` sozinho cairia 85%.
+
+  **Comando à parte, e não migração no boot**, por três motivos: mexe no BANCO
+  (o caminho da foto está em `settings`, `portfolio.image`, `team.photo`,
+  `posts.image` e dentro do HTML de `posts.content`/`services.content` — converter
+  o arquivo sem trocar a referência quebraria a imagem); processar dezenas de
+  imagens atrasaria a subida do serviço; e `assets/img/uploads/` está no
+  .gitignore, então **os arquivos do servidor não são os desta máquina — rodar
+  aqui não conserta a produção.**
+
+  Tem ensaio (`--conferir`) e **não apaga o original**. Converte só se ficar
+  menor: PNG chapado às vezes SAI MAIOR em WEBP.
+
+  **`img_og` fica de fora de propósito.** É a imagem do cartão de
+  compartilhamento: nenhum visitante a baixa, então converter não melhora Core
+  Web Vitals em nada — e entregaria WEBP ao rastreador de cada rede, cujo
+  suporte em prévia de link ainda é irregular. Ganho zero contra risco de
+  cartão sem imagem.
+
+### Corrigido
+
+- **`/blog/` tinha um `Blog` FIXO no template** que não citava matéria nenhuma
+  e não tinha trilha — envelhecia a cada post. Agora sai do banco, como já era
+  em `/especialidades/`: `Blog` com `blogPost[]` (cada um `BlogPosting` com
+  headline, url, data e imagem absoluta) mais `BreadcrumbList`.
+
+- **Capa do post ganhou `fetchpriority="high"`.** Ela é o LCP da página; a
+  intenção agora está declarada, em vez de apenas "não ter lazy".
+
+### Dois achados do relatório que são FALSO POSITIVO (conferidos na produção)
+
+- **"1 de 9 posts sem Article"** — existem **8** posts, todos com `BlogPosting`
+  completo (headline, image, datePublished, author, publisher). O nono item é o
+  `/blog/`, a página de LISTAGEM, cobrada como se fosse matéria. Listagem não é
+  Article; o que faltava ali eram dados estruturados próprios, agora feitos.
+
+- **"1 de 39 imagens sem alt"** — é o `mark-violet.svg` da home, `class="split__mark"`,
+  com `alt=""`. Marca decorativa: `alt=""` é o CORRETO pela WCAG, e o próprio
+  relatório diz isso. O verificador conta alt vazio como ausente.
+
+- **"9 imagens sem lazy"** — são o hero da home e as 8 capas de post, ou seja o
+  **LCP** de cada página. Lazy nelas atrasaria justamente o que o Core Web
+  Vitals cronometra.
+
+### Nota de deploy (não óbvia)
+
+Rodar `imagens-webp.js` no local muda o HTML versionado para `.webp`, mas a
+produção tem outro banco. Não quebra: o `deploy.sh` refaz as páginas no passo
+**7b** (`node server.js --publicar`) a partir do banco de lá, e o serviço está
+parado nesse intervalo. Para a produção encolher de fato, o script precisa
+rodar **no servidor**.
+
+---
+
 ## 1.22.0 — 2026-08-12 · conector do LA Sentinela
 
 Primeira instalação do monitoramento num site real. Três pontos no `server.js`:

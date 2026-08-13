@@ -85,7 +85,10 @@
         </div>
       </header>
       <div class="container container--narrow">
-        <figure class="post__cover post__cover--reserva"><img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="Ozonioterapia e Detox Iônico: como funciona o Protocolo Integrativo"></figure>
+        <!-- Capa é o LCP desta página: NADA de loading="lazy" aqui (adiaria justamente
+             o que o Core Web Vitals cronometra). `fetchpriority="high"` faz o oposto —
+             manda o navegador buscá-la na frente das outras. -->
+        <figure class="post__cover post__cover--reserva"><img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&amp;fit=crop&amp;w=900&amp;q=70" alt="Ozonioterapia e Detox Iônico: como funciona o Protocolo Integrativo" fetchpriority="high" decoding="async"></figure>
         <div class="esp__content">
         <p>O Protocolo Integrativo da BemEstarClinic combina duas técnicas complementares que trabalham juntas pelo equilíbrio do organismo.</p>
         <p>A Ozonioterapia utiliza oxigênio e ozônio medicinal, com ação anti-inflamatória, antioxidante e imunomoduladora: melhora a oxigenação dos tecidos, estimula a regeneração celular e favorece a circulação.</p>

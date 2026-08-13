@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.22.0";
+const APP_VERSION = "1.23.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -1257,9 +1257,28 @@ function publish() {
   const blogTpl = fs.readFileSync(path.join(ROOT, "src", "blog.html"), "utf8");
   const postTpl = fs.readFileSync(path.join(ROOT, "src", "post.html"), "utf8");
   fs.mkdirSync(path.join(ROOT, "blog"), { recursive: true });
+  /* URL absoluta da capa — o mesmo cuidado do JSON-LD de cada post: caminho
+     relativo é inválido em dados estruturados. */
+  const capaAbs = (im) => (im ? (im.startsWith("http") ? im : SITE + im) : `${SITE}/assets/img/og-image.png`);
+  /* A listagem tinha um bloco `Blog` FIXO no template: não citava matéria
+     nenhuma, não tinha trilha e envelhecia a cada post novo. Agora sai do banco,
+     como já era em /especialidades/ — o `blogPost` diz ao Google o que existe
+     aqui dentro, e o BreadcrumbList é o que rende a trilha no resultado. */
+  const blogJ = { "@context": "https://schema.org", "@graph": [
+    { "@type": "Blog", "@id": `${SITE}/blog/#blog`, name: "Feed — BemEstarClinic",
+      url: `${SITE}/blog/`, inLanguage: "pt-BR", description: strip(S.pg_feed_lead) || undefined,
+      isPartOf: { "@id": `${SITE}/#site` }, publisher: { "@id": `${SITE}/#org` },
+      blogPost: posts.map((po) => ({ "@type": "BlogPosting",
+        headline: po.title, url: `${SITE}/blog/${po.slug}/`, datePublished: po.date,
+        image: capaAbs(po.image), author: { "@id": `${SITE}/#org` } })) },
+    { "@type": "BreadcrumbList", itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Início", item: `${SITE}/` },
+      { "@type": "ListItem", position: 2, name: "Feed", item: `${SITE}/blog/` } ] },
+  ] };
   fs.writeFileSync(path.join(ROOT, "blog", "index.html"),
     // /blog/: logo abaixo do <h1> da página → h2
     aplicarTextos(blogTpl, S).replaceAll("{{POSTS_HTML}}", "          " + (posts.map((p) => postCard(p, 2)).join("\n          ") || '<p class="blog-empty">Em breve, novidades por aqui! 🪷</p>'))
+      .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(blogJ, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
       .replace(/wa\.me\/\d+(?![?\d])/g, `wa.me/${S.whatsapp}`));
   const keepPosts = new Set(posts.map((x) => x.slug));
   for (const d of fs.readdirSync(path.join(ROOT, "blog"), { withFileTypes: true }))
@@ -1274,7 +1293,7 @@ function publish() {
        "/assets/img/uploads/…", e URL relativa dentro do JSON-LD é inválida — o
        validador descarta o bloco inteiro e o post fica sem schema nenhum.
        Foto do Unsplash já vem com http e passa direto. */
-    const imgAbs = po.image ? (po.image.startsWith("http") ? po.image : SITE + po.image) : `${SITE}/assets/img/og-image.png`;
+    const imgAbs = capaAbs(po.image);
     const pj = { "@context": "https://schema.org", "@type": "BlogPosting",
       headline: po.title, description: po.excerpt, image: imgAbs, datePublished: po.date, inLanguage: "pt-BR",
       author: { "@type": "Organization", name: "BemEstarClinic", url: `${SITE}/` },
@@ -1309,6 +1328,54 @@ function publish() {
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
     urls.map((u) => `  <url>\n    <loc>${u.loc}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${u.freq}</changefreq>\n    <priority>${u.pri}</priority>\n  </url>`).join("\n") +
     `\n</urlset>\n`);
+
+  /* ---------- llms.txt ----------
+     O equivalente do robots.txt para assistentes de IA (llmstxt.org): um resumo
+     em Markdown do que o site é e do que há dentro dele. Quem responde "qual
+     clínica de ozonioterapia tem em Caruaru?" hoje é cada vez mais um
+     assistente, e ele acerta muito mais lendo isto do que rastreando o HTML.
+
+     GERADO NO PUBLISH, como o sitemap: um arquivo escrito à mão envelheceria a
+     cada especialidade ou matéria nova — que é justamente o defeito que o bloco
+     fixo do /blog/ tinha. Tudo aqui vem do BANCO; nada é inventado, e o que o
+     cliente não preencheu simplesmente não aparece. */
+  const linha = (t) => strip(t).replace(/\s+/g, " ").trim();
+  const llms = [
+    `# BemEstarClinic`,
+    ``,
+    `> ${linha(S.hero_lead) || "Clínica de psicanálise, psicologia, ozonioterapia e terapias integrativas."}`,
+    ``,
+    `Clínica em Caruaru-PE, com atendimento presencial e online para todo o Brasil.`,
+    ``,
+    `- Endereço: ${linha(S.address)}`,
+    `- WhatsApp: ${S.whatsapp_display || ""} (https://wa.me/${S.whatsapp})`,
+    S.phone_fixed ? `- Telefone: ${S.phone_fixed}` : null,
+    `- E-mail: ${S.contact_email || ""}`,
+    `- Horário: ${linha(S.footer_horario)}`,
+    `- Agendamento: ${SITE}/agendar/`,
+    ``,
+    `## Especialidades`,
+    ``,
+    ...services.filter((s) => s.slug).map((s) => `- [${s.title}](${SITE}/especialidades/${s.slug}/): ${linha(s.text)}`),
+    ``,
+    `## Profissionais`,
+    ``,
+    `- [Guia de profissionais](${SITE}/profissionais/): equipe por especialidade.`,
+    ...team.map((m) => `  - ${m.name} — ${linha(m.role)}`),
+    ``,
+    `## Feed`,
+    ``,
+    ...posts.map((po) => `- [${po.title}](${SITE}/blog/${po.slug}/)${po.date ? ` (${po.date})` : ""}: ${linha(po.excerpt)}`),
+    ``,
+    `## Institucional`,
+    ``,
+    `- [Política de Privacidade](${SITE}/privacidade/): tratamento de dados pessoais conforme a LGPD.`,
+    `- CNPJ: ${S.cnpj || ""}`,
+    ``,
+    // `null` some (campo não preenchido); "" é linha em branco de propósito,
+    // e o Markdown depende dela para separar as seções
+  ].filter((l) => l !== null).join("\n");
+  fs.writeFileSync(path.join(ROOT, "llms.txt"), llms.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n");
 
   // a página de manutenção acompanha o WhatsApp e a mensagem atuais
   gerarPaginaManutencao(S);
