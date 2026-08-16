@@ -148,6 +148,62 @@ node testar-campo-vazio.cjs    # sobe o servidor e testa por HTTP (exige Postgre
 Os dois rodam no pipeline antes de qualquer entrega — suíte vermelha não vira
 site no ar.
 
+## O chat da equipe — um sistema instalado, não uma biblioteca
+
+O botão redondo no canto inferior direito do `/restrito` abre o **LA Chat**, que
+é um **sistema à parte**: roda sozinho, tem banco próprio e atende vários sites.
+Aqui dentro mora apenas o **conector** — o arquivo [`lachat.js`](lachat.js), sem
+nenhuma dependência de `npm` — mais duas linhas no [`server.js`](server.js):
+
+```js
+if (chat.rota(req, res)) return;   // no topo do handler
+chat.conectarUpgrade(servidor);    // o WebSocket, antes do listen
+```
+
+A distinção importa na prática: **atualizar o chat não é mexer neste projeto**.
+O comando roda do lado do chat e alcança todos os sites do parque:
+
+```bash
+cd ../LA-Chat && node instalar-em.js --todos --conferir
+```
+
+Ele lista quem está atrasado e **sai com erro** quando há atraso, para servir de
+passo de verificação no deploy. Para atualizar de fato, o mesmo comando sem
+`--conferir`. As duas linhas do `server.js` são escritas uma vez e nunca mais.
+
+O que este projeto precisa saber está no `.env`:
+
+| Variável | Para quê |
+|---|---|
+| `CHAT_URL` | onde o serviço do chat responde (padrão `http://127.0.0.1:5197`) |
+| `CHAT_SEGREDO_PASSE` | assina o passe; **mínimo 32 caracteres**, o conector recusa menos |
+
+Sem essas duas, o conector avisa no boot e as rotas do chat simplesmente não
+existem — o resto do sistema não muda de comportamento. Se o chat cair, o site
+continua no ar: o repasse tem teto de tempo e devolve 503 só em
+`/restrito/chat/*`.
+
+**Quem é quem.** Não há segundo cadastro nem segunda senha: quem está logado na
+gestão já está logado no chat. O perfil vira o cargo — `admin` → Administração,
+`secretaria` → Recepção, `profissional` → Profissional de saúde.
+
+A aba "Pessoas" **é** o cadastro de usuários do sistema, e acompanha as
+mudanças: a gestão avisa a cada usuário criado, editado, excluído ou bloqueado
+(inclusive pelo acesso do profissional) e o elenco vai em 2 s; além disso é
+reenviado de 5 em 5 minutos, para o estado convergir mesmo que o chat estivesse
+fora do ar na hora do cadastro. Quem sai do cadastro é desativado no chat — as
+conversas antigas continuam íntegras — e quem volta, reaparece.
+
+**Avisos.** Com o chat fechado, mensagem nova acende o selo vermelho no botão,
+prefixa o título da aba (`(2) Gestão — BemEstarClinic`) e toca um aviso curto. O
+som depende de a pessoa já ter interagido com a página — é regra do navegador, e
+qualquer clique no sistema serve.
+
+**Por que em `/restrito/chat`.** O cookie da gestão tem `Path=/restrito`; com o
+chat na raiz o navegador não o enviava e o passe respondia 401 de dentro do
+sistema, logado. Detalhe de instalação com consequência real — está registrado
+no [`CHANGELOG.md`](CHANGELOG.md) 1.24.1.
+
 ## Documentação
 
 A documentação completa está em [`docs/`](docs/):

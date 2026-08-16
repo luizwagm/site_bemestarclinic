@@ -22,6 +22,14 @@ const crypto = require("node:crypto");
 const { Q, config: configPg } = require("./pg");
 const { cifrar, chaveConfigurada, erroChave, digitos: soDigitos } = require("./cripto");
 const { migrar: migrarEsquema } = require("./migrar");
+/* As perguntas dos 13 rastreios. Arquivo próprio, e não uma constante aqui
+   dentro: são 36 KB de enunciado que ninguém precisa rolar para chegar às
+   rotas — e o MODELOS_ANAMNESE logo abaixo já mostra o quanto isso incomoda. */
+const { MODELOS_TESTE } = require("./testes-modelos");
+/* O desafio é o teste que a clínica escreve na hora: mesmo envio, mesmo link,
+   mesmas telas — só que as perguntas nascem de um texto colado, e não deste
+   repositório. Ver desafios.js. */
+const { interpretarDesafio, modeloDoDesafio } = require("./desafios");
 
 const ROOT = __dirname;
 const APP_DIR = path.join(ROOT, "restrito");
@@ -30,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.28.0";
+const SISTEMA_VERSION = "1.34.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -48,6 +56,17 @@ const SISTEMA_VERSION = "1.28.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.29.0", data: "2026-08-14", titulo: "Testes de rastreio enviados ao paciente", mudancas: [
+    "13 questionários de rastreio prontos, em Cadastros → Testes",
+    "Nova tela Enviar testes, abaixo de Prontuário",
+    "O paciente responde por um link próprio, no celular, sem senha",
+    "Situação de cada teste: criado, enviado, aberto, vencido e concluído",
+    "Envio pelo WhatsApp com a mensagem já escrita",
+    "Bloco Testes e desafios dentro da pasta do prontuário",
+    "Respostas guardadas cifradas e impressas no papel timbrado",
+    "O sistema avisa que está iniciando em vez de dar erro nos primeiros segundos",
+    "A lista de testes se atualiza sozinha quando o paciente abre ou responde",
+  ] },
   { versao: "1.28.0", data: "2026-08-09", titulo: "Arquivar paciente e prontuário", mudancas: [
     "Arquivar tira o paciente da lista sem apagar nada",
     "Arquivar tira o prontuário da tela, com o tratamento inteiro guardado",
@@ -232,6 +251,19 @@ const CAMPOS_PROTEGIDOS = {
   historico: ["detalhe"],
   atendimentos: ["nome_agenda", "celular", "observacoes"],
   documentos_gestao: ["titulo", "arquivo"],
+  /* As respostas do rastreio são sintoma relatado — ansiedade, humor, ideação —
+     de alguém cujo nome e CPF estão no mesmo banco. Mesmo peso da anamnese.
+     `avaliacao` é o que o TERAPEUTA concluiu a partir delas, o que é ainda
+     mais sensível. As mensagens de boas-vindas e de agradecimento entram
+     porque são escritas à mão e costumam chamar o paciente pelo nome. */
+  /* `rascunho` entra com o mesmo peso de `respostas`: é o mesmo conteúdo, só
+     que ainda sendo escrito ao longo da semana. */
+  teste_envios: ["respostas", "rascunho", "avaliacao", "msg_boas_vindas", "msg_agradecimento"],
+  /* O DESAFIO é escrito para UMA pessoa e diz do que ela sofre: "TDAH —
+     observar o que acontece antes de deixar para depois" é diagnóstico em
+     texto puro para quem abrir um dump. O `nome` fica legível porque é como a
+     clínica acha o desafio na lista; o corpo inteiro, não. */
+  testes: ["estrutura"],
   profissionais: ["contato", "registro"],
   // a trilha de auditoria guarda O QUE foi feito — inclui nome, CPF e trechos
   // de prontuário. Cifrado pelo mesmo motivo do histórico.
@@ -386,6 +418,7 @@ const MODULO_ROTULO = {
   procedimentos: "Procedimentos", salas: "Salas", atendimentos: "Agendamento",
   prontuario: "Prontuário", prontuario_registros: "Lançamentos do prontuário",
   anamneses: "Anamneses", documentos_gestao: "Documentos", historico: "Histórico",
+  testes: "Testes", teste_envios: "Envio de testes",
   usuarios: "Usuários do Sistema", relatorios: "Relatórios",
   relatorios_pacientes: "Pacientes ativos/inativos", painel: "Painel",
   auditoria: "Auditoria", sobre: "Sobre o sistema", conta: "Minha conta",
@@ -717,6 +750,29 @@ const PROCEDIMENTOS_SEED = [
    ========================================================================== */
 const COLS = {};
 
+/* ==========================================================================
+   O /restrito SÓ ATENDE DEPOIS DE PRONTO
+
+   `iniciarRestrito()` é assíncrono: aplica migrations, lê o
+   `information_schema` para montar o COLS e semeia os cadastros. O servidor,
+   porém, começa a escutar a porta ANTES de tudo isso terminar — e é o certo,
+   senão o site inteiro ficaria fora do ar esperando a gestão subir.
+
+   O problema aparecia na janela entre uma coisa e outra: um POST que chegasse
+   ali encontrava `COLS` ainda vazio e morria em
+   `COLS[tabela].has(...)` de `undefined` — HTTP 500, com uma mensagem que não
+   diz nada sobre a causa. Raro no dia a dia e garantido em dois momentos: logo
+   depois de um `systemctl restart`, e nas suítes, que sobem o servidor e
+   disparam o primeiro pedido em seguida.
+
+   A janela CRESCEU quando a versão 1.29.0 acrescentou uma migration e a
+   semeadura de treze testes ao boot. Foi assim que ela deixou de ser teórica.
+
+   Agora a resposta é 503 com `Retry-After`: "ainda não, tente já já" — que é a
+   verdade, e é o que um cliente HTTP sabe tratar.
+   ========================================================================== */
+let restritoPronto = false;
+
 async function iniciarRestrito() {
   /* 0. a chave dos dados sensíveis.
 
@@ -843,6 +899,51 @@ async function iniciarRestrito() {
     for (const [nome, modelo] of Object.entries(ANAMNESE_POR_PROCEDIMENTO)) n += (await Q.run(SQL_MODELO, modelo, nome)).changes;
     await setC("anamnese_modelo_seed", "1");
     if (n) console.log(`  · /restrito: ${n} procedimento(s) ligados ao seu modelo de anamnese.`);
+  }
+
+  /* 8. o catálogo de testes, a partir dos modelos do arquivo.
+
+     SEM TRAVA em g_config, ao contrário do passo 7 — e isso é a diferença que
+     importa. Aquele é um UPDATE que a clínica pode desfazer editando; este é
+     um INSERT de linha que ou existe ou não existe, e a chave é UNIQUE. Rodar
+     de novo não repete nada, e um teste NOVO acrescentado ao arquivo JS entra
+     sozinho no próximo boot. Com trava, ele nunca entraria.
+
+     `nome` e `instrucoes` NÃO são atualizados quando a linha já existe: a
+     clínica pode ter reescrito os dois pela tela, e o boot não pode desfazer
+     isso toda vez que o serviço reinicia. */
+  {
+    let n = 0, i = 0;
+    for (const m of MODELOS_TESTE) {
+      const r = await Q.run(
+        `INSERT INTO testes(chave, sigla, nome, instrucoes, ativo, sort, criado)
+         VALUES(?,?,?,?,1,?,?) ON CONFLICT (chave) DO NOTHING`,
+        m.chave, m.sigla, m.nome, m.instrucoes, (i += 10), AGORA_SEED);
+      n += r.changes;
+    }
+    if (n) console.log(`  · /restrito: ${n} teste(s) de rastreio no catálogo.`);
+  }
+
+  /* ÚLTIMA LINHA, e tem de continuar sendo: a partir daqui o /restrito passa a
+     responder. Qualquer passo novo entra ACIMA — abaixo, ele rodaria com a
+     porta já aberta e o problema voltaria com outro nome. */
+  restritoPronto = true;
+}
+
+/* ==========================================================================
+   QUEM ESTÁ COM A TELA ABERTA
+
+   Conexões SSE vivas. `avisar()` escreve o ASSUNTO em todas — nunca o dado.
+
+   Escrever numa conexão já morta lança, e um `throw` aqui dentro derrubaria o
+   aviso para os OUTROS ouvintes da lista. Por isso cada escrita é protegida e
+   o ouvinte problemático sai da lista na hora.
+   ========================================================================== */
+const ouvintes = new Set();
+function avisar(assunto) {
+  for (const c of [...ouvintes]) {
+    try { c.res.write(`event: ${assunto}\ndata: 1\n\n`); }
+    catch { ouvintes.delete(c); }
   }
 }
 
@@ -1025,6 +1126,230 @@ function clientIp(req) {
   return lista.length ? lista[lista.length - 1] : direto;
 }
 const agora = () => new Date().toISOString();
+
+/* ==========================================================================
+   TESTES DE RASTREIO — as peças que as rotas usam
+   ========================================================================== */
+
+/* Data de HOJE em AAAA-MM-DD, pelos componentes LOCAIS.
+   `toISOString().slice(0,10)` converte para UTC antes de cortar: às 21h de
+   Caruaru já é o dia seguinte em Greenwich, e um teste que expira "hoje"
+   apareceria vencido durante a noite inteira de quem tenta responder. */
+function hojeISO() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+    "-" + String(d.getDate()).padStart(2, "0");
+}
+
+/* O ALFABETO do código: 62 símbolos, como pedido (números, maiúsculas e
+   minúsculas). Nada é removido para "evitar confusão" — 0/O e 1/l ficam,
+   porque ninguém DIGITA este código: ele vai por link no WhatsApp. Tirar
+   símbolos só encolheria o espaço de busca. */
+const ALFABETO_CODIGO = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/* `crypto.randomInt` e não `Math.random()`: este código é a única barreira
+   entre a internet e a resposta de um paciente identificado. `Math.random`
+   é previsível a partir de saídas anteriores — quem recebesse dois links
+   legítimos poderia derivar os próximos. */
+function sortearCodigo() {
+  const n = 8 + crypto.randomInt(4);          // 8 a 11 caracteres
+  let c = "";
+  for (let i = 0; i < n; i++) c += ALFABETO_CODIGO[crypto.randomInt(ALFABETO_CODIGO.length)];
+  return c;
+}
+
+/* Sorteia até achar um que ninguém tem. Colisão em 62^8 é remotíssima, mas
+   "remoto" não é "impossível", e a coluna é UNIQUE: sem esta conferência a
+   colisão viraria erro 500 na cara de quem estava criando o teste. */
+async function codigoInedito() {
+  for (let i = 0; i < 12; i++) {
+    const c = sortearCodigo();
+    if (!(await Q.get("SELECT id FROM teste_envios WHERE codigo=?", c))) return c;
+  }
+  throw new Error("não consegui gerar um código livre");
+}
+
+/* A SITUAÇÃO — calculada, nunca lida de coluna.
+   "vencido" é o relógio andando, não alguém clicando. Como coluna, dependeria
+   de uma rotina passando marcar linha, e no dia em que ela falhasse um teste
+   vencido continuaria abrindo. Concluído vem ANTES de vencido de propósito:
+   quem respondeu no prazo não vira "vencido" quando a data passa. */
+function situacaoDoEnvio(e) {
+  if (e.status === "concluido") return "concluido";
+  if (e.expira_em && e.expira_em < hojeISO()) return "vencido";
+  return e.status;                       // criado | enviado | aberto
+}
+
+/* ==========================================================================
+   QUANDO O LINK ABRE — e por que a resposta é diferente para os dois
+
+   RASTREIO: abre em `criado` e `enviado`, e fecha depois de aberto. É a regra
+   do cliente, e faz sentido para um questionário respondido de uma sentada.
+
+   DESAFIO: reabre enquanto não estiver CONCLUÍDO. Ele é feito ao longo da
+   semana — escolhe a tarefa na segunda, anota a distração na terça, responde
+   as três perguntas todo fim de dia. Fechar no primeiro acesso transformaria
+   um exercício de sete dias num formulário para preencher de memória no
+   domingo à noite, que é justamente o que o desafio combate.
+
+   Vencido fecha os dois: o prazo é o prazo. E concluído fecha os dois — o
+   marco de "terminei" é o que a clínica lê como fim do exercício.
+   ========================================================================== */
+function envioAbrivel(e, ehDesafio) {
+  const sit = situacaoDoEnvio(e);
+  if (ehDesafio) return ["criado", "enviado", "aberto"].includes(sit);
+  return ["criado", "enviado"].includes(sit);
+}
+
+function contarPerguntas(m) {
+  return m.secoes.reduce((a, s) => a + s.itens.length, 0) + m.abertas.length;
+}
+
+/* ==========================================================================
+   O MODELO DE UM ENVIO — venha ele do código ou do banco
+
+   Os 13 rastreios vivem em `testes-modelos.js`, porque pergunta de rastreio é
+   estrutura. O DESAFIO vive no banco, porque é escrito para um paciente e uma
+   semana — não há como estar no código.
+
+   Esta função é a única que sabe dessa diferença. Do lado de fora, quem
+   precisa do modelo pede o modelo: envio, link do paciente, prontuário e
+   impressão continuam iguais, e é isso que faz o desafio herdar de graça
+   tudo o que o rastreio já tinha.
+
+   `linha` é a linha de `testes` quando quem chama já a leu — evita uma
+   segunda consulta na tela que lista o catálogo inteiro.
+   ========================================================================== */
+async function modeloDe(chave, linha) {
+  const m = MODELOS_TESTE.find((x) => x.chave === chave);
+  if (m) return m;
+
+  const t = linha || await Q.get(
+    "SELECT chave, nome, instrucoes, tipo, estrutura FROM testes WHERE chave=?", chave);
+  if (!t || t.tipo !== "desafio") return null;
+  return modeloDoDesafio(t.chave, lerJson(t.estrutura), t.nome, t.instrucoes);
+}
+
+/* A soma máxima de um DESAFIO é zero, e o cálculo precisa dizer isso em vez
+   de estourar: sem escala, `Math.max(...[])` é -Infinity, e `0 * -Infinity`
+   é NaN — que atravessaria o JSON e apareceria na tela como "NaN pontos". */
+function somaMaxima(m) {
+  if (!m || !m.escala?.length) return 0;
+  const itens = m.secoes.reduce((a, sc) => a + sc.itens.length, 0);
+  return itens * Math.max(...m.escala.map((x) => x.v));
+}
+
+/* A CHAVE DE CADA PERGUNTA. Precisa ser estável entre o envio e a leitura, e
+   não pode ser o texto (que a clínica pode corrigir depois, deixando a
+   resposta órfã). Posição dentro do modelo: seção e índice. */
+const chaveItem = (si, ii) => `s${si}_${ii}`;
+const chaveAberta = (i) => `a${i}`;
+
+/* Uma linha da lista. Não leva resposta nenhuma: a lista é vista por quem
+   pode e por quem não pode ler conteúdo clínico. */
+function resumoDoEnvio(l) {
+  return {
+    id: l.id, codigo: l.codigo,
+    paciente_id: l.paciente_id, paciente_nome: l.paciente_nome,
+    paciente_codigo: l.paciente_codigo, paciente_celular: l.paciente_celular,
+    teste_chave: l.teste_chave, teste_nome: l.teste_nome || l.teste_chave,
+    teste_sigla: l.teste_sigla || "",
+    /* Rastreio ou desafio. Na pasta os dois aparecem juntos, e a diferença
+       muda o que a pessoa espera: um foi respondido de uma vez, o outro está
+       sendo preenchido ao longo da semana. */
+    teste_tipo: l.teste_tipo || "teste",
+    prontuario_id: l.prontuario_id, pasta_numero: l.pasta_numero || null,
+    situacao: situacaoDoEnvio(l),
+    expira_em: l.expira_em, criado: l.criado, enviado_em: l.enviado_em,
+    aberto_em: l.aberto_em, concluido_em: l.concluido_em,
+    /* As regras de botão saem do SERVIDOR, não da tela. Se cada uma decidisse
+       por conta, a tela poderia oferecer "apagar" onde a rota recusa — e o
+       usuário levaria um erro depois de já ter confirmado. */
+    pode_apagar: !["concluido", "vencido"].includes(situacaoDoEnvio(l)),
+    /* VENCIDO também não se envia: o link já não abre, e o paciente receberia
+       uma mensagem da clínica que morre num "o prazo terminou". Para ele, o
+       caminho é Recriar — que exige um prazo novo. */
+    pode_enviar: !["concluido", "vencido"].includes(situacaoDoEnvio(l)),
+    /* A tela precisa saber se o prazo já passou para pedir um novo ao recriar. */
+    prazo_vencido: situacaoDoEnvio(l) === "vencido",
+  };
+}
+
+/* O envio COM as perguntas e as respostas casadas, para a modal de
+   visualização. Monta pergunta+resposta aqui, no servidor, porque é o mesmo
+   par que vai para a impressão e para o prontuário: duas montagens seriam
+   duas chances de o papel discordar da tela. */
+async function envioCompleto(id) {
+  const l = await Q.get(
+    `SELECT e.*, pa.nome paciente_nome, pa.codigo paciente_codigo, pa.celular paciente_celular,
+            pa.nascimento paciente_nascimento,
+            t.nome teste_nome, t.sigla teste_sigla, t.instrucoes teste_instrucoes,
+            pr.numero pasta_numero, u.nome criado_por_nome
+       FROM teste_envios e
+       JOIN pacientes pa ON pa.id = e.paciente_id
+       LEFT JOIN testes t ON t.chave = e.teste_chave
+       LEFT JOIN prontuario pr ON pr.id = e.prontuario_id
+       LEFT JOIN g_usuarios u ON u.id = e.criado_por
+      WHERE e.id=?`, id);
+  if (!l) return null;
+
+  const m = await modeloDe(l.teste_chave);
+  const resp = lerJson(l.respostas);
+  const base = resumoDoEnvio(l);
+
+  const itens = [];
+  let soma = 0, respondidas = 0;
+  if (m) {
+    m.secoes.forEach((sec, si) => sec.itens.forEach((texto, ii) => {
+      const k = chaveItem(si, ii);
+      const v = resp[k];
+      const ponto = m.escala.find((x) => String(x.v) === String(v));
+      if (ponto) { soma += Number(ponto.v); respondidas++; }
+      itens.push({ chave: k, secao: sec.titulo || "", numero: itens.length + 1,
+        pergunta: texto, resposta: ponto ? ponto.r : null, valor: ponto ? ponto.v : null });
+    }));
+    m.abertas.forEach((texto, i) => {
+      const k = chaveAberta(i);
+      const v = String(resp[k] || "").trim();
+      if (v) respondidas++;
+      /* Num DESAFIO os campos são o formulário inteiro; chamá-los de
+         "Perguntas abertas" faria a leitura do prontuário sugerir que existe
+         uma parte fechada que não veio. */
+      itens.push({ chave: k, secao: m.tipo === "desafio" ? "" : "Perguntas abertas",
+        numero: itens.length + 1,
+        pergunta: texto, resposta: v || null, valor: null, aberta: true });
+    });
+  }
+
+  return Object.assign(base, {
+    teste_instrucoes: l.teste_instrucoes || (m ? m.instrucoes : ""),
+    paciente_nascimento: l.paciente_nascimento, criado_por_nome: l.criado_por_nome || "",
+    msg_boas_vindas: l.msg_boas_vindas || "", msg_agradecimento: l.msg_agradecimento || "",
+    escala: m ? m.escala : [],
+    blocos_terapeuta: m ? m.terapeuta : [],
+    avaliacao: lerJson(l.avaliacao),
+    itens,
+    total_perguntas: m ? contarPerguntas(m) : 0,
+    respondidas,
+    /* SOMA BRUTA, e nada além dela. Nenhum destes treze documentos traz ponto
+       de corte; inventar "acima de 40 é grave" seria criar critério clínico
+       do nada e colocá-lo num papel assinado pela clínica. */
+    soma_bruta: soma,
+    soma_maxima: somaMaxima(m),
+    tipo: m ? (m.tipo || "teste") : "teste",
+    roteiro: m && m.roteiro ? m.roteiro : [],
+  });
+}
+
+/* O campo vem CIFRADO do banco e a camada já o decifra na leitura; aqui só
+   sobra o JSON. `{}` no lugar de estourar: um envio recém-criado tem
+   `respostas` nulo, que é o caso comum, não uma anomalia. */
+function lerJson(txt) {
+  if (!txt) return {};
+  try { const o = JSON.parse(txt); return o && typeof o === "object" ? o : {}; }
+  catch { return {}; }
+}
+
 function readBody(req) {
   return new Promise((ok, err) => {
     let b = ""; req.on("data", (c) => { b += c; if (b.length > 8e6) req.destroy(); });
@@ -1138,6 +1463,13 @@ const TAB = {
   // "status"/"finalizada_em"/"prontuario_id" são do fluxo de finalizar, no servidor
   anamneses: ["paciente_id", "tipo", "dados", "procedimento", "profissional", "profissional_id", "data", "usuario_id"],
   documentos_gestao: ["paciente_id", "tipo", "titulo", "arquivo", "data"],
+  /* Catálogo: a clínica edita nome, instrução, situação e ordem. As PERGUNTAS
+     não estão aqui nem no banco — vivem em `testes-modelos.js`. */
+  testes: ["nome", "instrucoes", "ativo", "sort"],
+  /* `teste_envios` NÃO tem entrada nesta lista de propósito. Código, situação,
+     datas e respostas são todos do SERVIDOR: se o CRUD genérico pudesse gravá-
+     los, um PUT com `{status:"concluido"}` daria por respondido um teste que
+     ninguém abriu. Todo envio passa por rota própria, mais abaixo. */
 };
 
 /* ==========================================================================
@@ -1168,16 +1500,60 @@ fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const PERFIS = ["admin", "secretaria", "profissional"];
 const PERM = {
   admin: "*",
+  /* A secretaria ENVIA teste e acompanha a situação — é trabalho de recepção,
+     como marcar consulta. O que ela NÃO faz é abrir a resposta: o conteúdo é
+     do mesmo nível da anamnese, e o recorte fica na rota de visualizar. */
   secretaria: new Set(["pacientes", "profissionais", "atendimentos", "documentos_gestao",
-    "convenios", "procedimentos", "salas", "relatorios"]),
+    "convenios", "procedimentos", "salas", "relatorios", "teste_envios"]),
   // profissional: sua agenda, seus prontuários e as anamneses dos pacientes.
   // Lê pacientes/profissionais/procedimentos só como apoio (nomes e seletores).
-  profissional: new Set(["atendimentos", "prontuario", "prontuario_registros", "anamneses", "historico"]),
+  profissional: new Set(["atendimentos", "prontuario", "prontuario_registros", "anamneses", "historico",
+    "teste_envios"]),
 };
-const PERM_LEITURA = { profissional: new Set(["pacientes", "profissionais", "procedimentos", "convenios", "salas"]) };
+const PERM_LEITURA = {
+  profissional: new Set(["pacientes", "profissionais", "procedimentos", "convenios", "salas", "testes"]),
+  secretaria: new Set(["testes"]),   // precisa da lista para escolher o que enviar
+};
 const pode = (perfil, modulo) => perfil === "admin" || (PERM[perfil] ? PERM[perfil].has(modulo) : false);
 const podeLer = (perfil, modulo) => pode(perfil, modulo) || (PERM_LEITURA[perfil] && PERM_LEITURA[perfil].has(modulo));
 const adminsAtivos = async () => Number((await Q.get("SELECT COUNT(*) c FROM g_usuarios WHERE perfil='admin' AND ativo=1")).c);
+
+/* ==========================================================================
+   QUEM ESCREVE UM DESAFIO — e por que não é a mesma permissão do catálogo
+
+   Editar o CATÁLOGO é mexer nos 13 rastreios: renomear, desligar, reordenar.
+   É administração, e continua sendo só do admin.
+
+   Escrever um DESAFIO é trabalho clínico: o terapeuta olha o caso, escreve o
+   texto para aquela pessoa naquela semana e manda. Exigir que ele peça ao
+   administrador para cadastrar significaria, na prática, que ninguém manda
+   desafio — ou que todo profissional vira admin, que é pior.
+
+   A secretária fica de fora dos dois: ela precisa LER a lista para escolher o
+   que enviar, e isso `PERM_LEITURA` já dá.
+   ========================================================================== */
+const podeCriarDesafio = (perfil) => perfil === "admin" || perfil === "profissional";
+
+/* ==========================================================================
+   "A EQUIPE MUDOU" — aviso para quem estiver interessado (hoje: o chat)
+
+   A gestão não conhece o chat, e é assim que fica: ela anuncia o fato, quem
+   quiser que escute. Sem isto, o `server.js` teria de adivinhar pela URL da
+   requisição que um usuário foi criado — e adivinhar por URL erra em silêncio
+   no dia em que alguém acrescentar outra rota que mexe em `g_usuarios`
+   (a de acesso do profissional, por exemplo, que não tem "usuarios" no
+   caminho).
+
+   O aviso é disparado DEPOIS da escrita e não é esperado (`void`): o cadastro
+   do funcionário não pode ficar lento nem falhar porque um ouvinte demorou.
+   ========================================================================== */
+const ouvintesDaEquipe = [];
+function aoMudarEquipe(fn) { if (typeof fn === "function") ouvintesDaEquipe.push(fn); }
+function equipeMudou(motivo) {
+  for (const fn of ouvintesDaEquipe) {
+    try { Promise.resolve(fn(motivo)).catch(() => { }); } catch { }
+  }
+}
 
 /* ==========================================================================
    VÍNCULOS E HISTÓRICO
@@ -1214,6 +1590,24 @@ async function vinculosDe(tabela, id) {
     somar(await conta("SELECT COUNT(*) c FROM pacientes WHERE convenio_id=?", id), "paciente");
   }
   if (tabela === "salas") somar(await conta("SELECT COUNT(*) c FROM atendimentos WHERE sala_id=?", id), "atendimento");
+  /* ==========================================================================
+     TESTE OU DESAFIO COM ENVIO PENDURADO
+
+     Aprendido quebrando: apagar a linha do catálogo deixa o envio apontando
+     para o vazio, e o paciente com um link que pede a data de nascimento,
+     aceita a data — e então diz "não encontrado, fale com a clínica". O
+     defeito aparece do lado de quem está com o celular na mão, uma semana
+     depois de alguém ter feito faxina no cadastro.
+
+     As perguntas de um teste vivem no código, mas as de um DESAFIO vivem
+     nesta linha: apagá-la é apagar o formulário que o paciente está
+     respondendo.
+     ========================================================================== */
+  if (tabela === "testes") {
+    const t = await Q.get("SELECT chave FROM testes WHERE id=?", id);
+    if (t) somar(await conta("SELECT COUNT(*) c FROM teste_envios WHERE teste_chave=?", t.chave),
+      "envio a paciente");
+  }
   /* Prontuário com LANÇAMENTO não se apaga: ali está o registro clínico, e
      apagar a pasta o deixaria órfão no banco — invisível, mas presente. Quem
      encerra um tratamento dá ALTA.
@@ -1246,6 +1640,7 @@ async function salvarAcessoProfissional(profId, b, quemPerfil) {
     if (jaTem && jaTem.ativo !== ativo) {
       await Q.run("UPDATE g_usuarios SET ativo=? WHERE id=?", ativo, jaTem.id);
       if (!ativo) derrubarSessoesDoUsuario(jaTem.id);
+      equipeMudou("profissional bloqueado/liberado");
     }
     return null;
   }
@@ -1276,6 +1671,7 @@ async function salvarAcessoProfissional(profId, b, quemPerfil) {
     if (senha.length < 8) return "A senha do profissional precisa ter ao menos 8 caracteres.";
     await Q.run("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,'profissional',?,?,?)", prof.nome, login, hashSenha(senha), ativo, profId, agora());
   }
+  equipeMudou("acesso de profissional");
   return null;
 }
 function derrubarSessoesDoUsuario(userId) {
@@ -1481,9 +1877,20 @@ function handleRestrito(req, res, pathname) {
   const rota = pathname.slice("/restrito".length) || "/";   // ex.: "/", "/api/pacientes"
 
   /* --------------------------- API (JSON) ------------------------------- */
-  if (rota.startsWith("/api/")) { rotaApi(req, res, rota.slice(5)).catch((e) => {
-    console.error("  ✖ /restrito/api:", e.message); json(res, 500, { error: "Erro interno" });
-  }); return true; }
+  if (rota.startsWith("/api/")) {
+    /* Antes de qualquer rota: o sistema está pronto? Ver `restritoPronto`.
+       503 e não 500 — a diferença importa para quem lê o log e para quem
+       recebe: 500 é "quebrou", 503 com Retry-After é "espere um segundo". */
+    if (!restritoPronto) {
+      res.setHeader("Retry-After", "2");
+      json(res, 503, { error: "O sistema de gestão ainda está iniciando. Tente de novo em instantes." });
+      return true;
+    }
+    rotaApi(req, res, rota.slice(5)).catch((e) => {
+      console.error("  ✖ /restrito/api:", e.message); json(res, 500, { error: "Erro interno" });
+    });
+    return true;
+  }
 
   /* ------------------------- arquivos enviados -------------------------- */
   if (rota.startsWith("/arquivos/")) {
@@ -1599,6 +2006,7 @@ async function rotaApi(req, res, p) {
     const conta = String(usuario || "").trim().toLowerCase();
     const v = limite.verificar("restrito", ip, conta);
     if (!v.ok) { res.setHeader("Retry-After", String(v.esperar)); return json(res, 429, { error: v.mensagem }); }
+
     const u = await Q.get("SELECT * FROM g_usuarios WHERE email=? AND ativo=1", conta);
     /* Se o usuário não existe, ainda assim gastamos o mesmo tempo de um scrypt.
        Sem isto, "usuário inexistente" responde em ~1ms e "usuário certo, senha
@@ -1626,6 +2034,48 @@ async function rotaApi(req, res, p) {
   // daqui para baixo exige sessão
   const s = sessao(req);
   if (!s) return json(res, 401, { error: "Não autenticado" });
+
+  /* ==========================================================================
+     TEMPO REAL — o que mudou, não o que mudou PARA
+
+     Um teste é respondido no celular do paciente, em casa, e a recepção está
+     com a tela aberta olhando para "Enviado". Sem isto, ela só descobre
+     apertando Atualizar — e não tem motivo para apertar, porque nada indica
+     que houve novidade.
+
+     SSE e não WebSocket: o tráfego é de mão única (servidor → tela), o
+     EventSource reconecta sozinho quando a rede cai, e passa por qualquer
+     proxy HTTP sem configuração especial. WebSocket aqui seria uma segunda
+     pilha para resolver um problema que ela não tem.
+
+     A MENSAGEM É SÓ O ASSUNTO — "testes", "pacientes". Nenhum dado de
+     paciente trafega por este canal: quem recebe o aviso vai buscar pela API
+     de sempre, com o recorte de perfil de sempre. Assim um canal aberto na
+     recepção nunca entrega conteúdo clínico que ela não poderia ler.
+     ========================================================================== */
+  if (p === "eventos" && req.method === "GET") {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      /* O nginx da frente guarda a resposta em buffer por padrão, e um fluxo
+         que nunca "termina" ficaria preso lá — a tela não receberia nada e o
+         defeito só apareceria em produção. Este cabeçalho desliga isso sem
+         precisar mexer no vhost. */
+      "X-Accel-Buffering": "no",
+    });
+    res.write(": conectado\n\n");
+    const cliente = { res, perfil: s.perfil };
+    ouvintes.add(cliente);
+    /* Pulso a cada 25s. Proxy e operadora derrubam conexão parada em 30–60s, e
+       sem ele a tela ficaria "conectada" a um cano morto — o EventSource só
+       reconecta quando percebe a queda. */
+    const pulso = setInterval(() => { try { res.write(": pulso\n\n"); } catch { /* já foi */ } }, 25_000);
+    const encerrar = () => { clearInterval(pulso); ouvintes.delete(cliente); };
+    req.on("close", encerrar);
+    req.on("error", encerrar);
+    return;
+  }
 
   /* ==========================================================================
      BACKUP DO BANCO — baixa o dump SQL completo da gestão
@@ -1972,6 +2422,7 @@ async function rotaApi(req, res, p) {
       try {
         await Q.run("INSERT INTO g_usuarios(nome,email,senha_hash,perfil,ativo,profissional_id,criado) VALUES(?,?,?,?,?,?,?)", nome, email, hashSenha(b.senha), perfil, b.ativo === undefined ? 1 : (Number(b.ativo) ? 1 : 0), profId, agora());
       } catch (e) { return json(res, 400, { error: /UNIQUE/.test(e.message) ? "Já existe um usuário com esse login." : "Erro ao criar usuário." }); }
+      equipeMudou("usuário criado");
       return json(res, 200, { ok: true });
     }
     if (req.method === "PUT" && id) {
@@ -1993,6 +2444,7 @@ async function rotaApi(req, res, p) {
       if (sets.length) {
         try { await Q.run(`UPDATE g_usuarios SET ${sets.join(",")} WHERE id=?`, ...args, id); }
         catch (e) { return json(res, 400, { error: /UNIQUE/.test(e.message) ? "Já existe um usuário com esse login." : "Erro ao salvar." }); }
+        equipeMudou("usuário editado");
       }
       return json(res, 200, { ok: true });
     }
@@ -2001,6 +2453,7 @@ async function rotaApi(req, res, p) {
       const alvo = await Q.get("SELECT perfil,ativo FROM g_usuarios WHERE id=?", id);
       if (alvo && alvo.perfil === "admin" && alvo.ativo && await adminsAtivos() <= 1) return json(res, 400, { error: "Não é possível excluir o único administrador." });
       await Q.run("DELETE FROM g_usuarios WHERE id=?", id);
+      equipeMudou("usuário excluído");
       return json(res, 200, { ok: true });
     }
   }
@@ -2090,6 +2543,444 @@ async function rotaApi(req, res, p) {
         detalhe: { numero: pr.numero, especialidade: pr.especialidade, motivo: b.motivo || "" } });
       await anotar("paciente", pr.paciente_id, "Retornou ao tratamento", pr.especialidade, s);
     }
+    return json(res, 200, { ok: true });
+  }
+
+  /* ======================================================================
+     TESTES DE RASTREIO — o catálogo e os envios
+
+     Fluxo: escolhe paciente e teste → nasce um ENVIO com código próprio →
+     manda o link → o paciente responde → a resposta entra no prontuário.
+
+     As perguntas vêm de `MODELOS_TESTE`; a tabela `testes` só diz quais a
+     clínica usa e como se chamam na tela.
+     ====================================================================== */
+
+  /* O que a tela precisa para desenhar o formulário e a visualização.
+     Devolve o CATÁLOGO junto com o MODELO de cada um — a tela nunca monta a
+     lista de perguntas por conta própria, senão haveria duas versões do
+     RTA-20: a do servidor, que corrige a resposta, e a da tela, que a coletou. */
+  /* ======================================================================
+     DESAFIO — INTERPRETAR o texto colado, e NÃO criar nada
+
+     Duas rotas em vez de uma, e a separação é o pedido do cliente em código:
+     "antes de dar o formulário como criado, deve mostrar para o usuário se
+     está correto com visualização; estando correto, o usuário aprova".
+
+     Esta aqui só lê e devolve o que entendeu. Nada é gravado, nada é enviado
+     a paciente nenhum. É o que permite ao terapeuta colar, olhar, voltar,
+     corrigir o texto e colar de novo quantas vezes precisar — que é o único
+     jeito honesto de trabalhar com interpretação de texto humano, que erra.
+     ====================================================================== */
+  if (p === "desafios/interpretar" && req.method === "POST") {
+    if (!podeCriarDesafio(s.perfil)) return json(res, 403, { error: "Sem permissão." });
+    const b = await readBody(req);
+    const texto = String(b.texto || "");
+    if (!texto.trim()) return json(res, 400, { error: "Cole o texto do desafio." });
+    if (texto.length > 60_000) {
+      return json(res, 400, { error: "O texto do desafio é grande demais (máximo 60 mil caracteres)." });
+    }
+    const r = interpretarDesafio(texto);
+    if (r.erro) return json(res, 400, { error: r.erro });
+    return json(res, 200, r);
+  }
+
+  /* ======================================================================
+     DESAFIO — CRIAR, depois de aprovado na tela
+
+     O texto vem DE NOVO e é interpretado DE NOVO aqui. Parece desperdício e
+     não é: aceitar o roteiro que a tela mandou seria deixar o navegador
+     escolher que perguntas existem no formulário do paciente. A tela mostra;
+     quem decide o que vale é o servidor, com a mesma função que gerou a
+     visualização — então o que foi aprovado é exatamente o que é criado.
+
+     `nome` a tela PODE mudar (é como o desafio aparece no catálogo daqui a
+     seis meses, e o título do texto costuma ser genérico). As perguntas, não.
+     ====================================================================== */
+  if (p === "desafios" && req.method === "POST") {
+    if (!podeCriarDesafio(s.perfil)) return json(res, 403, { error: "Sem permissão." });
+    const b = await readBody(req);
+    const texto = String(b.texto || "");
+    if (!texto.trim()) return json(res, 400, { error: "Cole o texto do desafio." });
+
+    /* ====================================================================
+       O DESAFIO NASCE COM DONO, e já enviado
+
+       Não existe desafio "no catálogo, para usar depois": ele foi escrito
+       olhando para um caso, naquela semana. Sem paciente, a rota recusa — e
+       a tela nem oferece o botão fora do prontuário.
+
+       Criar e ENVIAR no mesmo passo é a consequência: separar as duas coisas
+       criaria o estado "desafio escrito e nunca mandado", que só serviria
+       para alguém encontrá-lo meses depois sem saber para quem era.
+       ==================================================================== */
+    const pacienteId = Number(b.paciente_id) || 0;
+    if (!pacienteId) return json(res, 400, { error: "O desafio é de um paciente — escolha de quem." });
+    const dono = await Q.get("SELECT id, nome, nascimento, ativo FROM pacientes WHERE id=?", pacienteId);
+    if (!dono) return json(res, 404, { error: "Paciente não encontrado." });
+    const inativo = await pacienteInativo(pacienteId);
+    if (inativo) return json(res, 409, { error: inativo });
+    if (soDigitos(dono.nascimento).length !== 8) {
+      return json(res, 409, {
+        error: "Cadastre a data de nascimento do paciente antes — " +
+          "é ela que protege o link, e sem ela ninguém consegue abrir.",
+      });
+    }
+
+    const r = interpretarDesafio(texto);
+    if (r.erro) return json(res, 400, { error: r.erro });
+    if (!r.abertas.length) {
+      return json(res, 400, {
+        error: "Não encontrei nenhuma pergunta ou pedido de registro no texto — " +
+          "o paciente receberia um desafio sem onde responder.",
+      });
+    }
+
+    const nome = String(b.nome || r.nome || "").trim().slice(0, 120);
+    if (!nome) return json(res, 400, { error: "Dê um nome ao desafio." });
+
+    /* A CHAVE é a identidade do item para o envio e para o link do paciente,
+       e é UNIQUE. Nasce do nome, para ficar legível num log, com um sufixo
+       sorteado — dois desafios de TDAH na mesma semana são a regra, não a
+       exceção, e "desafio-tdah" colidiria no segundo. */
+    const base = "desafio-" + nome.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+    let chave = "";
+    for (let i = 0; i < 12 && !chave; i++) {
+      const tentativa = `${base || "desafio"}-${crypto.randomBytes(3).toString("hex")}`;
+      if (!(await Q.get("SELECT 1 FROM testes WHERE chave=?", tentativa))) chave = tentativa;
+    }
+    if (!chave) return json(res, 500, { error: "Não consegui gerar um código para o desafio." });
+
+    const maiorSort = await Q.get("SELECT COALESCE(MAX(sort),0) m FROM testes");
+    const id = await Q.inserir(
+      `INSERT INTO testes(chave, sigla, nome, instrucoes, tipo, estrutura, paciente_id,
+                          ativo, sort, criado, atualizado, criado_por)
+       VALUES(?,?,?,?, 'desafio', ?, ?, 1, ?, ?, ?, ?) RETURNING id`,
+      chave, "", nome, r.instrucoes,
+      /* O TEXTO ORIGINAL vai junto com o formulário interpretado. Sem ele,
+         corrigir uma interpretação seis meses depois exigiria reescrever o
+         desafio inteiro do zero — e o terapeuta já não lembra o que escreveu. */
+      cifrar(JSON.stringify({ texto, roteiro: r.roteiro, abertas: r.abertas })),
+      pacienteId, Number(maiorSort?.m || 0) + 1, agora(), agora(), s.userId);
+
+    /* --------------------------------------------------------------------
+       E JÁ VAI PARA O PACIENTE.
+
+       Prazo e mensagens vêm do mesmo formulário da tela, com os mesmos
+       cuidados do envio comum: data no passado nasceria vencida.
+       -------------------------------------------------------------------- */
+    let expira = null;
+    if (!b.nao_expira) {
+      expira = String(b.expira_em || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expira)) {
+        return json(res, 400, { error: "Informe a data de expiração ou marque \"não expirar\"." });
+      }
+      if (expira < hojeISO()) return json(res, 400, { error: "A data de expiração já passou." });
+    }
+
+    const codigo = await codigoInedito();
+    const envioId = await Q.inserir(
+      `INSERT INTO teste_envios(codigo, paciente_id, teste_chave, prontuario_id, status,
+                                expira_em, msg_boas_vindas, msg_agradecimento, criado, criado_por)
+       VALUES(?,?,?,?, 'criado', ?,?,?,?,?) RETURNING id`,
+      codigo, pacienteId, chave, Number(b.prontuario_id) || null, expira,
+      cifrar(String(b.msg_boas_vindas || "").slice(0, 2000)),
+      cifrar(String(b.msg_agradecimento || "").slice(0, 2000)),
+      agora(), s.userId);
+
+    await auditar(req, s, "criar", "testes", id, `Desafio para ${dono.nome}: ${nome}`);
+    await auditar(req, s, "criar", "teste_envios", envioId, `Desafio: ${nome}`);
+    avisar("testes");
+    return json(res, 200, {
+      ok: true, id, chave, nome, campos: r.abertas.length,
+      envio_id: envioId, codigo,
+    });
+  }
+
+  if (p === "modelos-teste" && req.method === "GET") {
+    if (!podeLer(s.perfil, "testes")) return json(res, 403, { error: "Sem permissão." });
+    /* SÓ RASTREIO. Esta rota alimenta o catálogo e a lista do "Enviar teste",
+       e desafio ali seria oferecer a alguém a tarefa escrita para outra
+       pessoa. O desafio aparece no prontuário do dono dele, e só. */
+    const cat = await Q.all(
+      "SELECT * FROM testes WHERE COALESCE(tipo,'teste')='teste' ORDER BY sort, nome");
+    const itens = [];
+    for (const t of cat) {
+      /* A LINHA vai junto: para um desafio o modelo É a linha, e sem passá-la
+         aqui cada item da lista dispararia uma segunda consulta ao banco só
+         para reler o que já está na mão. */
+      const m = await modeloDe(t.chave, t);
+      const { estrutura, ...semEstrutura } = t;   // o corpo do desafio não vai para a lista
+      itens.push(Object.assign(semEstrutura, {
+        /* Nome e instrução vêm da TABELA (a clínica pode ter reescrito);
+           perguntas e escala vêm do MODELO. Cada coisa de uma fonte só. */
+        escala: m ? m.escala : [],
+        secoes: m ? m.secoes : [],
+        abertas: m ? m.abertas : [],
+        terapeuta: m ? m.terapeuta : [],
+        roteiro: m && m.roteiro ? m.roteiro : [],
+        perguntas: m ? contarPerguntas(m) : 0,
+        tipo: t.tipo || "teste",
+        orfao: !m,   // linha no banco sem modelo no código: a tela avisa
+      }));
+    }
+    return json(res, 200, { itens });
+  }
+
+  /* ---------------------------------------------------- lista de envios */
+  if (p === "teste-envios" && req.method === "GET") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const u = new URL(req.url, "http://x");
+    const onde = ["1=1"], args = [];
+    const pac = Number(u.searchParams.get("paciente_id")) || null;
+    if (pac) { onde.push("e.paciente_id=?"); args.push(pac); }
+    const pasta = Number(u.searchParams.get("prontuario_id")) || null;
+    if (pasta) { onde.push("e.prontuario_id=?"); args.push(pasta); }
+
+    const linhas = await Q.all(
+      `SELECT e.*, pa.nome paciente_nome, pa.codigo paciente_codigo, pa.celular paciente_celular,
+              t.nome teste_nome, t.sigla teste_sigla, t.tipo teste_tipo, pr.numero pasta_numero
+         FROM teste_envios e
+         JOIN pacientes pa ON pa.id = e.paciente_id
+         LEFT JOIN testes t ON t.chave = e.teste_chave
+         LEFT JOIN prontuario pr ON pr.id = e.prontuario_id
+        WHERE ${onde.join(" AND ")}
+        ORDER BY e.id DESC`, ...args);
+
+    const filtro = String(u.searchParams.get("situacao") || "");
+    const itens = linhas.map(resumoDoEnvio)
+      .filter((x) => !filtro || x.situacao === filtro);
+    return json(res, 200, { itens });
+  }
+
+  /* ------------------------------------------------------- criar envio */
+  if (p === "teste-envios" && req.method === "POST") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const b = await readBody(req);
+    const pacienteId = Number(b.paciente_id) || 0;
+    const chave = String(b.teste_chave || "").trim();
+    if (!pacienteId) return json(res, 400, { error: "Escolha o paciente." });
+    if (!chave) return json(res, 400, { error: "Escolha o teste." });
+
+    const pac = await Q.get("SELECT id, nome, ativo FROM pacientes WHERE id=?", pacienteId);
+    if (!pac) return json(res, 404, { error: "Paciente não encontrado." });
+    /* Mesma regra do agendamento e da anamnese: registro NOVO para quem saiu
+       da clínica não se cria — reativar primeiro. */
+    const barrado = await pacienteInativo(pacienteId);
+    if (barrado) return json(res, 409, { error: barrado });
+
+    const cat = await Q.get("SELECT * FROM testes WHERE chave=? AND ativo=1", chave);
+    if (!cat) return json(res, 404, { error: "Teste ou desafio não encontrado ou desativado." });
+    const modelo = await modeloDe(chave, cat);
+    if (!modelo || !contarPerguntas(modelo)) {
+      return json(res, 409, {
+        error: "Este item está no catálogo mas não tem perguntas no sistema.",
+      });
+    }
+
+    /* Data de expiração: ou existe, ou a caixa "não expirar" foi marcada.
+       Uma data no PASSADO nasceria vencida — o paciente receberia um link que
+       já não abre, e ninguém entenderia por quê. */
+    let expira = null;
+    if (!b.nao_expira) {
+      expira = String(b.expira_em || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expira)) {
+        return json(res, 400, { error: "Informe a data de expiração ou marque \"não expirar\"." });
+      }
+      if (expira < hojeISO()) return json(res, 400, { error: "A data de expiração já passou." });
+    }
+
+    /* ====================================================================
+       SEM DATA DE NASCIMENTO, NÃO HÁ FECHADURA
+
+       A data é o que protege o link (ver `abrirComNascimento`). Um paciente
+       sem data cadastrada geraria um link que ninguém consegue abrir — ou,
+       pior, um link que abre para qualquer um porque não há o que conferir.
+
+       Barrar aqui, com a frase que diz o que fazer, custa dez segundos de
+       cadastro. Deixar passar custaria o silêncio: a clínica só descobriria
+       ao receber a ligação de um paciente que não consegue entrar.
+       ==================================================================== */
+    const pacData = await Q.get("SELECT nascimento FROM pacientes WHERE id=?", pacienteId);
+    if (String(pacData?.nascimento || "").replace(/\D+/g, "").length !== 8) {
+      return json(res, 409, {
+        error: "Cadastre a data de nascimento do paciente antes de enviar — " +
+          "é ela que protege o link, e sem ela ninguém consegue abrir.",
+      });
+    }
+
+    const codigo = await codigoInedito();
+    const id = await Q.inserir(
+      `INSERT INTO teste_envios(codigo, paciente_id, teste_chave, prontuario_id, status,
+                                expira_em, msg_boas_vindas, msg_agradecimento, criado, criado_por)
+       VALUES(?,?,?,?, 'criado', ?,?,?,?,?) RETURNING id`,
+      codigo, pacienteId, chave, Number(b.prontuario_id) || null, expira,
+      cifrar(String(b.msg_boas_vindas || "").slice(0, 2000)),
+      cifrar(String(b.msg_agradecimento || "").slice(0, 2000)),
+      agora(), s.userId);
+
+    await anotar("paciente", pacienteId, "Teste criado", `${cat.sigla} — ${cat.nome}`, s);
+    auditar({ req, sessao: s, acao: "criar", modulo: "teste_envios", entidadeId: Number(id),
+      resumo: `Criou o teste ${cat.sigla} para ${pac.nome}`,
+      detalhe: { teste: cat.nome, paciente: pac.nome, expira_em: expira || "não expira" } });
+    avisar("testes");
+    return json(res, 201, { ok: true, id, codigo });
+  }
+
+  /* ---------------------------------- um envio, com perguntas e respostas */
+  const tem = p.match(/^teste-envios\/(\d+)$/);
+  if (tem && req.method === "GET") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await envioCompleto(tem[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+    /* A SECRETARIA acompanha a situação mas não lê a resposta: o conteúdo é do
+       mesmo nível da anamnese, que ela também não vê. A lista já lhe mostra
+       paciente, teste, data e situação — que é o de que a recepção precisa. */
+    if (s.perfil === "secretaria") {
+      delete e.respostas; delete e.avaliacao; delete e.itens;
+      e.oculto = "As respostas são visíveis para o profissional e o administrador.";
+    }
+    return json(res, 200, e);
+  }
+
+  /* --------------------------------------------- marcar como enviado */
+  const tenv = p.match(/^teste-envios\/(\d+)\/enviar$/);
+  if (tenv && req.method === "POST") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", tenv[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+    if (e.status === "concluido") return json(res, 409, { error: "Este teste já foi respondido." });
+    /* Só ANDA para "enviado" quem ainda está em "criado". Reenviar um teste já
+       aberto não pode fazer a situação VOLTAR — a tela mostraria "enviado"
+       depois de o paciente ter começado a responder. */
+    if (e.status === "criado") {
+      await Q.run("UPDATE teste_envios SET status='enviado', enviado_em=? WHERE id=?", agora(), e.id);
+    }
+    const pac = await Q.get("SELECT nome FROM pacientes WHERE id=?", e.paciente_id);
+    auditar({ req, sessao: s, acao: "enviar", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: `Enviou o teste ${e.teste_chave} para ${pac ? pac.nome : "paciente"}`, detalhe: { codigo: e.codigo } });
+    await anotar("paciente", e.paciente_id, "Teste enviado", e.teste_chave, s);
+    avisar("testes");
+    return json(res, 200, { ok: true });
+  }
+
+  /* ------------------------------------------------------ recriar (zerar) */
+  const trec = p.match(/^teste-envios\/(\d+)\/recriar$/);
+  if (trec && req.method === "POST") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", trec[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+    const corpo = (await readBody(req)) || {};
+
+    /* O PRAZO tem de ser resolvido aqui. Recriar um teste vencido mantendo a
+       data velha devolveria uma linha "criada" que já nasce vencida de novo —
+       o botão funcionaria, a etiqueta mudaria por um instante e o link não
+       abriria. Se o prazo passou, a clínica informa um novo ou marca que não
+       expira; nos outros casos, a data combinada continua valendo. */
+    let expira = e.expira_em;
+    if ("nao_expira" in corpo || corpo.expira_em) {
+      expira = corpo.nao_expira ? null : String(corpo.expira_em || "").slice(0, 10);
+      if (expira !== null && !/^\d{4}-\d{2}-\d{2}$/.test(expira)) {
+        return json(res, 400, { error: "Data de expiração inválida." });
+      }
+      if (expira !== null && expira < hojeISO()) {
+        return json(res, 400, { error: "A data de expiração já passou." });
+      }
+    } else if (expira && expira < hojeISO()) {
+      return json(res, 400, {
+        error: "Este teste está vencido. Informe um novo prazo (ou marque que não expira) para recriá-lo.",
+        precisaPrazo: true });
+    }
+
+    /* CÓDIGO NOVO, e não o mesmo zerado. O link antigo já saiu por WhatsApp e
+       pode estar aberto no celular de alguém; reaproveitá-lo deixaria aquela
+       aba viva sobre um teste que a clínica considera reiniciado. Trocando o
+       código, o link velho morre junto com a resposta que ele carregava. */
+    const codigo = await codigoInedito();
+    await Q.run(
+      `UPDATE teste_envios SET codigo=?, status='criado', respostas=NULL, avaliacao=NULL,
+              expira_em=?, enviado_em=NULL, aberto_em=NULL, concluido_em=NULL WHERE id=?`,
+      codigo, expira, e.id);
+
+    await anotar("paciente", e.paciente_id, "Teste recriado", `${e.teste_chave} — respostas anteriores descartadas`, s);
+    auditar({ req, sessao: s, acao: "recriar", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: `Recriou o teste ${e.teste_chave}`,
+      detalhe: { codigo_antigo: e.codigo, codigo_novo: codigo, tinha_resposta: !!e.respostas } });
+    avisar("testes");
+    return json(res, 200, { ok: true, codigo });
+  }
+
+  /* ------------------------------------------------------------- apagar */
+  if (tem && req.method === "DELETE") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", tem[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+
+    /* SÓ APAGA EM criado, enviado ou aberto — regra do cliente. Concluído e
+       vencido ficam: um é resposta de paciente, que é registro clínico; o
+       outro é a prova de que o prazo passou sem retorno, e essa ausência é
+       informação. A situação é CALCULADA, então o vencido também cai aqui. */
+    const sit = situacaoDoEnvio(e);
+    if (sit === "concluido" || sit === "vencido") {
+      return json(res, 409, {
+        error: sit === "concluido"
+          ? "Teste respondido não se apaga — é registro do paciente. Use Recriar para zerar."
+          : "Teste vencido não se apaga: a falta de resposta no prazo também é informação. Use Recriar." });
+    }
+
+    await Q.run("DELETE FROM teste_envios WHERE id=?", e.id);
+    auditar({ req, sessao: s, acao: "excluir", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: `Excluiu o envio do teste ${e.teste_chave}`, detalhe: { codigo: e.codigo, situacao: sit } });
+    avisar("testes");
+    return json(res, 200, { ok: true });
+  }
+
+  /* ------------------------------------ pendurar o envio numa pasta */
+  const tpas = p.match(/^teste-envios\/(\d+)\/pasta$/);
+  if (tpas && req.method === "PUT") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", tpas[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+    const corpo = (await readBody(req)) || {};
+    const pastaId = Number(corpo.prontuario_id) || null;
+
+    if (pastaId) {
+      const pr = await Q.get("SELECT id, paciente_id, numero FROM prontuario WHERE id=?", pastaId);
+      if (!pr) return json(res, 404, { error: "Prontuário não encontrado." });
+      /* A pasta tem de ser DO MESMO paciente. Sem esta conferência, um id
+         digitado errado penduraria o questionário de uma pessoa no prontuário
+         de outra — e ninguém acharia o erro pela tela. */
+      if (Number(pr.paciente_id) !== Number(e.paciente_id)) {
+        return json(res, 400, { error: "Esta pasta é de outro paciente." });
+      }
+      await Q.run("UPDATE teste_envios SET prontuario_id=? WHERE id=?", pastaId, e.id);
+      await anotar("prontuario", pastaId, "Teste vinculado", e.teste_chave, s);
+    } else {
+      await Q.run("UPDATE teste_envios SET prontuario_id=NULL WHERE id=?", e.id);
+    }
+    auditar({ req, sessao: s, acao: "editar", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: pastaId ? `Vinculou o teste ${e.teste_chave} a um prontuário`
+                      : `Soltou o teste ${e.teste_chave} do prontuário` });
+    avisar("testes");
+    return json(res, 200, { ok: true });
+  }
+
+  /* --------------------------- o que o TERAPEUTA conclui a partir da resposta */
+  const tav = p.match(/^teste-envios\/(\d+)\/avaliacao$/);
+  if (tav && req.method === "PUT") {
+    /* Aqui a secretaria NÃO entra, nem com `teste_envios` liberado: este é o
+       parecer clínico, o "área de uso exclusivo do terapeuta" do papel. */
+    if (s.perfil === "secretaria") return json(res, 403, { error: "Sem permissão." });
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", tav[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+    const b = await readBody(req);
+    await Q.run("UPDATE teste_envios SET avaliacao=? WHERE id=?",
+      cifrar(JSON.stringify(b.avaliacao || {})), e.id);
+    auditar({ req, sessao: s, acao: "editar", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: `Registrou a avaliação do teste ${e.teste_chave}` });
     return json(res, 200, { ok: true });
   }
 
@@ -2500,6 +3391,29 @@ async function rotaApi(req, res, p) {
          frente sem esperar nenhuma — a resposta sairia antes de os logins serem
          anexados, e a coluna chegaria vazia na tela sem erro nenhum. */
       if (tabela === "profissionais") await Promise.all(linhas.map(anexarAcesso));
+      /* O catálogo mostra QUANTAS perguntas cada teste tem, e esse número não
+         está no banco — as perguntas vivem no arquivo de modelos. Anexado aqui
+         para a tela não precisar cruzar duas listas: `orfao` é a linha que
+         ficou sem modelo (teste tirado do código com a linha ainda no banco),
+         e ela precisa aparecer, senão sumiria em silêncio. */
+      if (tabela === "testes") {
+        /* O CATÁLOGO É SÓ DOS RASTREIOS.
+
+           Desafio é de um paciente e mora no prontuário dele. Listá-lo aqui
+           encheria a tela de Cadastros com uma linha por semana por paciente
+           — e, pior, colocaria o nome do desafio ("TDAH — observar o que
+           acontece antes de deixar para depois") numa lista que a secretaria
+           abre para escolher o que enviar. */
+        linhas = linhas.filter((l) => (l.tipo || "teste") === "teste");
+        for (const l of linhas) {
+          const m = await modeloDe(l.chave, l);
+          l.perguntas = m ? contarPerguntas(m) : 0;
+          l.orfao = !m;
+          l.tipo = l.tipo || "teste";
+          delete l.estrutura;
+        }
+        linhas.sort((a, b) => (a.sort - b.sort) || String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+      }
       return json(res, 200, linhas);
     }
     if (req.method === "GET" && id) {
@@ -2779,5 +3693,321 @@ async function rotaApi(req, res, p) {
    responde com uma frase melhor. O ramo é REDE — vale para a próxima coluna
    obrigatória que alguém acrescentar sem lembrar de escrever a conferência.
    Rede que nunca foi testada não é rede. */
+/* ==========================================================================
+   O LADO DE FORA — o paciente respondendo pelo link
+
+   Esta parte não tem sessão, não tem cookie e não tem login: quem chega é
+   alguém com um link no WhatsApp. Por isso ela mora AQUI, junto do resto do
+   sistema de gestão, e não no server.js — as três funções abaixo são a
+   ÚNICA porta de entrada, e é aqui que estão as regras de quem pode abrir.
+
+   O server.js só as chama e devolve o JSON.
+   ========================================================================== */
+
+/* ==========================================================================
+   A PORTA DO LINK — a data de nascimento do paciente
+
+   O QUE ISTO PROTEGE, e o que não protege.
+
+   O código do link tem 8 a 11 caracteres sorteados de 62 símbolos: ninguém o
+   adivinha. O risco real nunca foi adivinhação — é o link ENCAMINHADO. A
+   mensagem vai por WhatsApp, e ela é encaminhada, o celular fica na mão de
+   outra pessoa, a conversa é aberta num aparelho compartilhado.
+
+   Contra isso, a data de nascimento é uma barreira HONESTA mas limitada: quem
+   convive com o paciente costuma saber a data. Foi a escolha do cliente, com
+   a fraqueza dita na hora, e a razão é boa — não exige combinar nada com o
+   paciente, que é o que faz uma senha nova morrer na primeira semana.
+
+   O QUE ELA PROTEGE DE VERDADE, e vale registrar: até aqui o link mostrava o
+   NOME DO PACIENTE e o NOME DO TESTE antes de qualquer barreira. "Rastreio
+   Terapêutico de TDAH Adulto" é diagnóstico. Agora nada disso sai antes da
+   conferência — por isso ela vem antes do estado, e não depois.
+
+   SEM A TRAVA DE TENTATIVAS ISTO NÃO VALERIA NADA: são poucas dezenas de
+   milhares de datas plausíveis, e um robô as percorre em minutos. O balde por
+   CÓDIGO (no server.js) é o que fecha essa porta — e ele é justamente o balde
+   que o comentário do login diz ser inútil contra adivinhação de código. Os
+   dois estão certos: lá o atacante troca de código a cada tentativa e o balde
+   nunca enche; aqui ele tem UM código e troca a data, então o balde é a
+   defesa inteira.
+   ========================================================================== */
+
+/* O passe do aparelho. Assinado com a chave dos dados — quem não a tem não
+   forja um; quem a tem já lê o banco inteiro e não precisa forjar nada.
+   Amarrado ao CÓDIGO: um passe emitido para um envio não abre outro. */
+function passeDoAcesso(codigo, ate) {
+  return crypto.createHmac("sha256", String(process.env.DADOS_CHAVE || ""))
+    .update(`answer|${codigo}|${ate}`).digest("base64url");
+}
+
+const VALIDADE_ACESSO_MS = 45 * 24 * 60 * 60 * 1000;   // cobre o prazo mais longo com folga
+
+function emitirAcesso(codigo) {
+  const ate = Date.now() + VALIDADE_ACESSO_MS;
+  return `${ate}.${passeDoAcesso(codigo, ate)}`;
+}
+
+function acessoValido(codigo, valor) {
+  const [ate, assinatura] = String(valor || "").split(".");
+  if (!ate || !assinatura) return false;
+  if (!/^\d+$/.test(ate) || Number(ate) < Date.now()) return false;
+  const esperado = passeDoAcesso(codigo, ate);
+  /* Comparação de tempo constante: comparar com `===` vaza, pelo tempo, quantos
+     caracteres iniciais bateram — e com isso a assinatura se descobre byte a
+     byte, sem precisar da chave. */
+  const a = Buffer.from(assinatura), b = Buffer.from(esperado);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+/* ==========================================================================
+   NORMALIZAR A DATA — e por que comparar dígitos crus não serve
+
+   O banco guarda `1990-03-05` (AAAA-MM-DD) e o paciente digita `05/03/1990`.
+   Tirando a pontuação, isso vira `19900305` de um lado e `05031990` do outro:
+   a MESMA data, duas cadeias diferentes. Comparar dígitos crus recusava todo
+   mundo — e o erro na tela seria "a data não confere", que manda a pessoa
+   conferir a própria certidão de nascimento.
+
+   Aqui as duas pontas viram AAAAMMDD antes de se encontrarem. Com oito
+   dígitos sem separador, quem manda é o começo: `1990…` só pode ser ano.
+   ========================================================================== */
+function nascimentoNormal(v) {
+  const d = soDigitos(v);
+  if (d.length !== 8) return "";
+  const comoISO = d.slice(0, 4);
+  /* Ano plausível na frente → já está em AAAAMMDD. Ninguém nasce no ano 0512,
+     e ninguém tem dia 19. */
+  if (Number(comoISO) >= 1900 && Number(comoISO) <= 2100) return d;
+  return d.slice(4) + d.slice(2, 4) + d.slice(0, 2);   // ddmmaaaa → aaaammdd
+}
+
+/* Confere e, acertando, devolve o passe do aparelho.
+   NÃO diz se o código existe, se o teste venceu ou de quem ele é: quem erra a
+   data recebe sempre a mesma resposta. */
+async function abrirComNascimento(codigo, informado) {
+  if (!/^[0-9A-Za-z]{8,11}$/.test(String(codigo || ""))) return { ok: false };
+  const e = await Q.get("SELECT * FROM teste_envios WHERE codigo=?", codigo);
+  if (!e) return { ok: false };
+
+  const pac = await Q.get("SELECT nascimento FROM pacientes WHERE id=?", e.paciente_id);
+  const guardada = nascimentoNormal(pac && pac.nascimento);
+  /* Paciente sem data cadastrada não deveria chegar aqui — o envio é barrado
+     na criação. Se chegou (envio antigo, cadastro esvaziado depois), recusar é
+     o certo: abrir "porque não há o que conferir" transformaria um cadastro
+     incompleto em porta destrancada, em silêncio. */
+  if (guardada.length !== 8) return { ok: false, semData: true };
+
+  if (nascimentoNormal(informado) !== guardada) return { ok: false };
+
+  if (!e.acesso_em) await Q.run("UPDATE teste_envios SET acesso_em=? WHERE id=?", agora(), e.id);
+  return { ok: true, passe: emitirAcesso(codigo) };
+}
+
+/* Estado do link, sem revelar nada além do necessário.
+   Código inexistente e código vencido respondem coisas DIFERENTES de
+   propósito: não há segredo a proteger entre esses dois casos (quem tem o
+   link já tem o link), e mandar "não encontrado" para um teste vencido faria
+   o paciente achar que digitou errado e procurar a clínica por nada. */
+async function estadoDoLink(codigo, passe) {
+  if (!/^[0-9A-Za-z]{8,11}$/.test(String(codigo || ""))) return { estado: "inexistente" };
+  const e = await Q.get("SELECT * FROM teste_envios WHERE codigo=?", codigo);
+  if (!e) return { estado: "inexistente" };
+
+  /* ====================================================================
+     A CONFERÊNCIA VEM ANTES DO ESTADO, e isso é de propósito.
+
+     Se viesse depois, quem tem o link saberia — sem provar nada — que existe
+     um teste para aquela pessoa e que ele venceu, foi respondido ou está
+     aberto. Já é informação de saúde: diz que fulano está em tratamento.
+
+     Por isso a resposta aqui é a MESMA para vencido, concluído e em aberto:
+     "prove que é você". Só depois disso o estado real aparece.
+     ==================================================================== */
+  if (!acessoValido(codigo, passe)) return { estado: "verificar", pede: "nascimento" };
+
+  const cat = await Q.get(
+    "SELECT nome, instrucoes, tipo, estrutura, chave FROM testes WHERE chave=?", e.teste_chave);
+  const m = await modeloDe(e.teste_chave, cat);
+  if (!m) return { estado: "inexistente" };
+
+  const ehDesafio = (m.tipo || "teste") === "desafio";
+  const sit = situacaoDoEnvio(e);
+  if (!envioAbrivel(e, ehDesafio)) return { estado: sit };
+
+  const pac = await Q.get("SELECT nome, nome_contato FROM pacientes WHERE id=?", e.paciente_id);
+  const rascunho = lerJson(e.rascunho);
+
+  return {
+    estado: "ok",
+    /* Já respondeu alguma coisa: a tela troca "Começar" por "Continuar" e diz
+       quanto falta. Sem isso, quem volta na quarta-feira encontra a mesma tela
+       de boas-vindas do primeiro dia e acha que perdeu tudo o que escreveu. */
+    retomando: ehDesafio && Object.keys(rascunho).length > 0,
+    respondidas: Object.keys(rascunho).length,
+    /* O NOME DO PACIENTE, como a clínica o chama.
+       `nome_contato` na frente porque é exatamente o campo "como prefere ser
+       chamado" do cadastro: quem se registrou como "Maria das Graças Silva" e
+       pediu para ser chamada de "Graça" lê o próprio apelido, não o nome de
+       documento. Sem ele, o nome completo. */
+    tratamento: (pac && (String(pac.nome_contato || "").trim() || String(pac.nome || "").trim())) || "",
+    teste: cat ? cat.nome : m.nome,
+    instrucoes: (cat && cat.instrucoes) || m.instrucoes,
+    boas_vindas: e.msg_boas_vindas || "",
+    expira_em: e.expira_em,
+    total: contarPerguntas(m),
+    /* A tela do paciente muda de vocabulário conforme o que ele recebeu:
+       um rastreio se "responde", um desafio se "faz durante a semana". */
+    tipo: m.tipo || "teste",
+  };
+}
+
+/* COMEÇAR — é aqui que o teste vira "aberto", e não no carregamento da página.
+   A diferença é concreta: o WhatsApp busca a URL sozinho para montar a
+   prévia do link. Se abrir a página marcasse "aberto", o teste morreria no
+   instante em que a mensagem fosse entregue, antes de o paciente tocar nela. */
+async function iniciarTeste(codigo, passe) {
+  const e = await Q.get("SELECT * FROM teste_envios WHERE codigo=?", codigo);
+  if (!e) return { erro: "inexistente" };
+  /* A porta vale em TODAS as rotas do link, não só na primeira. Sem esta
+     linha, bastaria pular a tela de conferência e chamar `iniciar` direto —
+     e a barreira seria enfeite de navegador. */
+  if (!acessoValido(codigo, passe)) return { erro: "verificar" };
+
+  const m = await modeloDe(e.teste_chave);
+  if (!m) return { erro: "inexistente" };
+  if (!envioAbrivel(e, (m.tipo || "teste") === "desafio")) return { erro: situacaoDoEnvio(e) };
+
+  if (e.status !== "aberto") {
+    await Q.run("UPDATE teste_envios SET status='aberto', aberto_em=? WHERE id=?", agora(), e.id);
+    /* O paciente ABRIU. Quem está com a lista na tela vê a etiqueta virar
+       "Aberto" na hora — e é essa a informação que diz "ele recebeu e começou",
+       que a clínica hoje só teria por telefone. */
+    avisar("testes");
+  }
+
+  const itens = [];
+  m.secoes.forEach((sec, si) => sec.itens.forEach((texto, ii) =>
+    itens.push({ chave: chaveItem(si, ii), secao: sec.titulo || "", pergunta: texto, aberta: false })));
+  m.abertas.forEach((texto, i) =>
+    itens.push({ chave: chaveAberta(i),
+      secao: m.tipo === "desafio" ? "" : "Para pensar com calma",
+      pergunta: texto, aberta: true }));
+
+  /* O ROTEIRO é o desafio como ele foi escrito: seção, orientação, exemplo e,
+     no meio, os campos. A tela do paciente segue esta ordem em vez de listar
+     sete perguntas soltas — sem as orientações no lugar certo, o formulário
+     deixa de ser o desafio e vira um questionário sem contexto.
+
+     Vazio nos rastreios, e aí a tela usa o layout de sempre. */
+  return { ok: true, escala: m.escala, itens, tipo: m.tipo || "teste",
+    roteiro: m.roteiro || [],
+    /* O que ele já escreveu nos dias anteriores. A tela devolve cada valor ao
+       seu campo — é isto que faz "reabrir" significar continuar, e não
+       recomeçar. */
+    rascunho: lerJson(e.rascunho) };
+}
+
+/* ==========================================================================
+   GUARDAR O QUE ESTÁ SENDO ESCRITO — só desafio
+
+   Chamado pela tela do paciente enquanto ele digita, com folga entre uma
+   gravação e outra. Guarda em `rascunho`, NUNCA em `respostas`: o que está
+   pela metade não pode aparecer no prontuário como se fosse o que ele
+   entregou.
+
+   Não muda a situação do envio nem avisa a clínica em tempo real: "está
+   escrevendo" não é informação que a clínica precise acompanhar ao vivo, e
+   transformar cada tecla em evento na tela de quem trabalha seria ruído.
+   ========================================================================== */
+async function salvarRascunho(codigo, respostas, passe) {
+  const e = await Q.get("SELECT * FROM teste_envios WHERE codigo=?", codigo);
+  if (!e) return { erro: "inexistente" };
+  if (!acessoValido(codigo, passe)) return { erro: "verificar" };
+  if (e.status === "concluido") return { erro: "concluido" };
+
+  const m = await modeloDe(e.teste_chave);
+  if (!m) return { erro: "inexistente" };
+  if ((m.tipo || "teste") !== "desafio") return { erro: "sem_rascunho" };
+  if (!envioAbrivel(e, true)) return { erro: situacaoDoEnvio(e) };
+
+  /* A MESMA peneira do concluir. O rascunho vem da internet aberta como tudo
+     mais: só chave que existe no modelo entra, e cada valor tem teto. */
+  const limpo = {};
+  m.abertas.forEach((_, i) => {
+    const k = chaveAberta(i);
+    const v = String((respostas || {})[k] ?? "").trim().slice(0, 4000);
+    if (v) limpo[k] = v;
+  });
+  m.secoes.forEach((sec, si) => sec.itens.forEach((_, ii) => {
+    const k = chaveItem(si, ii);
+    const v = String((respostas || {})[k] ?? "");
+    if (m.escala.some((x) => String(x.v) === v)) limpo[k] = Number(v);
+  }));
+
+  await Q.run("UPDATE teste_envios SET rascunho=?, rascunho_em=? WHERE id=?",
+    cifrar(JSON.stringify(limpo)), agora(), e.id);
+  return { ok: true, guardadas: Object.keys(limpo).length };
+}
+
+/* CONCLUIR. Duas conferências que a tela também faz, e que precisam existir
+   aqui: barra de progresso é enfeite do navegador, e um POST direto passaria
+   por cima dela com o formulário pela metade. */
+async function concluirTeste(codigo, respostas, passe) {
+  const e = await Q.get("SELECT * FROM teste_envios WHERE codigo=?", codigo);
+  if (!e) return { erro: "inexistente" };
+  if (!acessoValido(codigo, passe)) return { erro: "verificar" };
+  if (e.status === "concluido") return { erro: "concluido" };
+  /* Vencido durante o preenchimento: quem começou às 23h59 do último dia
+     termina. Recusar aqui jogaria fora um formulário inteiro já digitado, e o
+     prazo é da clínica com o paciente, não do relógio com o formulário. */
+  if (e.status !== "aberto") return { erro: situacaoDoEnvio(e) };
+
+  const m = await modeloDe(e.teste_chave);
+  if (!m) return { erro: "inexistente" };
+
+  const limpo = {};
+  const valores = new Set(m.escala.map((x) => String(x.v)));
+  let faltam = 0;
+  m.secoes.forEach((sec, si) => sec.itens.forEach((_, ii) => {
+    const k = chaveItem(si, ii);
+    const v = String((respostas || {})[k] ?? "");
+    /* Só valor QUE EXISTE na escala entra. Sem esta peneira, um POST à mão
+       gravaria "9" numa escala de 0 a 4 e a soma bruta ficaria impossível de
+       explicar seis meses depois. */
+    if (valores.has(v)) limpo[k] = Number(v); else faltam++;
+  }));
+  m.abertas.forEach((_, i) => {
+    const k = chaveAberta(i);
+    const v = String((respostas || {})[k] ?? "").trim().slice(0, 4000);
+    if (v) limpo[k] = v; else faltam++;
+  });
+  if (faltam) return { erro: "incompleto", faltam };
+
+  /* O rascunho é APAGADO na conclusão. Ele foi promovido a `respostas`, e
+     manter as duas cópias criaria a pergunta "qual delas vale?" — que é a
+     pergunta errada para se fazer diante do prontuário de alguém. */
+  await Q.run(
+    "UPDATE teste_envios SET status='concluido', concluido_em=?, respostas=?, rascunho=NULL WHERE id=?",
+    agora(), cifrar(JSON.stringify(limpo)), e.id);
+
+  /* Quem respondeu foi o PACIENTE, não um usuário do sistema. Passar `null`
+     deixaria a linha do histórico sem autor, do lado de linhas que dizem
+     "Dr. Fulano deu alta" — e a leitura seria "não se sabe quem fez". */
+  await anotar("paciente", e.paciente_id, "Teste respondido", e.teste_chave,
+    { userId: null, nome: "o próprio paciente" });
+  /* O AVISO QUE MOTIVA TODO O CANAL: o paciente terminou, em casa, no celular.
+     Sem isto a recepção continuaria vendo "Aberto" por tempo indeterminado —
+     e não teria motivo nenhum para apertar Atualizar. */
+  avisar("testes");
+  return { ok: true, agradecimento: e.msg_agradecimento || "" };
+}
+
+/* O primeiro nome ainda é usado na mensagem do WhatsApp, que é conversa
+   ("Olá, Maria!"). Na página do teste o tratamento é o nome do cadastro — ver
+   `estadoDoLink`. */
+const primeiroNome = (n) => String(n || "").trim().split(/\s+/)[0] || "";
+
 module.exports = { handleRestrito, iniciarRestrito, SISTEMA_VERSION, CAMPOS_PROTEGIDOS, sessao, auditar, registrarEncerrarPainel,
-  _paraTeste: { prepararCampos, destinoDoVazio, TIPOS } };
+  estadoDoLink, iniciarTeste, concluirTeste, salvarRascunho, abrirComNascimento, aoMudarEquipe,
+  _paraTeste: { prepararCampos, destinoDoVazio, TIPOS, sortearCodigo, situacaoDoEnvio, hojeISO } };

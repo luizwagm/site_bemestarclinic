@@ -110,6 +110,99 @@
     .tag-Remarcado{background:#fdf4e6;color:var(--ambar)}.tag-Ativo{background:#e7f6ee;color:var(--verde)}.tag-Inativo{background:#eef1f6;color:var(--muted)}
     .vazio{color:var(--dim);padding:1.5rem;text-align:center}
 
+    /* --- VISUALIZAÇÃO DO DESAFIO, antes de criar ------------------------
+       O que se lê fica cinza e sem moldura; o que o paciente PREENCHE fica
+       em caixa destacada, com a etiqueta "Campo N". É essa diferença que
+       permite conferir a interpretação num relance — o erro típico é um
+       exemplo ter virado pergunta, e ele salta aos olhos em caixa branca. */
+    .df-prev{border:1px solid var(--linha);border-radius:12px;padding:1rem;
+      background:#fafbfc;max-height:52vh;overflow:auto}
+    .df-abertura{color:var(--dim);font-size:.9rem;line-height:1.6;margin:0 0 .8rem}
+    .df-abertura p{margin:.25rem 0}
+    .df-sec{margin:1.1rem 0 .3rem;font-size:.74rem;font-weight:800;letter-spacing:.07em;
+      text-transform:uppercase;color:var(--navy)}
+    .df-sec:first-child{margin-top:0}
+    .df-txt{margin:.35rem 0;color:var(--muted);line-height:1.55;font-size:.92rem}
+    .df-cit{margin:.25rem 0 .25rem .1rem;padding:.1rem 0 .1rem .7rem;font-style:italic;
+      border-left:3px solid var(--linha);color:var(--dim);font-size:.9rem}
+    .df-lis{margin:.3rem 0 .5rem 1.1rem;color:var(--muted);font-size:.9rem;line-height:1.6}
+    .df-campo{background:#fff;border:1px solid var(--navy);border-radius:10px;
+      padding:.6rem .75rem;margin:.5rem 0}
+    .df-campo b{display:block;margin:.15rem 0 .35rem;font-size:.95rem}
+    .df-tag{display:inline-block;background:var(--navy);color:#fff;border-radius:999px;
+      padding:.05rem .5rem;font-size:.68rem;font-weight:700;letter-spacing:.03em}
+    .df-caixa{border:1px dashed var(--linha);border-radius:8px;padding:.5rem .6rem;
+      color:var(--dim);font-size:.85rem;background:#fcfcfd}
+    .df-aviso{background:#fff8e6;border:1px solid #f0dca8;border-radius:10px;
+      padding:.6rem .8rem;margin:0 0 .8rem;color:#7a5c12;font-size:.9rem}
+    .df-aviso p{margin:.15rem 0}
+
+    /* ---------------------- Testes de rastreio ------------------------- */
+    /* As cinco situações têm cores próprias porque a lista é lida de relance:
+       o que importa saber é o que FALTA fazer. Cinza é "ainda comigo", azul é
+       "está com o paciente", âmbar é "ele começou", vermelho é "passou do
+       prazo" e verde é "chegou". */
+    .tag-env-criado{background:#eef1f6;color:var(--muted)}
+    .tag-env-enviado{background:#eaf1fb;color:#2a5bbd}
+    .tag-env-aberto{background:#fdf4e6;color:var(--ambar)}
+    .tag-env-vencido{background:#fdecef;color:var(--red)}
+    .tag-env-concluido{background:#e7f6ee;color:var(--verde)}
+    .env-filtros{margin-bottom:1rem}
+    .env-filtros .vbtn b{font-weight:800;opacity:.65;margin-left:.15rem}
+
+    .env-cab{display:flex;flex-wrap:wrap;gap:.4rem 1.6rem;padding:.7rem .9rem;margin-bottom:1rem;
+      background:#f7f9fc;border:1px solid var(--line);border-radius:10px}
+    .env-cab>div{display:flex;flex-direction:column;gap:.1rem}
+    .env-cab span{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:700}
+    .env-soma{display:flex;gap:1.6rem;padding:.6rem .9rem;border-radius:10px;
+      background:var(--lavanda,#f8f7fc);border:1px solid var(--line)}
+    .env-soma>div{display:flex;flex-direction:column}
+    .env-soma span{font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);font-weight:700}
+    .env-soma b{font-size:1.05rem}
+
+    .env-sec{margin:1.2rem 0 .5rem;padding-bottom:.3rem;border-bottom:2px solid var(--line);
+      font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+    .env-sec--terapeuta{border-bottom-color:var(--celeste,#5b4fd8);color:var(--celeste,#5b4fd8)}
+    /* Pergunta e resposta em BLOCO, não em tabela: os enunciados têm de uma a
+       três linhas e uma tabela de duas colunas deixaria metade da largura
+       vazia nas curtas e apertada nas longas. */
+    .env-qa{padding:.5rem 0;border-bottom:1px dashed var(--line)}
+    .env-qa:last-child{border-bottom:0}
+    .env-p{margin:0;font-size:.9rem;line-height:1.45}
+    .env-p span{color:var(--dim);font-weight:700;margin-right:.2rem}
+    .env-r{margin:.2rem 0 0 1.25rem;font-weight:700;color:var(--celeste,#5b4fd8);
+      font-size:.92rem;overflow-wrap:anywhere;white-space:pre-wrap}
+    .env-v{font-weight:600;color:var(--dim);font-size:.8rem}
+    .env-qa--vazia .env-r{color:var(--dim);font-weight:600;font-style:italic}
+    .env-escala{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0 1rem}
+    .env-escala span{background:#f7f9fc;border:1px solid var(--line);border-radius:999px;
+      padding:.2rem .65rem;font-size:.78rem;color:var(--muted)}
+    .env-escala b{color:var(--tinta,#1e275f)}
+    .env-ops{display:flex;flex-wrap:wrap;gap:.35rem .9rem;margin-bottom:.6rem}
+    .env-lista{margin:.2rem 0 0 1.1rem;color:var(--muted);font-size:.88rem}
+
+    .link-copiar{display:flex;gap:.4rem;align-items:center}
+    .link-copiar input{flex:1;font-family:ui-monospace,Consolas,monospace;font-size:.85rem}
+    .btn-verde{background:#25d366;color:#fff;border-color:#25d366;display:inline-flex;
+      align-items:center;text-decoration:none;white-space:nowrap}
+    .btn-verde:hover{background:#1fb955;border-color:#1fb955}
+    .btn-verde:disabled{background:#cfe8d8;border-color:#cfe8d8;cursor:not-allowed}
+    /* O envio pelo WhatsApp fica separado do link por uma linha: são dois
+       caminhos para a mesma coisa, e colados viravam um bloco só de campos. */
+    .zap-envio{margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--line)}
+    .zap-envio input{flex:1;font-family:inherit;font-size:.95rem}
+
+    /* Combo de lista fixa (testes). Classe PRÓPRIA (`cbxf-op`) e não `cbx-op`:
+       o combo do sistema tem um ouvinte DELEGADO de mousedown em `.cbx-op`, e
+       reusar a classe fazia os dois tratadores dispararem no mesmo clique — o
+       meu escrevia o rótulo certo e o do sistema passava por cima com um
+       `data-l` que este combo não tem, deixando "undefined" no campo. */
+    .cbx-fixa{position:relative}
+    .cbxf-op{display:block;width:100%;text-align:left;border:0;background:none;font:inherit;
+      padding:.45rem .7rem;cursor:pointer;font-size:.9rem;color:var(--tinta,#1e275f)}
+    .cbxf-op:hover{background:#eef2fb}
+    .cbxf-op[hidden]{display:none}
+
     /* ------------------------ Mini editor de texto ---------------------- */
     .ed-caixa{border:1px solid var(--line2);border-radius:10px;overflow:hidden;background:#fff}
     .ed-caixa:focus-within{border-color:var(--celeste);box-shadow:0 0 0 3px rgba(91,79,216,.12)}
@@ -516,12 +609,20 @@
         <!-- Anamneses: um item só. A escolha do modelo (psicanálise, ozônio,
              integrativas) acontece dentro do formulário, não no menu. -->
         <button class="navbtn" data-nav="anamneses">Anamneses</button>
+        <!-- Testes: o CATÁLOGO dos rastreios. É cadastro — diz quais a clínica
+             usa e como se chamam. Mandar teste para paciente é outra coisa, e
+             fica em "Enviar testes", no menu principal. -->
+        <button class="navbtn" data-nav="testes">Testes</button>
       </div>
     </div>
     <button class="navbtn" data-nav="atendimentos">Agendamento</button>
     <!-- Prontuário fica no menu principal: não é cadastro, é o acompanhamento
          do tratamento — e é para onde a equipe vai o dia inteiro. -->
     <button class="navbtn" data-nav="prontuario">Prontuário</button>
+    <!-- Logo abaixo do Prontuário, e não dentro dele: o teste é mandado para o
+         paciente, acompanhado e cobrado — trabalho de rotina, com lista
+         própria. Dentro da pasta ele APARECE, mas não é de lá que se envia. -->
+    <button class="navbtn" data-nav="enviar_testes">Enviar teste</button>
     <button class="navbtn" data-nav="documentos_gestao">Documentos</button>
     <div class="side-sec">
       <button class="side-head" type="button">Relatórios <span class="tn-caret">▼</span></button>
@@ -664,6 +765,29 @@
       <div class="stat-grid" id="relpac-stats"></div>
       <div class="card" id="relpac-tabela" style="padding:0;overflow:auto"></div>
       <div id="relpac-paginacao" class="paginacao"></div>
+    </section>
+
+    <!-- ====================================================================
+         ENVIAR TESTES
+
+         Painel próprio, e não um módulo genérico da tabela `MODULOS`: aqui não
+         se "cadastra" nada. Cada linha é um LINK vivo — que já foi mandado, ou
+         que o paciente abriu, ou que venceu sem resposta — e o que se faz com
+         ela depende da situação. Uma tabela de cadastro com Editar e Excluir
+         não descreveria nenhuma dessas ações.
+         ==================================================================== -->
+    <section class="panel" id="pane-envtes">
+      <div class="topbar">
+        <h1>Enviar teste</h1>
+        <div style="display:flex;gap:.5rem">
+          <button class="btn btn-ghost btn-sm" onclick="carregarEnvios()">↻ Atualizar</button>
+          <button class="btn btn-navy" onclick="modalNovoEnvio()">+ Novo teste</button>
+        </div>
+      </div>
+      <input class="busca" id="env-busca" placeholder="Buscar pelo paciente, teste ou código…"
+             oninput="pintarEnvios()" style="margin-bottom:1rem">
+      <div class="env-filtros" id="env-filtros"></div>
+      <div class="card" id="env-tabela" style="padding:0;overflow:auto"></div>
     </section>
 
     <section class="panel" id="pane-conta">
@@ -1014,6 +1138,23 @@ const MODULOS = {
     campos:[
       ["nome","Nome da sala","text",{req:1}],
       ["ativo","Ativa","select",{bool:1,padrao:"1"}],
+      ["sort","Ordem (menor aparece primeiro)","number"],
+    ]},
+  /* CATÁLOGO DE TESTES.
+     Sem "+ Novo": teste novo nasce de um modelo de perguntas no código, não de
+     um formulário — quem cadastrasse aqui criaria um teste sem pergunta
+     nenhuma e só descobriria ao mandar para um paciente. O que se edita é como
+     ele se chama, a instrução que o paciente lê, a ordem e se está em uso. */
+  /* `semNovo` continua: o botão "Novo" genérico criaria uma linha de catálogo
+     sem pergunta nenhuma. Quem cria aqui é o "Novo desafio", que passa pelo
+     interpretador e pela visualização — ver `abrirNovoDesafio()`. */
+  testes: { titulo:"Testes de rastreio", semNovo:true, busca:true,
+    colunas:[["sigla","Sigla"],["nome","Teste"],["perguntas","Perguntas","numero"],["ativo","Em uso","bool"]],
+    campos:[
+      ["sigla","Sigla","somenteleitura",{full:1,dica:"Vem do documento original da clínica."}],
+      ["nome","Nome na tela","text",{req:1,full:1}],
+      ["instrucoes","Instruções que o paciente lê antes de responder","textarea",{full:1}],
+      ["ativo","Em uso","select",{bool:1,padrao:"1",dica:"Desligar não apaga nada: só some da lista de escolha ao enviar."}],
       ["sort","Ordem (menor aparece primeiro)","number"],
     ]},
   profissionais: { titulo:"Profissionais", novo:"Novo profissional", busca:true,
@@ -1666,6 +1807,7 @@ async function iniciarApp(me){
   $("#ap-admin").hidden = !soAdmin;
   aplicarPermissoes(me.perfil);
   await recarregarCache();
+  ligarTempoReal();
   // abre o Painel se o perfil o vê; senão, vai ao primeiro módulo visível
   const bp=document.querySelector('.navbtn[data-nav="painel"]');
   if(bp && bp.style.display!=="none") carregarPainel();
@@ -1689,6 +1831,7 @@ document.querySelectorAll(".navbtn[data-nav]").forEach((b)=>b.addEventListener("
   else if(nav==="auditoria"){ $("#pane-auditoria").classList.add("on"); carregarAuditoria(1); }
   else if(nav==="relatorios"){ $("#pane-relatorios").classList.add("on"); carregarRelatorios(); }
   else if(nav==="relatorios_pacientes"){ $("#pane-relpac").classList.add("on"); carregarRelacaoPacientes(); }
+  else if(nav==="enviar_testes"){ $("#pane-envtes").classList.add("on"); carregarEnvios(); }
   else { MOD=nav; $("#pane-mod").classList.add("on"); mostrarModulo(); }
   fecharDropdowns(); marcarTriggers();
 }));
@@ -1899,6 +2042,9 @@ function mostrarModulo(){
   // no submenu de anamneses o título mostra o modelo escolhido
   $("#mod-titulo").textContent = m.titulo;
   $("#mod-novo").textContent="+ "+(m.novo||"Novo");
+  /* Módulo sem "+ Novo": o catálogo de testes. Registro novo ali nasceria sem
+     pergunta nenhuma, e o erro só apareceria ao mandar para um paciente. */
+  $("#mod-novo").hidden = !!m.semNovo;
   // "+ Novo" da anamnese abre o formulário próprio, já no modelo do submenu
   $("#mod-novo").onclick = m.anamnese ? (()=>abrirAnamnese(0)) : (()=>abrirForm());
   $("#mod-busca").hidden=!m.busca; $("#mod-busca").value="";
@@ -1944,6 +2090,12 @@ function pintarAtendimentos(){
 function celula(row,[chave,,tipo]){
   const v=row[chave];
   if(tipo==="data") return dataBR(v);
+  /* Rastreio × desafio: um vem do sistema e é igual para todos; o outro foi
+     escrito por alguém aqui, para um paciente. Na lista de escolha do envio,
+     saber qual é qual muda o que a pessoa procura. */
+  if(tipo==="tipo_teste") return v==="desafio"
+    ? '<span class="tag tag-Ativo">Desafio</span>'
+    : '<span class="tag tag-nao">Rastreio</span>';
   if(tipo==="bool") return Number(v)?'<span class="tag tag-sim">Sim</span>':'<span class="tag tag-nao">Não</span>';
   if(tipo==="situacao") return Number(v)!==0
     ? '<span class="tag tag-Ativo">Ativo</span>'
@@ -2179,7 +2331,7 @@ function renderTabela(){
    Nos demais existe uma ação só, e um menu para um item seria um clique a mais
    para nada: fica o ícone de lupa.
    ========================================================================== */
-const MENU_TRES_PONTOS = new Set(["pacientes", "prontuario", "anamneses", "profissionais"]);
+const MENU_TRES_PONTOS = new Set(["pacientes", "prontuario", "anamneses", "profissionais", "testes"]);
 
 function acoesDaLinha(m, row, anam){
   const itens=[];
@@ -2201,6 +2353,11 @@ function acoesDaLinha(m, row, anam){
      também por isso que ele pede confirmação. */
   if(!anam && (MOD==="pacientes" || MOD==="prontuario")){
     itens.push(["Arquivar", `arquivarDaLista('${MOD}',${row.id})`]);
+  }
+  /* No catálogo, ver as perguntas é a ação mais usada — é como se confere se
+     o teste é o certo antes de mandar. Vem ANTES de editar o nome. */
+  if(MOD==="testes"){
+    itens.push(["Ver as perguntas", `verPerguntas('${escA(row.chave)}')`]);
   }
   const abrir=anam?`abrirAnamnese(${row.id})`:`abrirForm(${row.id})`;
 
@@ -2918,6 +3075,7 @@ function pintarTopoPasta(){
 async function montarAreasProntuario(prontId){
   const box=$("#pasta-areas"); if(!box) return;
   box.innerHTML=`<div id="pasta-vinculos"></div>
+    <div id="pasta-testes"></div>
     <div class="areas-cab">
       <h3>Lançamentos do prontuário</h3>
       <label class="chk" style="font-size:.82rem"><input type="checkbox" ${MOSTRAR_ARQUIVADOS?"checked":""}
@@ -2932,6 +3090,7 @@ async function montarAreasProntuario(prontId){
         <div id="area-${tipo}"><p class="hint" style="color:var(--dim)">Carregando…</p></div>
       </div>`).join("");
   pintarVinculosPasta(prontId);
+  pintarTestesPasta(prontId);
   let regs=[];
   try{ regs=await api(`prontuario_registros?prontuario_id=${prontId}${MOSTRAR_ARQUIVADOS?"&arquivados=1":""}`); }
   catch(e){ return toast(e.message,true); }
@@ -3065,6 +3224,161 @@ function editorLancamento({ id, tipo, prontId, reg }){
     </div></div></div>`;
 }
 const fecharLancamento=()=>{ const h=$("#modal-host2"); if(h) h.innerHTML=""; };
+
+/* ==========================================================================
+   NOVO DESAFIO — colar o texto, ver o formulário, aprovar
+
+   Três passos, e o do meio é o que o cliente pediu com todas as letras:
+   "antes de dar o formulário como criado, deve mostrar para o usuário se está
+   correto com visualização; estando correto, o usuário aprova".
+
+     1. COLAR   — uma caixa de texto e mais nada;
+     2. CONFERIR— o servidor interpreta e devolve o formulário; a tela mostra
+                  exatamente o que o paciente vai ver, com os campos marcados;
+     3. CRIAR   — só então o desafio existe.
+
+   O texto colado NÃO é perdido ao voltar: quem olhou a visualização e viu que
+   uma pergunta ficou de fora precisa corrigir a frase e tentar de novo, e
+   perder o texto nessa hora seria obrigar a reescrever tudo.
+   ========================================================================== */
+let DESAFIO_TEXTO = "", DESAFIO_LIDO = null, DESAFIO_PAC = 0, DESAFIO_PASTA = 0;
+
+function abrirNovoDesafio(pacId, prontId){
+  DESAFIO_LIDO = null;
+  /* Só reinicia o texto ao abrir para OUTRO paciente. Voltar da visualização
+     chama esta mesma função, e limpar aqui apagaria o que a pessoa colou. */
+  if (pacId !== undefined) {
+    if (Number(pacId) !== DESAFIO_PAC) DESAFIO_TEXTO = "";
+    DESAFIO_PAC = Number(pacId) || 0;
+    DESAFIO_PASTA = Number(prontId) || 0;
+  }
+  if (!DESAFIO_PAC) return toast("Abra o prontuário do paciente para criar um desafio.", true);
+  const host=$("#modal-host2")||(()=>{const d=document.createElement("div");d.id="modal-host2";document.body.appendChild(d);return d;})();
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(900px,96vw)">
+    <h2>Novo desafio</h2>
+    <div class="modal-corpo">
+      <p class="hint" style="color:var(--dim);margin:0 0 .6rem">
+        Cole aqui o texto do desafio, do jeito que você escreveu. O sistema vai
+        ler e montar o formulário — e mostrar como ele ficou antes de criar.
+      </p>
+      <textarea id="df-texto" rows="16" style="width:100%;font-family:inherit;line-height:1.5"
+        placeholder="DESAFIO TERAPÊUTICO DA SEMANA&#10;&#10;TDAH — observar o que acontece antes de deixar para depois&#10;&#10;### 1. Escolha uma tarefa por dia&#10;…">${escA(DESAFIO_TEXTO)}</textarea>
+      <div id="df-erro"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="fecharLancamento()">Cancelar</button>
+      <button class="btn btn-navy" id="df-ler" onclick="interpretarDesafioNaTela()">Ler o texto e montar o formulário</button>
+    </div>
+  </div></div>`;
+  setTimeout(()=>{ const t=$("#df-texto"); if(t) t.focus(); }, 30);
+}
+
+async function interpretarDesafioNaTela(){
+  const texto = String(($("#df-texto")||{}).value||"");
+  if(!texto.trim()) return toast("Cole o texto do desafio.", true);
+  DESAFIO_TEXTO = texto;
+  const bt=$("#df-ler"); if(bt){ bt.disabled=true; bt.textContent="Lendo…"; }
+  let r;
+  try{ r = await api("desafios/interpretar","POST",{ texto }); }
+  catch(e){ if(bt){bt.disabled=false;bt.textContent="Ler o texto e montar o formulário";} return toast(e.message,true); }
+  DESAFIO_LIDO = r;
+  mostrarVisualizacaoDoDesafio();
+}
+
+/* A VISUALIZAÇÃO. Desenha o roteiro na mesma ordem da página do paciente, com
+   os campos destacados — é olhando para eles que o terapeuta percebe se um
+   exemplo virou pergunta ou se uma pergunta ficou de fora. */
+function mostrarVisualizacaoDoDesafio(){
+  const r = DESAFIO_LIDO; if(!r) return;
+  const host=$("#modal-host2");
+  const blocos = (r.roteiro||[]).map((b)=>{
+    if(b.tipo==="secao")     return `<div class="df-sec">${escA(b.titulo)}</div>`;
+    if(b.tipo==="paragrafo") return `<p class="df-txt">${escA(b.texto)}</p>`;
+    if(b.tipo==="citacao")   return `<p class="df-cit">${escA(b.texto)}</p>`;
+    if(b.tipo==="lista")     return `<ul class="df-lis">${b.itens.map((i)=>`<li>${escA(i)}</li>`).join("")}</ul>`;
+    if(b.tipo==="campo")     return `<div class="df-campo">
+        <span class="df-tag">Campo ${b.aberta+1}</span>
+        <b>${escA(b.rotulo)}</b>
+        <div class="df-caixa">${escA(b.dica||"O paciente escreve aqui.")}</div></div>`;
+    return "";
+  }).join("");
+
+  const avisos = (r.avisos||[]).length
+    ? `<div class="df-aviso">${r.avisos.map((a)=>`<p>${escA(a)}</p>`).join("")}</div>` : "";
+
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(900px,96vw)">
+    <h2>Confira o desafio antes de criar</h2>
+    <div class="modal-corpo">
+      ${avisos}
+      <div class="formgrid">
+        <div style="grid-column:1/-1">
+          <label>Nome do desafio (é como ele aparece no prontuário do paciente)</label>
+          <input type="text" id="df-nome" maxlength="120" value="${escA(r.nome||"")}">
+        </div>
+        <!-- O desafio já sai enviado: ele foi escrito para este paciente e
+             não vai ser aproveitado em outro, então guardá-lo "para depois"
+             só criaria um rascunho perdido no sistema. -->
+        <div>
+          <label>Responder até</label>
+          <input type="date" id="df-expira" min="${escA(hojeISO())}">
+        </div>
+        <div style="display:flex;align-items:end">
+          <label style="display:flex;align-items:center;gap:.45rem;font-weight:500">
+            <input type="checkbox" id="df-sem-prazo" checked
+                   onchange="document.querySelector('#df-expira').disabled=this.checked">
+            Sem prazo
+          </label>
+        </div>
+        <div style="grid-column:1/-1">
+          <label>Mensagem de boas-vindas (o paciente lê antes de começar)</label>
+          <textarea id="df-bv" rows="2" placeholder="Combinamos este desafio na sessão. Faça no seu ritmo."></textarea>
+        </div>
+      </div>
+      <p class="hint" style="color:var(--dim);margin:.4rem 0 .8rem">
+        <b>${(r.abertas||[]).length}</b> campo(s) para o paciente responder.
+        Abaixo, o desafio como ele vai aparecer no link.
+      </p>
+      ${r.instrucoes?`<div class="df-abertura">${escA(r.instrucoes).split("\\n").map((l)=>`<p>${l}</p>`).join("")}</div>`:""}
+      <div class="df-prev">${blocos||`<p class="vazio">Não consegui montar nada a partir deste texto.</p>`}</div>
+      <div id="df-erro"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="abrirNovoDesafio()">← Voltar e ajustar o texto</button>
+      <button class="btn btn-navy" id="df-criar" onclick="criarDesafio()"
+        ${(r.abertas||[]).length?"":"disabled"}>Está correto — criar e enviar</button>
+    </div>
+  </div></div>`;
+}
+
+async function criarDesafio(){
+  const nome = String(($("#df-nome")||{}).value||"").trim();
+  if(!nome) return toast("Dê um nome ao desafio.", true);
+  const semPrazo = !!($("#df-sem-prazo")||{}).checked;
+  const ate = String(($("#df-expira")||{}).value||"");
+  if(!semPrazo && !ate) return toast("Informe até quando responder, ou marque \"sem prazo\".", true);
+
+  const bt=$("#df-criar"); if(bt){ bt.disabled=true; bt.textContent="Criando…"; }
+  try{
+    /* Vai o TEXTO, não o roteiro: quem decide quais perguntas existem é o
+       servidor, com a mesma função que gerou esta visualização. */
+    const r = await api("desafios","POST",{
+      texto: DESAFIO_TEXTO, nome,
+      paciente_id: DESAFIO_PAC,
+      prontuario_id: DESAFIO_PASTA || null,
+      nao_expira: semPrazo, expira_em: ate,
+      msg_boas_vindas: String(($("#df-bv")||{}).value||""),
+    });
+    fecharLancamento();
+    DESAFIO_TEXTO=""; DESAFIO_LIDO=null;
+    toast(`Desafio criado com ${r.campos} campo(s) e já enviado.`);
+    /* Repinta a área da pasta — o desafio recém-criado aparece ali junto dos
+       testes, que é onde a pessoa está olhando. */
+    if (DESAFIO_PASTA) pintarTestesPasta(DESAFIO_PASTA); else carregarLista();
+  }catch(e){
+    if(bt){ bt.disabled=false; bt.textContent="Está correto — criar e enviar"; }
+    toast(e.message,true);
+  }
+}
 function novoLancamento(tipo, prontId){ editorLancamento({ id:0, tipo, prontId, reg:null }); }
 async function abrirLancamento(id, prontId){
   try{ const reg=await api("prontuario_registros/"+id); editorLancamento({ id, tipo:reg.tipo, prontId, reg }); }
@@ -3384,6 +3698,17 @@ function timbreHTML(titulo, corpo, opc){
       distribuição. O td com 100% pede todo o espaço que sobrar. */
    table.d th{text-align:left;width:1%;white-space:nowrap;color:#5a6172;font-weight:600;vertical-align:top;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa}
    table.d td{width:100%;padding:.34rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top}
+   /* Perguntas e respostas do teste. A resposta ganha coluna estreita à
+      direita e o enunciado fica com o resto: as respostas são rótulos curtos
+      ("Frequentemente") e o enunciado tem até três linhas. */
+   table.qa{width:100%;border-collapse:collapse;margin-top:.5rem}
+   table.qa td{padding:.3rem .55rem;border-bottom:1px solid #f2f0fa;vertical-align:top;overflow-wrap:break-word}
+   table.qa td.q{width:100%}
+   table.qa td.r{width:1%;white-space:nowrap;font-weight:700;color:#1e275f}
+   table.qa td.sec{background:#f4f2fb;font-weight:700;font-size:.72rem;text-transform:uppercase;
+     letter-spacing:.05em;color:#5b4fd8;border-bottom:1px solid #e6e2f5}
+   /* A pergunta não pode ficar numa página e a resposta na seguinte. */
+   table.qa tr{break-inside:avoid}
    /* e-mail e endereço não têm onde quebrar sozinhos e estouram a coluna no
       papel, que é mais estreito que a tela — aqui o corte é obrigatório */
    table.d td,table.m td,.grade{overflow-wrap:break-word}
@@ -4152,6 +4477,712 @@ function aplicarPeriodoRelatorio(){ lerPeriodo("relatorios"); carregarRelatorios
    completo, WhatsApp, quem assiste e em quê. Sai em PAISAGEM — o endereço não
    cabe em retrato sem virar três linhas por paciente.
    ========================================================================== */
+/* ==========================================================================
+   TESTES DE RASTREIO — enviar, acompanhar, ler
+
+   Uma tela de LINKS VIVOS, não de cadastro. Cada linha é um teste que saiu da
+   clínica e está em algum ponto do caminho de volta: criado, enviado, aberto,
+   vencido ou concluído. As ações mudam com a situação, e QUEM DECIDE isso é o
+   servidor — cada linha chega com `pode_apagar` e `pode_enviar` prontos. Se a
+   tela decidisse por conta própria, ofereceria um botão que a rota recusa, e o
+   erro apareceria depois de a pessoa já ter confirmado.
+   ========================================================================== */
+let ENVIOS = [];
+let envFiltro = "";      // "" = todas as situações
+let CAT_TESTES = [];     // catálogo com os modelos, para as modais
+
+const SITUACOES = [
+  ["criado",    "Criado",    "Link gerado, ainda não enviado"],
+  ["enviado",   "Enviado",   "Link entregue ao paciente"],
+  ["aberto",    "Aberto",    "O paciente começou a responder"],
+  ["vencido",   "Vencido",   "O prazo passou sem resposta"],
+  ["concluido", "Concluído", "Respondido"],
+];
+const rotuloSit = (s) => (SITUACOES.find((x) => x[0] === s) || [s, s])[1];
+const etiquetaSit = (s) => `<span class="tag tag-env-${escA(s)}">${escA(rotuloSit(s))}</span>`;
+
+async function carregarEnvios(){
+  const alvo=$("#env-tabela");
+  alvo.innerHTML=`<p class="vazio">Carregando…</p>`;
+  try{
+    if(!CAT_TESTES.length){ const c=await api("modelos-teste"); CAT_TESTES=c.itens||[]; }
+    ENVIOS=(await api("teste-envios")).itens||[];
+  }catch(e){ alvo.innerHTML=`<p class="vazio">${escA(e.message)}</p>`; return; }
+  montarFiltrosEnvio();
+  pintarEnvios();
+}
+
+function montarFiltrosEnvio(){
+  const conta=(s)=>ENVIOS.filter((x)=>x.situacao===s).length;
+  const bt=(v,r,n)=>`<button class="vbtn${envFiltro===v?" on":""}" onclick="filtrarEnvios('${v}')">${escA(r)}${
+    n!==undefined?` <b>${n}</b>`:""}</button>`;
+  $("#env-filtros").innerHTML=`<span class="vista-toggle" style="margin:0">
+    ${bt("","Todos",ENVIOS.length)}${SITUACOES.map(([v,r])=>bt(v,r,conta(v))).join("")}</span>`;
+}
+function filtrarEnvios(v){ envFiltro=v; montarFiltrosEnvio(); pintarEnvios(); }
+
+function pintarEnvios(){
+  const q=(($("#env-busca")||{}).value||"").trim().toLowerCase();
+  const lista=ENVIOS.filter((e)=>
+    (!envFiltro || e.situacao===envFiltro) &&
+    (!q || [e.paciente_nome,e.teste_nome,e.teste_sigla,e.codigo,e.paciente_codigo]
+      .some((c)=>String(c||"").toLowerCase().includes(q))));
+
+  const alvo=$("#env-tabela");
+  if(!lista.length){
+    alvo.innerHTML=`<p class="vazio">${ENVIOS.length?"Nenhum teste nesta situação.":"Nenhum teste enviado ainda."}</p>`;
+    return;
+  }
+  alvo.innerHTML=`<table><thead><tr>
+      <th>Paciente</th><th>Teste/desafio</th><th>Criado</th><th>Expira</th><th>Situação</th><th></th>
+    </tr></thead><tbody>${lista.map(linhaEnvio).join("")}</tbody></table>`;
+}
+
+function linhaEnvio(e){
+  return `<tr>
+    <td><b>${escA(e.paciente_nome)}</b>${e.paciente_codigo?`<br><span class="hint" style="color:var(--dim)">${escA(e.paciente_codigo)}</span>`:""}</td>
+    <td>${escA(e.teste_nome)}${e.teste_sigla?`<br><span class="hint" style="color:var(--dim)">${escA(e.teste_sigla)}</span>`:""}
+        ${e.pasta_numero?`<br><span class="chip-pront">${escA(e.pasta_numero)}</span>`:""}</td>
+    <td>${escA(dataBR((e.criado||"").slice(0,10)))}</td>
+    <td>${e.expira_em?escA(dataBR(e.expira_em)):'<span style="color:var(--dim)">não expira</span>'}</td>
+    <td>${etiquetaSit(e.situacao)}</td>
+    <td class="col-acoes">${menuEnvio(e)}</td></tr>`;
+}
+
+/* Todas as ações num menu de três pontinhos, com texto e sem ícone.
+   Reusa o `.acao-menu` que a lista de pacientes já usa — mesma posição, mesmo
+   comportamento de fechar ao rolar, mesma navegação por teclado. */
+function menuEnvio(e){
+  const itens=[["Visualizar", `verEnvio(${e.id})`]];
+  if(e.pode_enviar) itens.push(["Enviar", `modalEnviarLink(${e.id})`]);
+  itens.push(["Recriar", `recriarEnvio(${e.id})`]);
+  if(e.pode_apagar) itens.push(["Remover", `removerEnvio(${e.id})`]);
+  return `<div class="acao-menu">
+    <button type="button" class="acao-trigger" aria-haspopup="true" aria-expanded="false"
+            title="Ações" aria-label="Ações deste teste" onclick="abrirMenuLinha(this,event)">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+    </button>
+    <div class="acao-lista" role="menu">${
+      itens.map(([r,fn])=>`<button type="button" role="menuitem" onclick="${escA(fn)}">${escA(r)}</button>`).join("")
+    }</div></div>`;
+}
+
+/* ------------------------------------------------------ novo teste */
+async function modalNovoEnvio(pacienteId, prontuarioId){
+  if(!CAT_TESTES.length){ try{ CAT_TESTES=(await api("modelos-teste")).itens||[]; }catch(e){ return toast(e.message,true); } }
+  const ativos=CAT_TESTES.filter((t)=>Number(t.ativo)!==0 && !t.orfao);
+  const host=$("#modal-host");
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(680px,96vw)">
+    <h2>Novo teste</h2>
+    <div class="modal-corpo">
+      <div class="formgrid">
+        <div class="full"><label>Paciente <span style="color:var(--red)">*</span></label>
+          ${comboBuscavel("nt-pac","pacientes","Digite o nome, o código ou o CPF…", pacienteId||"")}</div>
+        <div class="full"><label>Teste <span style="color:var(--red)">*</span></label>
+          ${comboLista("nt-teste", ativos.map((t)=>[t.chave, (t.sigla?t.sigla+" — ":"")+t.nome]), "Digite para procurar o teste…")}</div>
+        <div class="full" id="nt-pastas"></div>
+      </div>
+      <div class="formgrid">
+        <div><label>Expira em</label>
+          <input type="date" id="nt-exp" min="${escA(hojeISO())}" value="${escA(maisDias(15))}"></div>
+        <div style="display:flex;align-items:flex-end">
+          <label class="ck" style="margin-bottom:.55rem">
+            <input type="checkbox" id="nt-semexp" onchange="alternarExpira()"> Não expirar</label></div>
+      </div>
+      <label>Mensagem de boas-vindas</label>
+      <textarea id="nt-bv" rows="3" placeholder="O que o paciente lê ao abrir o link.">${escA(MSG_BV_PADRAO)}</textarea>
+      <label>Mensagem de agradecimento</label>
+      <textarea id="nt-ag" rows="3" placeholder="O que ele lê depois de concluir.">${escA(MSG_AG_PADRAO)}</textarea>
+      <div id="nt-erro"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-navy" onclick="salvarNovoEnvio()">Criar teste</button>
+    </div></div></div>`;
+  ligarCombos(host);
+  /* Aberto de DENTRO da pasta: o vínculo já está decidido e não se discute. */
+  if(prontuarioId){
+    $("#nt-pastas").innerHTML=`<input type="hidden" id="nt-pasta" value="${Number(prontuarioId)}">
+      <p class="hint" style="color:var(--dim);margin:0">Este teste nasce vinculado à pasta aberta.</p>`;
+  }else if(pacienteId){
+    carregarPastasDoPaciente(pacienteId);
+  }
+  /* Escolher o paciente carrega as pastas dele: o teste tem de entrar no
+     prontuário, e a pergunta "em qual?" só existe depois de saber quem é.
+
+     Escuta o `change` do campo ESCONDIDO, não o `blur` do campo de texto. O
+     combo do sistema dispara esse evento no instante da escolha; pelo blur, as
+     pastas só apareceriam depois de a pessoa clicar em outro lugar — e quem
+     escolhe o paciente e vai direto ao teste nunca veria o campo. */
+  const oculto=$("#nt-pac");
+  if(oculto && !prontuarioId){
+    oculto.addEventListener("change",()=>{
+      const id=Number(oculto.value)||0;
+      if(id) carregarPastasDoPaciente(id); else $("#nt-pastas").innerHTML="";
+    });
+  }
+}
+
+/* As pastas abertas do paciente. Uma só → vincula sozinho e apenas avisa;
+   várias → pergunta, porque só quem está atendendo sabe se o rastreio de
+   ansiedade pertence à psicanálise ou à ozonioterapia; nenhuma → o teste vale
+   assim mesmo e aparece na ficha do paciente até a pasta existir. */
+async function carregarPastasDoPaciente(pacienteId){
+  const box=$("#nt-pastas"); if(!box) return;
+  let pastas=[];
+  try{ pastas=await api(`pacientes/${pacienteId}/prontuarios`); }
+  catch(e){ box.innerHTML=""; return; }        // recepção não lê prontuário
+  const abertas=pastas.filter((p)=>p.status!=="Alta");
+  const usar=abertas.length?abertas:pastas;
+
+  if(!usar.length){
+    box.innerHTML=`<input type="hidden" id="nt-pasta" value="">
+      <p class="hint" style="color:var(--dim);margin:0">
+        Este paciente ainda não tem prontuário aberto. O teste fica na ficha dele e
+        entra na pasta assim que ela existir.</p>`;
+    return;
+  }
+  if(usar.length===1){
+    box.innerHTML=`<input type="hidden" id="nt-pasta" value="${Number(usar[0].id)}">
+      <p class="hint" style="color:var(--dim);margin:0">
+        Vai para o prontuário <b>${escA(usar[0].numero||"")}</b> · ${escA(usar[0].especialidade||"")}.</p>`;
+    return;
+  }
+  box.innerHTML=`<label>Prontuário</label>
+    <select id="nt-pasta">${usar.map((p)=>
+      `<option value="${Number(p.id)}">${escA(p.numero||"")} · ${escA(p.especialidade||"")}${
+        p.status==="Alta"?" (alta)":""}</option>`).join("")}</select>
+    <p class="hint" style="color:var(--dim)">Este paciente tem mais de um tratamento aberto — escolha em qual o teste entra.</p>`;
+}
+const MSG_BV_PADRAO =
+  "A BemEstarClinic preparou este questionário para acompanhar o seu cuidado. " +
+  "Não há resposta certa ou errada — responda pensando em como você tem se sentido.";
+const MSG_AG_PADRAO =
+  "Obrigado por responder. Suas respostas chegaram à clínica e serão conversadas " +
+  "no seu próximo atendimento.";
+
+function alternarExpira(){
+  const c=$("#nt-semexp"), d=$("#nt-exp");
+  d.disabled=c.checked; if(c.checked) d.value="";
+  else if(!d.value) d.value=maisDias(15);
+}
+
+async function salvarNovoEnvio(){
+  const corpo={
+    paciente_id: Number(($("#nt-pac")||{}).value)||0,
+    teste_chave: ($("#nt-teste")||{}).value||"",
+    nao_expira: !!($("#nt-semexp")||{}).checked,
+    expira_em: ($("#nt-exp")||{}).value||"",
+    msg_boas_vindas: ($("#nt-bv")||{}).value||"",
+    msg_agradecimento: ($("#nt-ag")||{}).value||"",
+  };
+  const pasta=$("#nt-pasta"); if(pasta) corpo.prontuario_id=Number(pasta.value)||null;
+  try{
+    const r=await api("teste-envios","POST",corpo);
+    fecharModal();
+    toast("Teste criado. Agora envie o link ao paciente.");
+    /* Já abre a modal de enviar: criar sem mandar não serve para nada, e o
+       caminho natural de quem acabou de criar é a próxima ação. */
+    await recarregarTestes();
+    modalEnviarLink(r.id);
+  }catch(e){ $("#nt-erro").innerHTML=`<p class="erro-form">${escA(e.message)}</p>`; }
+}
+
+/* Recarrega a lista onde ela estiver aberta: a tela de envios, a pasta do
+   prontuário, ou as duas. Sem isto, criar um teste dentro da pasta deixaria a
+   tela de envios desatualizada até alguém apertar Atualizar. */
+async function recarregarTestes(){
+  if($("#pane-envtes").classList.contains("on")) await carregarEnvios();
+  if(PRONT_ABERTO) await pintarTestesPasta(PRONT_ABERTO);
+}
+
+/* ==========================================================================
+   TEMPO REAL
+
+   O paciente responde em casa, no celular. Quem está na clínica com a tela
+   aberta precisa ver a etiqueta virar "Concluído" sem apertar nada — não há
+   nada na tela que a faça suspeitar que houve novidade.
+
+   O servidor manda só o ASSUNTO; quem busca o conteúdo é a própria tela, pela
+   API de sempre e com o recorte de perfil de sempre.
+   ========================================================================== */
+let CANAL = null;
+function ligarTempoReal(){
+  if(CANAL || !window.EventSource) return;
+  CANAL = new EventSource("/restrito/api/eventos");
+
+  /* Repintar é BARATO aqui (uma lista curta), mas o aviso pode vir em rajada —
+     três testes respondidos no mesmo minuto. O atraso junta a rajada numa
+     repintura só, e de quebra evita a piscada de três repinturas seguidas. */
+  let pendente = null;
+  const agendar = () => {
+    clearTimeout(pendente);
+    pendente = setTimeout(() => {
+      /* Só repinta o que está À VISTA. Repintar uma tela fechada gastaria
+         consulta ao banco para desenhar o que ninguém está olhando. */
+      if($("#pane-envtes").classList.contains("on")) carregarEnvios();
+      if(PRONT_ABERTO) pintarTestesPasta(PRONT_ABERTO);
+    }, 350);
+  };
+  /* Uma modal ABERTA não pode ser repintada por baixo: quem está preenchendo
+     "Novo teste" perderia o que digitou. O aviso não se perde — a repintura é
+     que espera a modal fechar. */
+  const temModal = () => !!document.querySelector("#modal-host .modal, #modal-host2 .modal");
+  const quandoDer = () => { if(temModal()) setTimeout(quandoDer, 800); else agendar(); };
+
+  CANAL.addEventListener("testes", quandoDer);
+  /* O EventSource reconecta sozinho. O que ele NÃO faz é buscar o que passou
+     enquanto esteve fora — por isso, ao reabrir, repinta uma vez. */
+  CANAL.addEventListener("open", quandoDer);
+  CANAL.onerror = () => { /* reconexão é automática; nada a fazer aqui */ };
+}
+
+/* -------------------------------------------------- enviar o link */
+async function modalEnviarLink(id){
+  let e; try{ e=await api("teste-envios/"+id); }catch(err){ return toast(err.message,true); }
+  const url=`${location.origin}/answer/${e.codigo}`;
+  const host=$("#modal-host");
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(640px,96vw)">
+    <h2>Enviar o teste</h2>
+    <div class="modal-corpo">
+      <p class="hint" style="color:var(--dim);margin:0 0 .8rem">
+        <b>${escA(e.teste_nome)}</b> para <b>${escA(e.paciente_nome)}</b>${
+          e.expira_em?` · responde até <b>${escA(dataBR(e.expira_em))}</b>`:" · sem prazo"}.</p>
+      <label>Link do paciente</label>
+      <div class="link-copiar">
+        <input type="text" id="lk-url" readonly value="${escA(url)}" onclick="this.select()">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="copiarLink()">Copiar</button>
+      </div>
+      <p class="hint" style="color:var(--dim)">
+        O link abre uma vez. Assim que o paciente começar a responder, ele deixa de abrir —
+        se for preciso recomeçar, use <b>Recriar</b>, que gera um link novo.</p>
+
+      <!-- O BOTÃO DO WHATSAPP EXISTE SEMPRE.
+           Antes ele só aparecia quando o cadastro tinha celular, e quem
+           atendesse um paciente sem telefone ficava só com "copie o link" —
+           justamente na hora em que mais precisa de ajuda. Sem número no
+           cadastro, pede-se o número ali mesmo; o botão acende quando ele
+           estiver completo. -->
+      <div class="zap-envio">
+        <label>WhatsApp do paciente</label>
+        <div class="link-copiar">
+          <input type="tel" id="zp-fone" inputmode="numeric" placeholder="(81) 9 9999-9999"
+                 value="${escA(e.paciente_celular || "")}" oninput="acertarZap(${id})">
+          <button type="button" class="btn btn-verde" id="zp-bt" onclick="abrirZap(${id})">Enviar pelo WhatsApp</button>
+        </div>
+        <p class="hint" id="zp-dica" style="color:var(--dim);margin:.35rem 0 0"></p>
+      </div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="fecharModal()">Fechar</button>
+      <button class="btn btn-navy" onclick="marcarEnviado(${id},true)">Já enviei</button>
+    </div></div></div>`;
+  ENVIO_ABERTO = e;         // a modal usa os dados dele para montar a mensagem
+  acertarZap(id);
+}
+
+/* O envio que a modal de enviar está mostrando. Guardado porque o botão do
+   WhatsApp precisa do nome do teste, do prazo e do código para montar o texto,
+   e buscá-los de novo no clique atrasaria a abertura do aplicativo. */
+let ENVIO_ABERTO = null;
+
+/* Liga ou desliga o botão conforme o número digitado. Um celular brasileiro
+   tem 10 ou 11 dígitos com DDD; abaixo disso o `wa.me` abre uma conversa com
+   número inválido e a pessoa só descobre no aplicativo. */
+function acertarZap(){
+  const campo=$("#zp-fone"), bt=$("#zp-bt"), dica=$("#zp-dica");
+  if(!campo||!bt) return;
+  const dig=soDig(campo.value);
+  const vale=dig.length>=10 && dig.length<=13;
+  bt.disabled=!vale;
+  dica.textContent = !dig.length
+    ? "Este paciente não tem celular no cadastro. Digite o número para abrir o WhatsApp."
+    : vale ? "" : "Faltam dígitos — informe DDD e número.";
+}
+
+/* Abre o WhatsApp na conversa do paciente com a mensagem pronta, numa aba
+   nova, e marca o teste como enviado. A ordem importa: a janela é aberta DENTRO
+   do clique, senão o navegador a trata como pop-up e bloqueia — marcar antes,
+   com `await`, quebraria justamente isso. */
+function abrirZap(id){
+  const dig=soDig(($("#zp-fone")||{}).value);
+  if(dig.length<10) return;
+  const e=ENVIO_ABERTO||{};
+  const url=`${location.origin}/answer/${e.codigo}`;
+  window.open(linkWhatsApp(Object.assign({}, e, { paciente_celular: dig }), url), "_blank", "noopener");
+  marcarEnviado(id);
+}
+
+/* A mensagem que vai no WhatsApp. Texto pronto, e não um "segue o link":
+   quem recebe precisa saber de quem é, o que é e até quando. */
+function linkWhatsApp(e, url){
+  const nome=String(e.paciente_nome||"").trim().split(/\s+/)[0]||"";
+  const prazo=e.expira_em?`Você pode responder até ${dataBR(e.expira_em)}.`
+                         :"Você pode responder quando puder.";
+  const txt=
+    `Olá${nome?", "+nome:""}! Aqui é da *BemEstarClinic*.\n\n`+
+    `Preparamos para você o questionário *${e.teste_nome}*.`+
+    (e.total_perguntas?` São ${e.total_perguntas} perguntas e leva poucos minutos.`:"")+"\n\n"+
+    `${prazo}\n\n`+
+    `${url}\n\n`+
+    `Responda com calma, de uma vez só — o link abre uma única vez. `+
+    `Não há resposta certa ou errada.`;
+  const fone=String(e.paciente_celular||"").replace(/\D/g,"");
+  const comDDI=fone.length<=11?"55"+fone:fone;
+  return `https://wa.me/${comDDI}?text=${encodeURIComponent(txt)}`;
+}
+
+function copiarLink(){
+  const i=$("#lk-url"); i.select();
+  navigator.clipboard?.writeText(i.value).then(()=>toast("Link copiado."),
+    ()=>{ document.execCommand("copy"); toast("Link copiado."); });
+}
+
+async function marcarEnviado(id, fechar){
+  try{ await api(`teste-envios/${id}/enviar`,"POST",{}); }catch(e){ return toast(e.message,true); }
+  if(fechar){ fecharModal(); toast("Marcado como enviado."); }
+  await recarregarTestes();
+}
+
+/* ------------------------------------------------- recriar e remover */
+/* Recriar. Quando o prazo já passou, pedir um novo é OBRIGATÓRIO — sem isso o
+   teste renasceria "criado" com data velha e voltaria a vencido no mesmo
+   instante, com um link que não abre. A modal só aparece nesse caso; nos
+   demais, um confirm basta e a data combinada continua valendo. */
+async function recriarEnvio(id){
+  const e=(ENVIOS.find((x)=>x.id===id))||{};
+  if(e.prazo_vencido) return modalRecriarComPrazo(id, e);
+  const tinha=e.situacao==="concluido";
+  if(!confirm(tinha
+    ? "Recriar zera este teste: as respostas já dadas serão descartadas e um link NOVO será gerado. Continuar?"
+    : "Recriar gera um link novo e zera o andamento. O link anterior deixa de funcionar. Continuar?")) return;
+  try{ await api(`teste-envios/${id}/recriar`,"POST",{}); toast("Teste zerado. Envie o novo link."); }
+  catch(err){ return toast(err.message,true); }
+  await recarregarTestes();
+}
+
+function modalRecriarComPrazo(id, e){
+  $("#modal-host").innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(520px,96vw)">
+    <h2>Recriar o teste</h2>
+    <div class="modal-corpo">
+      <p class="hint" style="color:var(--dim);margin:0 0 .8rem">
+        <b>${escA(e.teste_nome||"")}</b> venceu em <b>${escA(dataBR(e.expira_em))}</b> sem resposta.
+        Para reenviá-lo é preciso um prazo novo — senão o link nasceria vencido outra vez.</p>
+      <div class="formgrid">
+        <div><label>Novo prazo</label>
+          <input type="date" id="rc-exp" min="${escA(hojeISO())}" value="${escA(maisDias(15))}"></div>
+        <div style="display:flex;align-items:flex-end">
+          <label class="ck" style="margin-bottom:.55rem">
+            <input type="checkbox" id="rc-semexp"
+              onchange="const d=$('#rc-exp');d.disabled=this.checked;if(this.checked)d.value='';else d.value='${escA(maisDias(15))}'">
+            Não expirar</label></div>
+      </div>
+      <div id="rc-erro"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-navy" onclick="confirmarRecriar(${id})">Recriar e gerar link</button>
+    </div></div></div>`;
+}
+async function confirmarRecriar(id){
+  try{
+    await api(`teste-envios/${id}/recriar`,"POST",{
+      nao_expira: !!($("#rc-semexp")||{}).checked,
+      expira_em: ($("#rc-exp")||{}).value||"",
+    });
+  }catch(e){ return $("#rc-erro").innerHTML=`<p class="erro-form">${escA(e.message)}</p>`; }
+  fecharModal();
+  toast("Teste zerado com prazo novo.");
+  await recarregarTestes();
+  modalEnviarLink(id);
+}
+async function removerEnvio(id){
+  if(!confirm("Remover este teste? O link para de funcionar e o registro sai da lista.")) return;
+  try{ await api("teste-envios/"+id,"DELETE"); toast("Teste removido."); }
+  catch(e){ return toast(e.message,true); }
+  await recarregarTestes();
+}
+
+/* ------------------------------------------------------ visualizar */
+async function verEnvio(id){
+  let e; try{ e=await api("teste-envios/"+id); }catch(err){ return toast(err.message,true); }
+  const host=$("#modal-host");
+  const cab=`<div class="env-cab">
+    <div><span>Paciente</span><b>${escA(e.paciente_nome)}</b></div>
+    <div><span>Teste</span><b>${escA(e.teste_nome)}</b></div>
+    <div><span>Situação</span>${etiquetaSit(e.situacao)}</div>
+    <div><span>Criado</span><b>${escA(dataBR((e.criado||"").slice(0,10)))}</b></div>
+    ${e.concluido_em?`<div><span>Respondido</span><b>${escA(dataHoraBR(e.concluido_em))}</b></div>`:""}
+    ${e.expira_em?`<div><span>Prazo</span><b>${escA(dataBR(e.expira_em))}</b></div>`:""}
+  </div>`;
+
+  let corpo;
+  if(e.oculto){
+    corpo=`<p class="aviso-hist">${escA(e.oculto)}</p>`;
+  }else if(!e.itens || !e.itens.length){
+    corpo=`<p class="hint" style="color:var(--dim)">Este teste não tem perguntas no sistema.</p>`;
+  }else if(e.situacao!=="concluido" && !e.respondidas){
+    corpo=`<p class="hint" style="color:var(--dim)">Ainda sem respostas — o paciente não concluiu o questionário.</p>`;
+  }else{
+    /* FORA DE FORMULÁRIO, como pedido: pergunta e resposta em texto corrido,
+       agrupadas por seção. Um formulário aqui convidaria a "corrigir" a
+       resposta de outra pessoa — e isto é registro do paciente, não rascunho. */
+    let secAtual=null;
+    const linhas=e.itens.map((i)=>{
+      const troca = i.secao!==secAtual;
+      secAtual = i.secao;
+      return (troca&&i.secao?`<h4 class="env-sec">${escA(i.secao)}</h4>`:"")+
+        `<div class="env-qa${i.resposta?"":" env-qa--vazia"}">
+          <p class="env-p"><span>${i.numero}.</span> ${escA(i.pergunta)}</p>
+          <p class="env-r">${i.resposta?escA(i.resposta):"— sem resposta —"}${
+            i.valor!==null&&i.valor!==undefined?` <span class="env-v">(${i.valor})</span>`:""}</p>
+        </div>`;
+    }).join("");
+    corpo=`<div class="env-soma">
+        <div><span>Respondidas</span><b>${e.respondidas} de ${e.total_perguntas}</b></div>
+        ${e.soma_maxima?`<div><span>Soma bruta</span><b>${e.soma_bruta} de ${e.soma_maxima}</b></div>`:""}
+      </div>
+      <p class="hint" style="color:var(--dim);margin:.1rem 0 .9rem">
+        A soma é apenas aritmética, para comparar o mesmo teste ao longo do tratamento.
+        Nenhum destes questionários traz faixa de gravidade — a leitura é clínica.</p>
+      ${linhas}
+      ${e.blocos_terapeuta&&e.blocos_terapeuta.length?blocosDoTerapeuta(e):""}`;
+  }
+
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(880px,96vw)">
+    <h2>${escA(e.teste_sigla||"Teste")} · ${escA(e.paciente_nome)}</h2>
+    <div class="modal-corpo">${cab}${corpo}</div>
+    <div class="acoes">
+      ${e.situacao==="concluido"&&!e.oculto?`<button class="btn btn-ghost" onclick="imprimirEnvio(${id})">🖨 Imprimir</button>`:""}
+      <button class="btn btn-navy" onclick="fecharModal()">Fechar</button>
+    </div></div></div>`;
+}
+
+/* A parte que é do TERAPEUTA — o "área de uso exclusivo" do documento em
+   papel. Fica DEPOIS das respostas, separada por uma faixa, para não se
+   confundir com o que o paciente disse. */
+function blocosDoTerapeuta(e){
+  const av=e.avaliacao||{};
+  return `<h4 class="env-sec env-sec--terapeuta">Avaliação do terapeuta</h4>
+    <p class="hint" style="color:var(--dim);margin:0 0 .7rem">
+      Preenchido pela clínica a partir da leitura das respostas. O paciente não vê esta parte.</p>
+    ${e.blocos_terapeuta.map((b)=>{
+      const val=av[b.chave];
+      if(b.tipo==="texto"){
+        return `<label>${escA(b.titulo)}</label>
+          <textarea rows="3" data-av="${escA(b.chave)}">${escA(val||"")}</textarea>`;
+      }
+      const marcados=Array.isArray(val)?val.map(String):(val?[String(val)]:[]);
+      return `<label>${escA(b.titulo)}</label>
+        <div class="env-ops">${b.opcoes.map((o)=>`
+          <label class="ck"><input type="${b.tipo==="radio"?"radio":"checkbox"}"
+            ${b.tipo==="radio"?`name="av-${escA(b.chave)}"`:""}
+            data-av="${escA(b.chave)}" value="${escA(o)}"
+            ${marcados.includes(o)?" checked":""}> ${escA(o)}</label>`).join("")}</div>`;
+    }).join("")}
+    <div style="margin-top:.7rem"><button class="btn btn-navy btn-sm" onclick="salvarAvaliacao(${e.id})">Salvar avaliação</button></div>`;
+}
+
+async function salvarAvaliacao(id){
+  const av={};
+  document.querySelectorAll("#modal-host [data-av]").forEach((el)=>{
+    const k=el.dataset.av;
+    if(el.tagName==="TEXTAREA"){ av[k]=el.value; return; }
+    if(el.type==="radio"){ if(el.checked) av[k]=el.value; return; }
+    if(el.checked){ (av[k]=av[k]||[]).push(el.value); }
+  });
+  try{ await api(`teste-envios/${id}/avaliacao`,"PUT",{avaliacao:av}); toast("Avaliação salva."); }
+  catch(e){ toast(e.message,true); }
+}
+
+/* ----------------------------------------- as perguntas do catálogo */
+async function verPerguntas(chave){
+  if(!CAT_TESTES.length){ try{ CAT_TESTES=(await api("modelos-teste")).itens||[]; }catch(e){ return toast(e.message,true); } }
+  const t=CAT_TESTES.find((x)=>x.chave===chave);
+  if(!t) return toast("Teste não encontrado.",true);
+  let n=0;
+  const secoes=(t.secoes||[]).map((s)=>
+    (s.titulo?`<h4 class="env-sec">${escA(s.titulo)}</h4>`:"")+
+    s.itens.map((i)=>`<div class="env-qa"><p class="env-p"><span>${++n}.</span> ${escA(i)}</p></div>`).join("")
+  ).join("");
+  const abertas=(t.abertas||[]).length
+    ? `<h4 class="env-sec">Perguntas abertas</h4>`+
+      t.abertas.map((i)=>`<div class="env-qa"><p class="env-p"><span>${++n}.</span> ${escA(i)}</p></div>`).join("")
+    : "";
+  $("#modal-host").innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(820px,96vw)">
+    <h2>${escA(t.sigla||"")} · ${escA(t.nome)}</h2>
+    <div class="modal-corpo">
+      <p class="hint" style="color:var(--dim)">${escA(t.instrucoes||"")}</p>
+      <div class="env-escala">${(t.escala||[]).map((x)=>`<span><b>${x.v}</b> ${escA(x.r)}</span>`).join("")}</div>
+      ${secoes}${abertas}
+      ${(t.terapeuta||[]).length?`<h4 class="env-sec env-sec--terapeuta">Preenchido pela clínica</h4>
+        <ul class="env-lista">${t.terapeuta.map((b)=>`<li>${escA(b.titulo)}</li>`).join("")}</ul>`:""}
+    </div>
+    <div class="acoes"><button class="btn btn-navy" onclick="fecharModal()">Fechar</button></div>
+  </div></div>`;
+}
+
+/* ---------------------------------------- combos com busca, reusáveis */
+/* O `cbx` do sistema busca numa tabela do CACHE (pacientes, profissionais…).
+   Para a lista de testes, que vem do catálogo e não do cache, uso a mesma
+   marcação com uma lista embutida — mesma aparência, mesmo teclado. */
+function comboBuscavel(id, tabela, dica, valor){
+  const atual=valor?acha(tabela,valor):null;
+  return `<div class="cbx" data-cbx data-tab="${escA(tabela)}" data-id="${escA(id)}">
+    <input type="text" id="${escA(id)}-txt" class="cbx-inp" autocomplete="off" placeholder="${escA(dica)}"
+      value="${escA(atual?atual.nome:"")}"
+      oninput="cbxFiltrar('${escA(id)}')" onfocus="cbxFiltrar('${escA(id)}')"
+      onkeydown="cbxTecla(event,'${escA(id)}')" onblur="cbxBlur('${escA(id)}')">
+    <input type="hidden" id="${escA(id)}" value="${escA(valor||"")}">
+    <div class="cbx-list" id="${escA(id)}-list" hidden></div></div>`;
+}
+function comboLista(id, pares, dica){
+  return `<div class="cbx cbx-fixa" data-id="${escA(id)}">
+    <input type="text" id="${escA(id)}-txt" class="cbx-inp" autocomplete="off" placeholder="${escA(dica)}"
+      oninput="filtrarComboFixa('${escA(id)}')" onfocus="filtrarComboFixa('${escA(id)}')">
+    <input type="hidden" id="${escA(id)}">
+    <div class="cbx-list" id="${escA(id)}-list" hidden>${
+      pares.map(([v,r])=>`<button type="button" class="cbxf-op" data-v="${escA(v)}" data-r="${escA(r)}"
+        onmousedown="escolherComboFixa(event,'${escA(id)}',this)">${escA(r)}</button>`).join("")
+    }</div></div>`;
+}
+/* `mousedown` e não `click`: o `blur` do campo esconde a lista antes de o
+   clique chegar, e o item nunca seria escolhido. */
+function filtrarComboFixa(id){
+  const txt=$("#"+id+"-txt"), lista=$("#"+id+"-list");
+  const q=chaoTexto(txt.value);
+  let vistos=0;
+  lista.querySelectorAll(".cbxf-op").forEach((b)=>{
+    const bate=!q||chaoTexto(b.dataset.r).includes(q);
+    b.hidden=!bate; if(bate) vistos++;
+  });
+  lista.hidden=!vistos;
+  /* Mexeu no texto: a escolha anterior deixa de valer. Manter o valor antigo
+     com outro nome à vista é como se grava o teste errado. */
+  if(document.activeElement===txt) $("#"+id).value="";
+}
+function escolherComboFixa(ev,id,botao){
+  ev.preventDefault();
+  $("#"+id).value=botao.dataset.v;
+  $("#"+id+"-txt").value=botao.dataset.r;
+  $("#"+id+"-list").hidden=true;
+}
+const chaoTexto=(s)=>String(s||"").normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim();
+function ligarCombos(host){
+  host.querySelectorAll(".cbx-fixa").forEach((c)=>{
+    const txt=c.querySelector(".cbx-inp");
+    txt.addEventListener("blur",()=>setTimeout(()=>{
+      const l=c.querySelector(".cbx-list"); if(l) l.hidden=true;
+      const h=c.querySelector('input[type=hidden]');
+      if(h&&!h.value) txt.value="";     // texto solto sem escolha não fica na tela
+    },130));
+  });
+}
+const maisDias=(n)=>{ const d=new Date(); d.setDate(d.getDate()+n);
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+
+/* ==========================================================================
+   TESTES E DESAFIOS — dentro da pasta do prontuário
+
+   Fica ao lado dos vínculos, ANTES dos lançamentos: um teste respondido é
+   material de leitura para a próxima sessão, e quem abre a pasta para escrever
+   a evolução precisa vê-lo antes de escrever, não depois.
+
+   As MESMAS ações da tela de envios, e pelo mesmo menu de três pontinhos —
+   duas listas com regras diferentes para o mesmo objeto seriam dois lugares
+   para elas discordarem.
+   ========================================================================== */
+async function pintarTestesPasta(prontId){
+  const box=$("#pasta-testes"); if(!box) return;
+  const pacId = PASTA ? PASTA.paciente_id : 0;
+  let daPasta=[], doPaciente=[];
+  try{
+    daPasta=(await api("teste-envios?prontuario_id="+prontId)).itens||[];
+    /* Os testes do paciente que ainda não estão em pasta nenhuma aparecem
+       AQUI também. Sem isto, um teste criado pela tela de envios antes de a
+       pasta existir ficaria invisível para quem lê o tratamento — que é
+       justamente quem precisa dele. */
+    if(pacId) doPaciente=((await api("teste-envios?paciente_id="+pacId)).itens||[])
+      .filter((e)=>!e.prontuario_id);
+  }catch(e){ box.innerHTML=""; return; }   // a recepção não abre a pasta; some sem estorvar
+
+  const linha=(e,solto)=>`<tr${solto?' style="background:#fffdf5"':""}>
+    <td>${escA(dataBR((e.criado||"").slice(0,10)))}</td>
+    <td>${e.teste_tipo === "desafio"
+        ? '<span class="tag tag-Ativo" style="font-size:.66rem">Desafio</span> ' : ""
+      }${escA(e.teste_nome)}${e.teste_sigla?`<br><span class="hint" style="color:var(--dim)">${escA(e.teste_sigla)}</span>`:""}
+      ${solto?`<br><button type="button" class="btn btn-ghost btn-sm" style="margin-top:.2rem"
+         onclick="vincularTesteAPasta(${e.id},${Number(prontId)})">Trazer para esta pasta</button>`:""}</td>
+    <td>${e.expira_em?escA(dataBR(e.expira_em)):'<span style="color:var(--dim)">sem prazo</span>'}</td>
+    <td>${etiquetaSit(e.situacao)}</td>
+    <td style="text-align:right">${menuEnvio(e)}</td></tr>`;
+
+  const total=daPasta.length+doPaciente.length;
+  const lista = total
+    ? `<table class="anam-m"><tr>
+        <th style="width:104px">Criado</th><th>Teste/desafio</th>
+        <th style="width:110px">Prazo</th><th style="width:120px">Situação</th><th style="width:60px"></th></tr>`+
+      daPasta.map((e)=>linha(e,false)).join("")+
+      doPaciente.map((e)=>linha(e,true)).join("")+`</table>`+
+      (doPaciente.length?`<p class="hint" style="color:var(--dim);margin:.4rem 0 0">
+        As linhas em destaque são testes deste paciente que ainda não estão em nenhuma pasta.</p>`:"")
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum teste enviado nesta pasta.</p>`;
+
+  box.innerHTML=`<div class="area">
+    <div class="area-cab">
+      <b>Testes e desafios</b>
+      <span style="display:flex;gap:.4rem">
+        <!-- O DESAFIO NASCE AQUI, e não no catálogo: ele é escrito para ESTE
+             paciente, nesta semana, e não se aproveita para outro. Por isso o
+             botão fica dentro da pasta dele, ao lado dos testes que ele já
+             recebeu — e não numa tela de cadastro geral. -->
+        ${["admin", "profissional"].includes(ME && ME.perfil) ? `<button type="button" class="btn btn-ghost btn-sm"
+                onclick="abrirNovoDesafio(${Number(pacId) || 0},${Number(prontId)})">+ Novo desafio</button>` : ""}
+        <button type="button" class="btn btn-navy btn-sm"
+                onclick="modalNovoEnvio(${Number(pacId)||0},${Number(prontId)})">+ Enviar teste</button>
+      </span>
+    </div>
+    ${lista}</div>`;
+}
+
+async function vincularTesteAPasta(id, prontId){
+  try{ await api(`teste-envios/${id}/pasta`,"PUT",{ prontuario_id: prontId }); }
+  catch(e){ return toast(e.message,true); }
+  toast("Teste trazido para esta pasta.");
+  await pintarTestesPasta(prontId);
+}
+
+/* ------------------------------------------------------- impressão */
+/* Sai pelo mesmo papel timbrado do resto do sistema, e é montado a partir do
+   MESMO objeto que a modal mostra — o papel não pode discordar da tela. */
+async function imprimirEnvio(id){
+  let e; try{ e=await api("teste-envios/"+id); }catch(err){ return toast(err.message,true); }
+  let sec=null;
+  const linhas=(e.itens||[]).map((i)=>{
+    const troca=i.secao!==sec; sec=i.secao;
+    return (troca&&i.secao?`<tr><td colspan="2" class="sec">${escA(i.secao)}</td></tr>`:"")+
+      `<tr><td class="q">${i.numero}. ${escA(i.pergunta)}</td>
+           <td class="r">${i.resposta?escA(i.resposta):"—"}</td></tr>`;
+  }).join("");
+  const av=e.avaliacao||{};
+  const blocos=(e.blocos_terapeuta||[]).map((b)=>{
+    const v=av[b.chave];
+    const txt=Array.isArray(v)?v.join(", "):(v||"");
+    return txt?`<tr><td class="q">${escA(b.titulo)}</td><td class="r">${escA(txt)}</td></tr>`:"";
+  }).join("");
+  const corpo=`
+    <table class="d">
+      <tr><th>Respondido em</th><td>${escA(dataHoraBR(e.concluido_em)||"—")}</td></tr>
+      <tr><th>Respondidas</th><td>${e.respondidas} de ${e.total_perguntas}</td></tr>
+      ${e.soma_maxima?`<tr><th>Soma bruta</th><td>${e.soma_bruta} de ${e.soma_maxima}
+        <span style="color:#5a6172">— apenas aritmética; a leitura é clínica</span></td></tr>`:""}
+    </table>
+    <table class="qa">${linhas}${
+      blocos?`<tr><td colspan="2" class="sec">Avaliação do terapeuta</td></tr>${blocos}`:""}</table>`;
+  abrirImpressao(e.teste_nome, corpo,
+    { subtitulo: `${e.paciente_nome}${e.paciente_codigo?" · "+e.paciente_codigo:""}` });
+}
+
 let relpacFiltro = "0";          // começa nos INATIVOS: é a relação que a clínica pede para retomar contato
 let RELPAC = { pacientes: [], total: 0, ativos: 0 };
 
@@ -4274,5 +5305,35 @@ async function trocarSenha(){
 (async()=>{ try{ const me=await api("me"); iniciarApp(me); }
   catch{ $("#login").hidden=false; $("#lg-user").focus(); } })();
 </script>
+
+<!-- ==========================================================================
+     LA CHAT — módulo instalado, carregado por último
+
+     O botão 💬 flutuante no canto inferior direito, com o contador de não
+     lidas; clicando, o chat abre em gaveta por cima da tela.
+
+     `defer` e no fim do documento: o chat é conveniência, e não pode atrasar
+     a agenda nem o prontuário, que é o trabalho de verdade desta tela.
+
+     QUEM ENTRA É QUEM JÁ ESTÁ LOGADO no /restrito — o `usuario()` do conector,
+     no server.js, lê a MESMA sessão. Não há segundo login: quem está aqui já
+     está no chat, e quem não está aqui não vê botão nenhum (o script carrega,
+     pede o passe, recebe 401 e some).
+
+     O caminho é `/restrito/chat`, e não `/chat`: o cookie da gestão tem
+     `Path=/restrito`, e fora dali o navegador não o envia — o chat pediria o
+     passe e levaria 401. Ver o comentário do conector no server.js.
+
+     Atualizar o chat NÃO mexe neste arquivo: o cliente vem do serviço do chat.
+     O que se atualiza é o `lachat.js` da raiz.
+     ========================================================================== -->
+<script src="/restrito/chat/cliente.js" defer data-auto data-modo="drawer"
+        data-base="/restrito/chat"></script>
+<style>
+  /* As cores do chat seguem a identidade da clínica — violeta e o raio de
+     canto do resto do sistema. É o gancho que o próprio módulo documenta,
+     e por isso não encosta no código dele. */
+  la-chat { --chat-primaria: #5b4fd8; --chat-raio: 12px; }
+</style>
 </body>
 </html>

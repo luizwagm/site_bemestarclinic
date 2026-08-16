@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.23.0";
+const APP_VERSION = "1.28.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -89,7 +89,70 @@ const CSP_PAINEL = "default-src 'self'; base-uri 'none'; object-src 'none'; fram
 const { Q, carregarAmbiente } = require("./pg");
 carregarAmbiente(__dirname);
 const { handleRestrito, iniciarRestrito, sessao: sessaoRestrito, auditar: auditarRestrito,
-        registrarEncerrarPainel } = require("./restrito");
+        registrarEncerrarPainel, aoMudarEquipe,
+        /* O paciente respondendo pelo link. A lógica fica lá, junto dos dados
+           e das regras de quem pode abrir; aqui só há a rota pública. */
+        estadoDoLink, iniciarTeste, concluirTeste, salvarRascunho,
+        abrirComNascimento } = require("./restrito");
+
+/* ==========================================================================
+   LA CHAT — módulo instalado, não biblioteca copiada
+
+   `lachat.js` é o conector do projeto LA-Chat, copiado para cá inteiro. Ele
+   não lê o nosso banco, não grava arquivo, não abre porta: repassa as rotas
+   `/chat/*` para o serviço do chat e emite o PASSE que diz quem está logado.
+
+   ATUALIZAR o chat é substituir este arquivo — `npm run chat:atualizar`.
+
+   POR QUE A SESSÃO DO /restrito, e não a do /admin: o chat é da EQUIPE da
+   clínica (profissionais, secretaria, administração), que é exatamente quem
+   tem conta no sistema de gestão. O /admin é o painel do SITE, com uma senha
+   só, compartilhada — ali não há "quem", e um chat sem quem não é chat.
+
+   Visitante do site e paciente respondendo teste recebem `null` daqui, e para
+   eles o chat simplesmente não existe.
+   ========================================================================== */
+const conectorChat = require("./lachat");
+/* Declarado ANTES do uso. Funcionaria depois — a referência vive dentro de uma
+   função, que só roda em tempo de requisição —, mas quem lesse o `usuario()`
+   pararia para checar se é um erro de zona morta. */
+const CARGO_POR_PERFIL = {
+  admin: "Administração", secretaria: "Recepção", profissional: "Profissional de saúde",
+};
+const chat = conectorChat({
+  url: process.env.CHAT_URL || "http://127.0.0.1:5197",
+  segredo: process.env.CHAT_SEGREDO_PASSE,
+  contexto: "bemestarclinic",       // separa os dados desta clínica dos outros sites
+
+  /* SOB /restrito, e não na raiz — por causa do COOKIE.
+     A sessão da gestão é gravada com `Path=/restrito`, isolamento decidido na
+     auditoria de segurança para que ela nunca acompanhe uma requisição do site
+     público nem do /admin. O navegador respeita esse caminho ao pé da letra:
+     com o chat em `/chat/passe`, o cookie simplesmente NÃO era enviado, e o
+     passe respondia 401 — enquanto o mesmo endereço no `curl`, com o cookie
+     na mão, respondia 200. O sintoma acusava autenticação; a causa era rota.
+     Movendo o chat para dentro de /restrito, o cookie volta a valer sem
+     afrouxar nada. */
+  prefixo: "restrito/chat",
+
+  usuario(req) {
+    /* SÍNCRONO por contrato — o conector não espera Promise. Por isso só o que
+       a sessão já carrega entra aqui: uma consulta ao banco devolveria uma
+       Promise, o conector a trataria como objeto e o passe sairia com
+       `id: undefined`. Falharia em silêncio, com todo mundo virando o mesmo
+       usuário no chat. */
+    const s = sessaoRestrito(req);
+    if (!s || !s.userId) return null;
+    return {
+      id: s.userId,                 // id de g_usuarios: estável e único
+      nome: s.nome,
+      /* O cargo aparece ao lado do nome na lista do chat. É o que distingue
+         "Maria da recepção" de "Maria psicóloga" quando as duas conversam. */
+      cargo: CARGO_POR_PERFIL[s.perfil] || "Equipe",
+      papel: s.perfil === "admin" ? "admin" : "membro",
+    };
+  },
+});
 
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
@@ -644,7 +707,14 @@ registrarEncerrarPainel((req) => {
    nunca disparava. O limitador soma também POR CONTA, faz a espera crescer a
    cada erro e grava a contagem em disco — antes ela morria no reinício
    automático de madrugada, devolvendo o orçamento inteiro ao atacante. */
-const limite = criarLimitador({ arquivo: path.join(ROOT, "data", "limites.json") });
+/* O arquivo é configurável por ambiente PARA AS SUÍTES, e só. Elas erram
+   senha e data de propósito — é o que testam — e, gravando no mesmo arquivo
+   do sistema, iam empilhando bloqueio de uma execução para a outra até a
+   própria suíte não conseguir mais entrar. Um teste que fica vermelho por
+   causa da execução anterior deixa de ser teste. */
+const limite = criarLimitador({
+  arquivo: process.env.LIMITES_ARQUIVO || path.join(ROOT, "data", "limites.json"),
+});
 limite.carregar();
 process.on("exit", () => limite.gravar());
 
@@ -1642,6 +1712,12 @@ const servidor = http.createServer(async (req, res) => {
      topo de propósito, para que 404, 503 e erro também sejam contados. */
   sentinela.contar(req, res);
 
+  /* LA Chat — antes de qualquer coisa, e é assim que o módulo pede.
+     `rota()` devolve `true` quando tratou; o site então sai na hora.
+     Sem CHAT_URL e CHAT_SEGREDO_PASSE no ambiente, o conector fica inativo e
+     esta linha é um `return false` — o site roda igual, sem chat. */
+  if (chat.rota(req, res)) return;
+
   const p = new URL(req.url, `http://localhost:${PORT}`).pathname;
 
   // Cabeçalhos de segurança em toda resposta
@@ -1772,7 +1848,12 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
     /* Modo manutenção: barra o visitante mas deixa passar o painel, a API e os
        assets (a própria página de aviso usa o favicon). Quem tem sessão de
        administrador continua vendo o site normal, para conferir antes de reabrir. */
+    /* `/answer` passa pelo modo manutenção junto com o painel e a API: o link
+       do teste está no celular de um paciente com prazo para responder, e
+       fechar o site para trocar uma foto na home não pode fazer o prazo dele
+       correr contra uma tela de "estamos atualizando". */
     if (emManutencao() && !p.startsWith("/admin") && !p.startsWith("/api/")
+        && !p.startsWith("/answer/")
         && !p.startsWith("/assets/") && !p.startsWith("/.well-known/") && !authed(req)) {
       const arq = path.join(ROOT, "manutencao.html");
       const corpo = fs.existsSync(arq) ? fs.readFileSync(arq) : "Estamos atualizando o site. Volte em instantes.";
@@ -1841,6 +1922,114 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
       }
       // CEP mal formatado: responde sem sair para a internet
       if (/^\/api\/cep\//.test(p)) return json(res, 400, { error: "Informe um CEP com 8 dígitos." });
+
+      /* -------------- Teste de rastreio respondido pelo paciente ----------
+         PÚBLICO, como o CEP: quem chega tem um link no WhatsApp e não tem
+         login. As regras de quem pode abrir vivem no restrito.js, junto dos
+         dados — aqui só há o transporte.
+
+         O FREIO É O MESMO DO LOGIN, e pela mesma razão: um código de 8 a 11
+         caracteres é adivinhável por força bruta se puder ser tentado sem
+         limite, e cada acerto entrega o questionário de saúde de uma pessoa
+         com nome. Errar código conta como erro; acertar limpa o balde.
+
+         SÓ O BALDE POR IP — `conta` vai NULA, e isso é deliberado. Um valor
+         fixo ali ("publico") seria um balde único para o mundo inteiro: bastava
+         um atacante enchê-lo para NENHUM paciente conseguir mais responder
+         teste nenhum. E um balde por CÓDIGO não serviria de nada, porque quem
+         adivinha tenta um código DIFERENTE a cada vez — o balde nunca encheria,
+         e o único efeito seria permitir trancar um paciente específico para
+         fora do próprio teste.                                              */
+      const mans = p.match(/^\/api\/answer\/([0-9A-Za-z]{8,11})(?:\/(iniciar|concluir|entrar|rascunho))?$/);
+      if (mans) {
+        const codigo = mans[1], acao = mans[2] || "";
+        const ipA = clientIp(req);
+        const vA = limite.verificar("answer", ipA, null);
+        if (!vA.ok) { res.setHeader("Retry-After", String(vA.esperar)); return json(res, 429, { error: vA.mensagem }); }
+
+        /* ================================================================
+           O PASSE DO APARELHO
+
+           Cookie com `Path=/api/answer`: só as rotas do link o recebem. A
+           PÁGINA `/answer/<código>` é HTML estático e não precisa dele — quem
+           confere é a API que ela chama. Restringir o caminho é o que impede
+           este cookie de acompanhar o visitante pelo site inteiro.
+
+           O NOME carrega o código porque um celular pode ter dois desafios de
+           dois familiares: um cookie só faria o segundo link herdar o acesso
+           do primeiro.
+           ================================================================ */
+        const nomeCookie = "acesso_" + codigo;
+        const passe = (() => {
+          const bruto = req.headers.cookie || "";
+          const m = new RegExp("(?:^|;\\s*)" + nomeCookie + "=([^;]*)").exec(bruto);
+          return m ? decodeURIComponent(m[1]) : "";
+        })();
+
+        if (acao === "entrar" && req.method === "POST") {
+          /* ==============================================================
+             AQUI o balde por CÓDIGO é a defesa inteira.
+
+             O comentário do login diz que balde por código não serve contra
+             adivinhação — e está certo lá, onde o atacante troca de código a
+             cada tentativa. Aqui é o contrário: ele tem UM código e vai
+             tentar datas. São poucas dezenas de milhares de datas plausíveis;
+             sem balde, um robô entra em minutos.
+
+             O efeito colateral conhecido (trancar o paciente para fora do
+             próprio link) é limitado pelo limitador: quem já acertou daquele
+             IP não é alcançado pelo balde da conta.
+             ============================================================== */
+          const vC = limite.verificar("answer-data", ipA, codigo);
+          if (!vC.ok) { res.setHeader("Retry-After", String(vC.esperar)); return json(res, 429, { error: vC.mensagem }); }
+
+          const b = await readBody(req);
+          const r = await abrirComNascimento(codigo, b && b.nascimento);
+          if (!r.ok) {
+            limite.errou("answer-data", ipA, codigo);
+            /* Uma resposta só para "código não existe", "data errada" e
+               "paciente sem data cadastrada". Distinguir os três diria a quem
+               tem o link se aquela pessoa é paciente da clínica. */
+            return json(res, 401, { estado: "verificar", erro: "A data não confere." });
+          }
+          limite.acertou("answer-data", ipA, codigo);
+          res.setHeader("Set-Cookie",
+            `${nomeCookie}=${encodeURIComponent(r.passe)}; Path=/api/answer; Max-Age=${45 * 24 * 3600}` +
+            `; HttpOnly; SameSite=Strict${req.headers["x-forwarded-proto"] === "https" ? "; Secure" : ""}`);
+          return json(res, 200, await estadoDoLink(codigo, r.passe));
+        }
+
+        if (!acao && req.method === "GET") {
+          const r = await estadoDoLink(codigo, passe);
+          if (r.estado === "inexistente") { limite.errou("answer", ipA, null); return json(res, 404, r); }
+          limite.acertou("answer", ipA, null);
+          return json(res, 200, r);
+        }
+        if (acao === "iniciar" && req.method === "POST") {
+          const r = await iniciarTeste(codigo, passe);
+          if (r.erro) { if (r.erro === "inexistente") limite.errou("answer", ipA, null);
+            return json(res, r.erro === "inexistente" ? 404 : r.erro === "verificar" ? 401 : 409,
+              { estado: r.erro }); }
+          return json(res, 200, r);
+        }
+        if (acao === "rascunho" && req.method === "POST") {
+          const b = await readBody(req);
+          const r = await salvarRascunho(codigo, b && b.respostas, passe);
+          if (r.erro) return json(res, r.erro === "inexistente" ? 404 : r.erro === "verificar" ? 401 : 409,
+            { estado: r.erro });
+          return json(res, 200, r);
+        }
+        if (acao === "concluir" && req.method === "POST") {
+          const b = await readBody(req);
+          const r = await concluirTeste(codigo, b && b.respostas, passe);
+          if (r.erro) return json(res, r.erro === "inexistente" ? 404 : r.erro === "verificar" ? 401 : 409,
+            { estado: r.erro, faltam: r.faltam || 0 });
+          return json(res, 200, r);
+        }
+        return json(res, 405, { error: "Método não permitido." });
+      }
+      // Código fora do formato: recusado sem consultar o banco.
+      if (/^\/api\/answer\//.test(p)) return json(res, 404, { estado: "inexistente" });
 
       if (!authed(req)) return json(res, 401, { error: "Não autenticado" });
       if (p === "/api/me") return json(res, 200, { ok: true, version: APP_VERSION });
@@ -1997,6 +2186,36 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
       return res.end("404");
     }
 
+    /* ------------------- /answer/<codigo> — a página do paciente ---------
+       Servida por ROTA, não como arquivo estático: o HTML mora em
+       `restrito/answer.html`, fora da árvore pública do site, e é entregue em
+       qualquer código de formato válido. A página é a mesma para todos; quem
+       decide o que ela mostra é a API, depois de conferir o link.
+
+       `noindex` no cabeçalho ALÉM da meta tag: um buscador que só faça HEAD
+       não chega a ler o HTML, e este endereço nunca pode aparecer em busca. */
+    const mAnswer = p.match(/^\/answer\/[0-9A-Za-z]{8,11}\/?$/);
+    if (mAnswer && req.method === "GET") {
+      const arq = path.join(ROOT, "restrito", "answer.html");
+      if (!fs.existsSync(arq)) { res.writeHead(404); return res.end("404"); }
+      res.writeHead(200, {
+        "Content-Type": MIME[".html"],
+        "X-Robots-Tag": "noindex, nofollow, noarchive",
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+        /* CSP fechada: a página não carrega nada de fora e não deve poder.
+           Sem `connect-src 'self'` a própria chamada à API cairia — é a linha
+           que faz a política ser útil em vez de decorativa. */
+        "Content-Security-Policy":
+          "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; " +
+          "style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'",
+      });
+      return res.end(fs.readFileSync(arq));
+    }
+    /* Código fora do formato não vira busca de arquivo: `/answer/../algo`
+       precisa morrer aqui, não no `path.normalize` logo abaixo. */
+    if (/^\/answer(\/|$)/.test(p)) { res.writeHead(404, { "Content-Type": "text/plain" }); return res.end("404"); }
+
     let file = path.normalize(path.join(ROOT, decodeURIComponent(p)));
     if (!file.startsWith(ROOT)) { res.writeHead(403); return res.end("403"); }
     if (p === "/") file = path.join(ROOT, "index.html");
@@ -2070,6 +2289,109 @@ const ESPERA_ENTRE_TENTATIVAS = 15_000;
 async function ligarGestao() {
   await iniciarRestrito();
   ERRO_GESTAO = null;
+  /* Com a gestão de pé, o chat já pode saber quem é a equipe. Sem `await`: a
+     sincronização é conveniência, e o sistema não espera por ela para atender. */
+  sincronizarElencoDoChat("boot");
+  ligarElencoContinuo();
+}
+
+/* Liga os dois gatilhos de reenvio UMA vez. `ligarGestao` roda de novo a cada
+   religação do PostgreSQL, e sem esta trava cada queda do banco deixaria mais
+   um relógio e mais um ouvinte para trás. */
+let elencoContinuoLigado = false;
+function ligarElencoContinuo() {
+  if (elencoContinuoLigado || !chat.ligado) return;
+  elencoContinuoLigado = true;
+  aoMudarEquipe((motivo) => agendarElencoDoChat(motivo));
+  const relogio = setInterval(() => sincronizarElencoDoChat("periódico"), 5 * 60_000);
+  if (relogio.unref) relogio.unref();
+}
+
+/* ==========================================================================
+   QUEM É A EQUIPE, para o chat
+
+   O chat, sozinho, só conhece quem JÁ ENTROU nele. Numa clínica de oito
+   pessoas isso é uma armadilha de partida: a primeira a abrir encontra
+   "Ninguém por aqui ainda", conclui que não funciona e não volta — então a
+   segunda também encontra vazio.
+
+   Mandar o elenco resolve. Roda no boot e a cada mudança de usuário; é
+   idempotente e barato (uma requisição interna, oito linhas de JSON).
+
+   NUNCA DERRUBA NADA: se o chat estiver fora do ar, isto falha em silêncio e o
+   sistema de gestão segue igual. O chat é conveniência; a agenda e o
+   prontuário é que são o trabalho.
+   ========================================================================== */
+async function sincronizarElencoDoChat(motivo = "boot") {
+  if (!chat.ligado || typeof chat.sincronizarElenco !== "function") return;
+  try {
+    /* ====================================================================
+       SÓ QUEM PODE ENTRAR NO SISTEMA ENTRA NO CHAT (`ativo = 1`)
+
+       "Todos os usuários existentes" quer dizer todo o cadastro de acesso —
+       administração, recepção, profissionais —, e não só quem já abriu o chat
+       alguma vez. Não quer dizer os DESATIVADOS: quem está desativado não
+       consegue nem fazer login, e listá-lo aqui convidaria alguém a mandar uma
+       mensagem para uma pessoa que nunca vai ler.
+
+       Quem sai desta lista é desativado no chat pelo próprio módulo (as
+       conversas antigas continuam íntegras, com autor). Quem volta, volta.
+       ==================================================================== */
+    const equipe = await Q.all(
+      `SELECT id, nome, email, perfil FROM g_usuarios WHERE ativo = 1 ORDER BY nome`);
+    const r = await chat.sincronizarElenco(equipe.map((u) => ({
+      id: u.id,
+      nome: u.nome,
+      /* O e-mail do login NÃO vai: nestes cadastros ele costuma ser um apelido
+         ("admin", "qa_esc"), não um endereço — e no chat apareceria como
+         contato falso. O que identifica a pessoa ali é nome e cargo. */
+      cargo: CARGO_POR_PERFIL[u.perfil] || "Equipe",
+      papel: u.perfil === "admin" ? "admin" : "membro",
+    })));
+
+    /* Registra o BOOT sempre (é informação de partida) e, depois disso, só o
+       que mudou de fato. O reenvio periódico é de 5 em 5 minutos: sem este
+       filtro seriam 288 linhas idênticas por dia no journal. */
+    if (r && r.ok && (motivo === "boot" || r.mudou)) {
+      console.log(`  · LA Chat: ${r.sincronizados} pessoa(s) da equipe no chat` +
+        (r.desativados ? `, ${r.desativados} desativada(s)` : "") +
+        (motivo === "boot" ? "." : ` (${motivo}).`));
+    } else if (r && !r.ok && r.motivo) {
+      console.log(`  · LA Chat: elenco não sincronizado (${r.motivo}).`);
+    }
+  } catch (e) {
+    console.warn("  ⚠ LA Chat: falha ao sincronizar o elenco —", e.message);
+  }
+}
+
+/* ==========================================================================
+   QUANDO REENVIAR O ELENCO
+
+   Dois gatilhos, e os dois são necessários:
+
+   · O AVISO da gestão (`aoMudarEquipe`) é o que faz a lista de Pessoas mudar
+     na tela de quem está com o chat aberto, no instante em que o admin salva
+     o cadastro. É o caminho normal.
+
+   · O RELÓGIO é a rede de segurança. O chat pode estar fora do ar na hora do
+     cadastro, ou ter sido reiniciado depois (e o banco dele é dele: um chat
+     recém-instalado começa sem ninguém). Reenviar de 5 em 5 minutos faz o
+     estado convergir sozinho, sem ninguém precisar reiniciar o site.
+
+   Debounce de 2 s no aviso: salvar um usuário dispara uma escrita e às vezes
+   duas (o acesso do profissional mexe em `profissionais` e em `g_usuarios`),
+   e não faz sentido mandar o elenco inteiro duas vezes no mesmo segundo.
+   ========================================================================== */
+let elencoAgendado = null;
+function agendarElencoDoChat(motivo) {
+  if (elencoAgendado) clearTimeout(elencoAgendado);
+  elencoAgendado = setTimeout(() => {
+    elencoAgendado = null;
+    sincronizarElencoDoChat(motivo);
+  }, 2000);
+  /* `unref`: um temporizador pendente não pode segurar o processo de pé na
+     hora de encerrar o serviço. */
+  if (elencoAgendado.unref) elencoAgendado.unref();
 }
 
 /* true se a gestão está no ar — religando antes, se for a hora de tentar. */
@@ -2153,6 +2475,13 @@ const sentinela = conectorSentinela({
    então abrir a porta — e com o banco fora o SITE PÚBLICO ficava 30 segundos
    sem responder. Seria trocar um problema por outro pior: o site da clínica
    não depende do PostgreSQL e não pode ficar refém dele nem por um instante. */
+
+/* LA Chat — a SEGUNDA linha do conector, e a que mais se esquece.
+   `upgrade` é um evento separado do fluxo de requisição: ele NÃO passa pelo
+   handler acima nem por `chat.rota()`. Sem esta linha o chat carrega,
+   autentica, mostra as conversas e nunca recebe mensagem em tempo real — sem
+   nada aparecer quebrado. O sintoma seria "às vezes não chega". */
+chat.conectarUpgrade(servidor);
 
 // Escuta só no localhost: quem fala com o mundo é o nginx. Sem isto, o painel
 // ficaria acessível por http://IP:5185/admin/, sem HTTPS e sem cookie Secure.

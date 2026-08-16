@@ -6,7 +6,7 @@
 # (b) o `git pull` em produção sobrescrever o banco do cliente com o do dev,
 # apagando tudo que ele editou pelo painel.
 # --------------------------------------------------------------------------
-data/
+/data/
 *.db
 *.db-journal
 *.db-wal
@@ -26,7 +26,7 @@ restrito/arquivos/
 .env
 
 # Dumps SQL gerados pelo botão "Backup do banco" do painel.
-dumps/
+/dumps/
 
 # Sistema / editor
 Thumbs.db
@@ -35,4 +35,4 @@ Thumbs.db
 node_modules/
 
 # Backups do banco gerados pelo deploy.sh
-backups/
+/backups/

@@ -143,8 +143,29 @@ jobs:
 
       - name: Suíte do campo vazio e do /restrito
         env:
-          PORTA_TESTE: 5197
+          PORTA_TESTE: 5297
         run: node testar-campo-vazio.cjs
+
+      # Os testes de rastreio: 94 checagens do envio ao prontuário, incluindo o
+      # link público que o paciente abre. Porta PRÓPRIA (5296) — duas suítes na
+      # mesma porta rodariam uma contra o servidor da outra.
+      - name: Suíte dos testes de rastreio
+        env:
+          PORTA_TESTE_RASTREIO: 5296
+        run: node testar-testes.cjs
+
+      # Os DESAFIOS: metade da suíte é o interpretador (o texto colado que vira
+      # formulário) e metade é o caminho até a resposta do paciente — a porta da
+      # data de nascimento, o desafio que reabre e o rascunho da semana.
+      #
+      # `LIMITES_ARQUIVO` é obrigatório aqui: a suíte erra a data DE PROPÓSITO,
+      # e sem arquivo próprio ela empilharia bloqueio de uma execução para a
+      # outra até não conseguir mais entrar.
+      - name: Suíte dos desafios
+        env:
+          PORTA_TESTE_DESAFIO: 5298
+          LIMITES_ARQUIVO: /tmp/limites-desafio.json
+        run: node testar-desafios.cjs
 
   # ======================================================================
   #  2. ENTREGAR — só depois do portão, e só na main

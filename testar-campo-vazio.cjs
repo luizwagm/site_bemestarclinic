@@ -25,7 +25,11 @@ const { Q, carregarAmbiente } = require("./pg.js");
 
 carregarAmbiente(__dirname);
 
-const PORTA = Number(process.env.PORTA_TESTE) || 5197;
+/* 5297, e NÃO 5197: a 5197 é a porta do serviço do LA Chat. Com o chat de pé —
+   que é o caso desde que ele foi instalado aqui — a suíte encontrava a porta
+   ocupada e morria antes do primeiro teste, com um erro que culpava a porta e
+   não dizia quem a estava usando. A faixa 52xx é só das suítes. */
+const PORTA = Number(process.env.PORTA_TESTE) || 5297;
 const BASE = `http://127.0.0.1:${PORTA}`;
 const SENHA = "zz-qa-vazio-2026";
 const EMAIL = "zz_qa_vazio@qa.local";
@@ -82,11 +86,17 @@ async function subir() {
   let saida = "";
   servidor.stdout.on("data", (d) => { saida += d; });
   servidor.stderr.on("data", (d) => { saida += d; });
-  for (let i = 0; i < 100; i++) {
-    try { await fetch(BASE + "/favicon.ico"); return; }
-    catch { await new Promise((r) => setTimeout(r, 100)); }
+  /* Espera a API do /restrito, não o favicon: o site sobe na hora, mas a
+     gestão ainda aplica migrations e semeia — e nessa janela ela responde 503.
+     Perguntar ao favicon fazia a suíte começar cedo demais. */
+  for (let i = 0; i < 200; i++) {
+    try {
+      const r = await fetch(BASE + "/restrito/api/me");
+      if (r.status !== 503) return;     // 401 já serve: a API está de pé
+    } catch { /* ainda nem escuta */ }
+    await new Promise((r) => setTimeout(r, 100));
   }
-  throw new Error("o servidor de teste não subiu:\n" + saida);
+  throw new Error("o servidor de teste não ficou pronto:\n" + saida);
 }
 
 async function limpar() {
