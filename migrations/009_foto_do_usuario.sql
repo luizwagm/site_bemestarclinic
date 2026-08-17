@@ -1,0 +1,33 @@
+-- ==========================================================================
+--  009 — a foto de quem usa o sistema
+--
+--  Pedido: o cadastro de usuário passa a aceitar foto, e ela aparece no perfil
+--  do chat da equipe.
+--
+--  ---------------------------------------------------------------------------
+--  A COLUNA GUARDA O CAMINHO, NÃO A IMAGEM
+--
+--  `foto` é o caminho do arquivo (`/restrito/arquivos/<nome>.webp`), como já é
+--  feito nos anexos do prontuário. Guardar o binário na coluna traria três
+--  problemas imediatos:
+--
+--    · o pg_dump do backup diário engordaria com megabytes de imagem, e o
+--      backup é o que precisa ser rápido e frequente;
+--    · toda listagem de usuários carregaria as fotos junto, mesmo quando a
+--      tela só mostra nomes;
+--    · o navegador não conseguiria cachear a imagem — ela viria dentro do JSON
+--      da resposta, sem ETag próprio.
+--
+--  ---------------------------------------------------------------------------
+--  POR QUE NÃO É CIFRADA
+--
+--  As 48 colunas cifradas deste banco guardam dado de PACIENTE. A foto aqui é
+--  de quem trabalha na clínica, escolhida pela própria pessoa para aparecer aos
+--  colegas no chat — é o oposto de sigilo. E cifrar o caminho impediria o
+--  arquivo de ser servido sem descriptografar a cada requisição de imagem.
+--
+--  O arquivo em si continua no diretório PRIVADO do /restrito, servido só com
+--  sessão — quem não está logado não vê a foto de ninguém.
+-- ==========================================================================
+
+ALTER TABLE g_usuarios ADD COLUMN IF NOT EXISTS foto TEXT NOT NULL DEFAULT '';

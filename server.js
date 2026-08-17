@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.28.0";
+const APP_VERSION = "1.29.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -2338,7 +2338,7 @@ async function sincronizarElencoDoChat(motivo = "boot") {
        conversas antigas continuam íntegras, com autor). Quem volta, volta.
        ==================================================================== */
     const equipe = await Q.all(
-      `SELECT id, nome, email, perfil FROM g_usuarios WHERE ativo = 1 ORDER BY nome`);
+      `SELECT id, nome, email, perfil, foto FROM g_usuarios WHERE ativo = 1 ORDER BY nome`);
     const r = await chat.sincronizarElenco(equipe.map((u) => ({
       id: u.id,
       nome: u.nome,
@@ -2347,6 +2347,21 @@ async function sincronizarElencoDoChat(motivo = "boot") {
          contato falso. O que identifica a pessoa ali é nome e cargo. */
       cargo: CARGO_POR_PERFIL[u.perfil] || "Equipe",
       papel: u.perfil === "admin" ? "admin" : "membro",
+      /* ================================================================
+         A FOTO VAI COMO CAMINHO RELATIVO, e é isso que a faz funcionar.
+
+         `/restrito/arquivos/…` resolve na origem da página — o navegador de
+         quem está no sistema já leva o cookie do /restrito, então a imagem
+         chega autenticada, sem rota pública e sem token na URL.
+
+         Uma URL absoluta (`https://bemestarclinic.com/…`) daria no mesmo em
+         produção e quebraria em qualquer outro endereço: o mesmo código roda
+         em localhost durante o desenvolvimento. E o chat, do lado dele,
+         aceita relativo justamente por ser o caso seguro — URL de terceiro
+         faria cada abertura do chat contar a quem está online para o dono
+         daquele servidor.
+         ================================================================ */
+      avatar: u.foto || "",
     })));
 
     /* Registra o BOOT sempre (é informação de partida) e, depois disso, só o

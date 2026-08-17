@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.34.0";
+const SISTEMA_VERSION = "1.35.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,20 @@ const SISTEMA_VERSION = "1.34.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.35.0", data: "2026-08-17", titulo: "Foto no cadastro e o aviso sonoro do chat", mudancas: [
+    "O cadastro de usuário aceita foto de perfil, com prévia redonda",
+    "A foto aparece no chat da equipe: na lista de pessoas e nas conversas",
+    "Trocar a foto apaga a anterior do servidor, sem deixar arquivo solto",
+    "Cada pessoa troca a própria foto; o administrador troca a de qualquer um",
+    "A foto é recortada em círculo e reduzida no servidor, sem os metadados",
+    "O aviso de mensagem nova passou a ser o toque escolhido pela clínica, mais alto",
+  ] },
+  /* ATENÇÃO — o histórico salta de 1.29.0 para 1.35.0.
+     As versões 1.30 a 1.34 (chat da equipe, elenco vivo e os desafios por
+     paciente) foram entregues sem entrada aqui. A tela "Sobre o sistema" mostra
+     a versão certa, mas não conta ao cliente o que mudou justamente nas
+     novidades que ele mais percebe. Preencher essas cinco linhas é uma
+     pendência conhecida, não um esquecimento novo. */
   { versao: "1.29.0", data: "2026-08-14", titulo: "Testes de rastreio enviados ao paciente", mudancas: [
     "13 questionários de rastreio prontos, em Cadastros → Testes",
     "Nova tela Enviar testes, abaixo de Prontuário",
@@ -1490,6 +1504,39 @@ const TEM_ARQUIVO = new Set(["pacientes", "prontuario", "prontuario_registros"])
 const UPLOAD_DIR = path.join(ROOT, "restrito", "arquivos");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+/* O tratamento de imagem é OPCIONAL (o `sharp` é módulo nativo e pode não
+   instalar no servidor). O módulo já cuida disso sozinho — sem ele, a foto de
+   perfil é recusada com mensagem, em vez de o processo cair. */
+const IMG = require("./imagem");
+
+/* ==========================================================================
+   APAGAR A FOTO ANTIGA DO DISCO
+
+   Chamada depois de trocar ou remover a foto de um usuário. Três travas, e
+   nenhuma é paranoia: o caminho vem de uma COLUNA do banco, e coluna de texto
+   é exatamente o lugar onde um valor estranho sobrevive a uma migração mal
+   feita ou a uma restauração de backup antigo.
+
+     · só apaga o que está sob `/restrito/arquivos/`;
+     · resolve o caminho e confere que continua DENTRO da pasta (um `..` no
+       nome não escapa);
+     · nunca apaga o arquivo que acabou de entrar (`novo`), para o caso de a
+       tela mandar duas vezes o mesmo caminho.
+
+   Falha em silêncio de propósito: um arquivo que já não existe não pode
+   impedir alguém de trocar a própria foto.
+   ========================================================================== */
+function apagarFotoAntiga(caminho, novo) {
+  try {
+    const c = String(caminho || "");
+    if (!c || c === novo) return;
+    if (!/^\/restrito\/arquivos\/[A-Za-z0-9._-]+$/.test(c)) return;
+    const alvo = path.resolve(UPLOAD_DIR, path.basename(c));
+    if (!alvo.startsWith(path.resolve(UPLOAD_DIR))) return;
+    fs.unlinkSync(alvo);
+  } catch { /* já não estava lá */ }
+}
+
 /* Perfis de acesso. Cada perfil enxerga só os módulos abaixo; "usuarios" é
    sempre exclusivo do admin. O front esconde o que não pode, mas quem MANDA é
    esta checagem no servidor.
@@ -2388,6 +2435,69 @@ async function rotaApi(req, res, p) {
     });
   }
 
+  /* ==========================================================================
+     A FOTO DE PERFIL DE QUEM USA O SISTEMA
+
+     Rota SEPARADA do `/upload` genérico, e não um parâmetro nele, porque as
+     duas fazem coisas diferentes com o arquivo: aquela guarda o documento como
+     veio (um PDF de encaminhamento precisa chegar inteiro ao destinatário);
+     esta RECORTA em 256×256 para o círculo do chat.
+
+     Misturar as duas num só endpoint com um `?tipo=avatar` significaria uma
+     função com dois comportamentos e um `if` no meio — e o dia em que alguém
+     mexesse no recorte, o anexo do prontuário sairia cortado.
+
+     Quem pode: qualquer pessoa logada, para a PRÓPRIA foto; o admin, para a de
+     qualquer um. Ninguém troca a foto de outra pessoa — no chat, a foto é como
+     a pessoa se apresenta aos colegas.
+     ========================================================================== */
+  const fotoM = p.match(/^usuarios\/(\d+)\/foto$/);
+  if (fotoM && req.method === "POST") {
+    const alvo = Number(fotoM[1]);
+    if (s.perfil !== "admin" && alvo !== Number(s.userId))
+      return json(res, 403, { error: "Você só pode trocar a própria foto." });
+
+    const { dataUrl } = await readBody(req);
+    const m = /^data:image\/(png|jpe?g|webp);base64,(.+)$/.exec(dataUrl || "");
+    if (!m) return json(res, 400, { error: "Envie uma imagem PNG, JPG ou WEBP." });
+
+    const bruto = Buffer.from(m[2], "base64");
+    /* Teto ANTES de o sharp abrir. Uma imagem de 200 MP cabe em poucos KB
+       comprimidos e estoura a memória ao ser decodificada — é a "bomba de
+       descompressão". 8 MB de entrada é folgado para foto de celular. */
+    if (bruto.length > 8 * 1024 * 1024)
+      return json(res, 400, { error: "Imagem muito grande — o limite é 8 MB." });
+
+    const r = await IMG.tratarAvatar(bruto, "." + m[1].replace("jpeg", "jpg"));
+    if (!r.buffer) return json(res, 400, { error: "Não consegui ler essa imagem." });
+
+    const arquivo = `perfil-${alvo}-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}${r.ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, arquivo), r.buffer);
+    const caminho = `/restrito/arquivos/${arquivo}`;
+
+    /* A FOTO ANTIGA É APAGADA DO DISCO. Sem isso, cada troca deixaria um
+       arquivo órfão para sempre — e num sistema de clínica, arquivo órfão com
+       rosto de gente é o tipo de resto que ninguém sabe explicar numa
+       auditoria de LGPD. */
+    const antes = await Q.get("SELECT foto FROM g_usuarios WHERE id=?", alvo);
+    await Q.run("UPDATE g_usuarios SET foto=? WHERE id=?", caminho, alvo);
+    apagarFotoAntiga(antes && antes.foto, caminho);
+
+    equipeMudou("foto de usuário");
+    return json(res, 200, { ok: true, foto: caminho, tratada: r.tratada, motivo: r.motivo });
+  }
+
+  if (fotoM && req.method === "DELETE") {
+    const alvo = Number(fotoM[1]);
+    if (s.perfil !== "admin" && alvo !== Number(s.userId))
+      return json(res, 403, { error: "Você só pode remover a própria foto." });
+    const antes = await Q.get("SELECT foto FROM g_usuarios WHERE id=?", alvo);
+    await Q.run("UPDATE g_usuarios SET foto='' WHERE id=?", alvo);
+    apagarFotoAntiga(antes && antes.foto, null);
+    equipeMudou("foto removida");
+    return json(res, 200, { ok: true });
+  }
+
   // upload de arquivo/foto (fica no diretório privado do /restrito)
   if (p === "upload" && req.method === "POST") {
     const { name, dataUrl } = await readBody(req);
@@ -2410,8 +2520,8 @@ async function rotaApi(req, res, p) {
     const idm = p.match(/^usuarios\/(\d+)$/);
     const id = idm ? idm[1] : null;
     // nunca devolvemos o hash da senha
-    if (req.method === "GET" && !id) return json(res, 200, await Q.all("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios ORDER BY id"));
-    if (req.method === "GET" && id) return json(res, 200, await Q.get("SELECT id,nome,email,perfil,ativo,profissional_id FROM g_usuarios WHERE id=?", id) || {});
+    if (req.method === "GET" && !id) return json(res, 200, await Q.all("SELECT id,nome,email,perfil,ativo,profissional_id,foto FROM g_usuarios ORDER BY id"));
+    if (req.method === "GET" && id) return json(res, 200, await Q.get("SELECT id,nome,email,perfil,ativo,profissional_id,foto FROM g_usuarios WHERE id=?", id) || {});
     if (req.method === "POST" && !id) {
       const b = await readBody(req);
       const nome = String(b.nome || "").trim(), email = String(b.email || "").trim(), perfil = String(b.perfil || "secretaria").trim();
@@ -2440,6 +2550,17 @@ async function rotaApi(req, res, p) {
       if (b.perfil !== undefined) { if (!PERFIS.includes(b.perfil)) return json(res, 400, { error: "Perfil inválido." }); sets.push("perfil=?"); args.push(b.perfil); }
       if (b.ativo !== undefined) { sets.push("ativo=?"); args.push(Number(b.ativo) ? 1 : 0); }
       if (b.profissional_id !== undefined) { sets.push("profissional_id=?"); args.push(b.profissional_id ? Number(b.profissional_id) : null); }
+      /* A FOTO SÓ ACEITA CAMINHO DE ARQUIVO NOSSO.
+         O valor chega da tela depois do upload, mas o corpo da requisição é
+         escrito pelo cliente: sem esta trava, alguém gravaria `https://…` de
+         terceiro e o chat da equipe passaria a delatar, a cada abertura, quem
+         está online para o dono daquele servidor. Vazio limpa a foto. */
+      if (b.foto !== undefined) {
+        const f = String(b.foto || "").trim();
+        if (f && !/^\/restrito\/arquivos\/[A-Za-z0-9._-]+$/.test(f))
+          return json(res, 400, { error: "Foto inválida — envie pelo próprio formulário." });
+        sets.push("foto=?"); args.push(f);
+      }
       if (b.senha) { if (String(b.senha).length < 8) return json(res, 400, { error: "A senha precisa de ao menos 8 caracteres." }); sets.push("senha_hash=?"); args.push(hashSenha(b.senha)); }
       if (sets.length) {
         try { await Q.run(`UPDATE g_usuarios SET ${sets.join(",")} WHERE id=?`, ...args, id); }
@@ -2452,7 +2573,11 @@ async function rotaApi(req, res, p) {
       if (Number(id) === s.userId) return json(res, 400, { error: "Você não pode excluir o próprio usuário." });
       const alvo = await Q.get("SELECT perfil,ativo FROM g_usuarios WHERE id=?", id);
       if (alvo && alvo.perfil === "admin" && alvo.ativo && await adminsAtivos() <= 1) return json(res, 400, { error: "Não é possível excluir o único administrador." });
+      /* A foto sai do disco junto. Excluir o usuário e deixar o rosto dele na
+         pasta é o mesmo resto órfão que a troca de foto já evita. */
+      const comFoto = await Q.get("SELECT foto FROM g_usuarios WHERE id=?", id);
       await Q.run("DELETE FROM g_usuarios WHERE id=?", id);
+      apagarFotoAntiga(comFoto && comFoto.foto, null);
       equipeMudou("usuário excluído");
       return json(res, 200, { ok: true });
     }

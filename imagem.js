@@ -78,4 +78,53 @@ async function tratarUpload(buffer, extOriginal) {
   }
 }
 
-module.exports = { tratarUpload, disponivel, MAX_LADO };
+/* ==========================================================================
+   A FOTO DE PERFIL — outra regra, e por isso outra função
+
+   A foto do usuário não é a foto do site. Ela é exibida SEMPRE em círculo e
+   SEMPRE pequena: 36px na lista de pessoas do chat, 40px no cabeçalho da
+   conversa, 72px no cartão do perfil. Passar por `tratarUpload` deixaria um
+   WEBP de 2000px para ser encolhido pelo navegador em cada uma dessas telas —
+   centenas de kB baixados e redimensionados para caber num disquinho.
+
+   Três decisões que vêm do formato circular:
+
+   1. `fit: "cover"` com recorte QUADRADO. Uma foto 3:4 dentro de um círculo
+      precisa ser cortada de qualquer jeito — a diferença é quem corta. Aqui,
+      onde dá para escolher o que fica; no CSS, sempre pelo centro geométrico,
+      que em retrato costuma cortar o queixo.
+
+   2. `position: "attention"` (não "center"). O sharp procura a região de maior
+      entropia — em retrato, quase sempre o rosto. Centralizar cegamente numa
+      foto de corpo inteiro devolveria um círculo de camisa.
+
+   3. 256px. É o dobro do maior uso (72px em tela de 2×), o que cobre telas de
+      alta densidade sem guardar imagem que ninguém vê inteira.
+
+   A rotação pelo EXIF e o descarte de metadado continuam valendo pelo mesmo
+   motivo de sempre: foto de celular vem deitada e com GPS dentro.
+   ========================================================================== */
+const LADO_AVATAR = 256;
+
+async function tratarAvatar(buffer, extOriginal) {
+  if (!disponivel()) return { buffer, ext: extOriginal, tratada: false, motivo: "sharp ausente" };
+  try {
+    const saida = await sharp(buffer)
+      .rotate()
+      .resize(LADO_AVATAR, LADO_AVATAR, {
+        fit: "cover", position: "attention", withoutEnlargement: false,
+      })
+      .webp({ quality: 84 })
+      .toBuffer();
+    return {
+      buffer: saida, ext: ".webp", tratada: true,
+      motivo: `${Math.round(buffer.length / 1024)}kB → ${Math.round(saida.length / 1024)}kB`,
+    };
+  } catch (e) {
+    /* Sem foto tratada NÃO gravamos a original: um avatar é sempre uma imagem
+       enviada por gente, e o que o sharp não lê aqui é arquivo disfarçado. */
+    return { buffer: null, ext: null, tratada: false, motivo: `imagem ilegível: ${e.message}` };
+  }
+}
+
+module.exports = { tratarUpload, tratarAvatar, disponivel, MAX_LADO, LADO_AVATAR };

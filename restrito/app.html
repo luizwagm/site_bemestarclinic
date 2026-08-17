@@ -564,6 +564,22 @@
     .filtro-data .pd-info{color:var(--dim);font-size:.8rem}
     .erros{background:#fdecef;color:#a3243f;border-radius:9px;padding:.6rem .8rem;font-size:.85rem;margin-top:.8rem}
     .foto-prev{width:84px;height:84px;object-fit:cover;border-radius:12px;border:1px solid var(--line);background:#f0f3f8}
+    /* ------------------------------------------------- foto de perfil ----
+       A prévia é REDONDA e do tamanho do cartão de perfil do chat (72px). É a
+       moldura de verdade: com prévia quadrada, uma foto escolhida aqui pode
+       chegar lá com o queixo cortado e ninguém entende por quê. */
+    .avatar-campo{display:flex;gap:1rem;align-items:flex-start}
+    .avatar-prev{width:72px;height:72px;border-radius:50%;overflow:hidden;flex:none;
+      background:var(--bg2);border:1px solid var(--line);display:grid;place-items:center}
+    .avatar-prev img{width:100%;height:100%;object-fit:cover;display:block}
+    .avatar-vazio{font-size:.62rem;color:var(--dim);text-align:center;line-height:1.2}
+    .avatar-acoes{display:flex;flex-direction:column;align-items:flex-start;gap:.4rem}
+    /* Retrato de 30px na lista de usuários. Sem foto, um disco neutro — o
+       mesmo lugar ocupado, para a coluna não dançar de linha em linha. */
+    .av-mini{width:30px;height:30px;border-radius:50%;object-fit:cover;display:block;
+      border:1px solid var(--line)}
+    .av-mini--vazio{background:var(--bg2)}
+
     .fotos-lista{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.5rem}
     .fotos-lista figure{position:relative}
     .fotos-lista img{width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
@@ -1225,8 +1241,12 @@ const MODULOS = {
       ["arquivo","Arquivo (foto/PDF)","arquivo",{full:1}],
     ]},
   usuarios: { titulo:"Usuários do Sistema", novo:"Novo usuário",
-    colunas:[["nome","Nome"],["email","Login"],["perfil","Perfil","perfil"],["ativo","Ativo","bool"]],
+    colunas:[["foto","",'avatarmini'],["nome","Nome"],["email","Login"],["perfil","Perfil","perfil"],["ativo","Ativo","bool"]],
     campos:[
+      /* A foto vem PRIMEIRO no formulário: é o que identifica a pessoa, e quem
+         abre a ficha para trocar a foto não deveria passar por senha e perfil
+         antes de chegar nela. */
+      ["foto","Foto de perfil","avatar",{full:1}],
       ["nome","Nome completo","text",{req:1}],
       ["email","Usuário / login","text",{req:1}],
       ["senha","Senha (mín. 8 — em branco mantém a atual)","password"],
@@ -2128,6 +2148,12 @@ function celula(row,[chave,,tipo]){
   if(tipo==="servicos"){ let a=[]; try{a=JSON.parse(v||"[]");}catch{a=v?[v]:[];} return a.length?a.map(escA).join(", "):"—"; }
   if(tipo==="perfil") return escA(PERFIL_ROTULO[v]||v||"—");
   if(tipo==="arq") return v?`<a class="arq-link" href="${escA(v)}" target="_blank">abrir</a>`:"—";
+  /* Retrato de 30px na lista. Sem foto NÃO fica um buraco: a inicial num
+     círculo é o mesmo desenho que o chat usa, então a lista e o chat mostram
+     a mesma pessoa do mesmo jeito. */
+  if(tipo==="avatarmini") return v
+    ? `<img class="av-mini" src="${escA(v)}" alt="">`
+    : `<span class="av-mini av-mini--vazio"></span>`;
   return escA(v||"—");
 }
 async function carregarLista(){
@@ -2587,6 +2613,30 @@ function campoHTML(campo, val){
   else if(tipo==="arquivo") ctrl=`<div style="display:flex;gap:.8rem;align-items:center">
       <button type="button" class="btn btn-ghost btn-sm" onclick="subirArquivo('${id}')">Enviar arquivo</button>
       <span id="${id}-nome" class="arq-link">${val?`<a href="${escA(val)}" target="_blank">arquivo enviado</a>`:""}</span>
+      <input type="hidden" id="${id}" value="${escA(val||"")}"></div>`;
+  /* ==========================================================================
+     AVATAR — prévia REDONDA, do tamanho em que a foto vai ser usada
+
+     Um campo de foto com prévia quadrada e grande mente sobre o resultado: no
+     chat ela aparece num círculo de 36 a 72px, e um retrato bonito em 300×400
+     pode virar um círculo de queixo cortado. Mostrar aqui exatamente a moldura
+     de lá é o que permite escolher a foto certa na primeira tentativa.
+
+     O recorte é do SERVIDOR (sharp, `position:"attention"`, que procura o
+     rosto) — a prévia só confirma o que ele decidiu.
+     ========================================================================== */
+  else if(tipo==="avatar") ctrl=`<div class="avatar-campo">
+      <span class="avatar-prev" id="${id}-prev">${val
+        ? `<img src="${escA(val)}" alt="">`
+        : `<span class="avatar-vazio">sem foto</span>`}</span>
+      <span class="avatar-acoes">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="subirAvatar('${id}')">
+          ${val?"Trocar foto":"Enviar foto"}</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="${id}-limpar"
+          onclick="limparAvatar('${id}')"${val?"":' style="display:none"'}>Remover</button>
+        <span class="hint" style="display:block;color:var(--dim);font-size:.72rem;margin-top:.35rem">
+          JPG, PNG ou WEBP. A foto é recortada em círculo e aparece no chat da equipe.</span>
+      </span>
       <input type="hidden" id="${id}" value="${escA(val||"")}"></div>`;
   else if(tipo==="fotos"){
     const arr=(()=>{ try{return JSON.parse(val||"[]");}catch{return [];} })();
@@ -4445,6 +4495,62 @@ async function subirFoto(id){ const f=await escolherArquivo("image/*"); if(!f) r
 async function subirArquivo(id){ const f=await escolherArquivo("image/*,application/pdf"); if(!f) return;
   try{ const up=await enviar(f); $("#"+id).value=up.path; $("#"+id+"-nome").innerHTML=`<a href="${up.path}" target="_blank">${escA(f.name)}</a>`; toast("Arquivo enviado."); }
   catch(e){ toast(e.message,true); } }
+/* ==========================================================================
+   A FOTO DE PERFIL
+
+   Vai por uma rota PRÓPRIA (`usuarios/<id>/foto`) e não pelo `/upload`
+   genérico, porque o servidor precisa RECORTAR em 256×256 — o anexo do
+   prontuário, que usa a outra rota, tem de chegar inteiro.
+
+   E ela é gravada NA HORA, sem esperar o Salvar do formulário. Duas razões:
+
+     · o servidor devolve o caminho já processado, e a prévia mostra o recorte
+       de verdade — não a imagem original, que enganaria;
+     · quem só quer trocar a própria foto não precisa reenviar senha, perfil e
+       vínculo junto.
+
+   O campo escondido continua guardando o caminho para o Salvar do formulário,
+   que revalida — a foto ficaria certa mesmo se alguém salvasse sem passar por
+   aqui.
+   ========================================================================== */
+async function subirAvatar(id){
+  /* Só faz sentido com o cadastro já criado: sem id, não há a quem pertencer.
+     `FORM_ID` é o mesmo mecanismo do atalho de anamnese no agendamento. */
+  if(!FORM_ID){ toast("Salve o usuário primeiro; depois envie a foto.",true); return; }
+  const f=await escolherArquivo("image/png,image/jpeg,image/webp"); if(!f) return;
+  try{
+    const dataUrl=await lerComoDataUrl(f);
+    const r=await api(`usuarios/${FORM_ID}/foto`,"POST",{dataUrl});
+    $("#"+id).value=r.foto;
+    /* `?v=` para o navegador não servir a foto ANTERIOR do cache: o nome muda
+       a cada envio, mas a prévia de um mesmo arquivo reenviado enganaria. */
+    $("#"+id+"-prev").innerHTML=`<img src="${escA(r.foto)}?v=${Date.now()}" alt="">`;
+    const b=$("#"+id+"-limpar"); if(b) b.style.display="";
+    toast("Foto atualizada — já aparece no chat.");
+  }catch(e){ toast(e.message,true); }
+}
+
+async function limparAvatar(id){
+  if(!FORM_ID) return;
+  if(!confirm("Remover a foto deste usuário?")) return;
+  try{
+    await api(`usuarios/${FORM_ID}/foto`,"DELETE");
+    $("#"+id).value="";
+    $("#"+id+"-prev").innerHTML='<span class="avatar-vazio">sem foto</span>';
+    const b=$("#"+id+"-limpar"); if(b) b.style.display="none";
+    toast("Foto removida.");
+  }catch(e){ toast(e.message,true); }
+}
+
+function lerComoDataUrl(arquivo){
+  return new Promise((ok,erro)=>{
+    const r=new FileReader();
+    r.onload=()=>ok(r.result);
+    r.onerror=()=>erro(new Error("Não consegui ler o arquivo."));
+    r.readAsDataURL(arquivo);
+  });
+}
+
 async function subirFotos(id){ const f=await escolherArquivo("image/*"); if(!f) return;
   try{ const up=await enviar(f); const inp=$("#"+id); const arr=JSON.parse(inp.value||"[]"); arr.push(up.path); inp.value=JSON.stringify(arr); desenharFotos(id); }
   catch(e){ toast(e.message,true); } }
