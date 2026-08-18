@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.35.0";
+const SISTEMA_VERSION = "1.36.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,11 @@ const SISTEMA_VERSION = "1.35.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.36.0", data: "2026-08-17", titulo: "Uma conversa por pessoa no chat", mudancas: [
+    "Remover e recriar o usuário de um profissional não parte mais a conversa em duas",
+    "O chat passou a reconhecer a pessoa pelo profissional, e não pela conta de acesso",
+    "As conversas que já tinham se partido são juntadas por ferramenta, com relatório antes",
+  ] },
   { versao: "1.35.0", data: "2026-08-17", titulo: "Foto no cadastro e o aviso sonoro do chat", mudancas: [
     "O cadastro de usuário aceita foto de perfil, com prévia redonda",
     "A foto aparece no chat da equipe: na lista de pessoas e nas conversas",

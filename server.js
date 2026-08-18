@@ -145,6 +145,25 @@ const chat = conectorChat({
     if (!s || !s.userId) return null;
     return {
       id: s.userId,                 // id de g_usuarios: estável e único
+      /* QUEM A PESSOA É, e não que conta ela usa.
+
+         O id de `g_usuarios` é o da CONTA DE ACESSO, e conta é descartável: o
+         cliente removeu o usuário de um profissional, reativou a pessoa e criou
+         uma conta nova. Conta nova = pessoa nova no chat = conversa nova, e a
+         barra lateral passou a mostrar duas linhas com o mesmo nome — uma com o
+         histórico e outra vazia.
+
+         `profissional_id` sobrevive à troca de conta, então é ele a identidade.
+         Quem não é profissional (recepção, administração) não tem esse vínculo:
+         para essas pessoas a própria conta é a identidade, e recriar a conta
+         continua criando alguém novo — não há o que consultar para dizer o
+         contrário.
+
+         PRECISA SER A MESMA FÓRMULA DO ELENCO (procure por `identidade:` mais
+         abaixo). Se as duas divergirem, o elenco aponta a pessoa para um lado
+         e o login para outro — e o chat volta a duplicar exatamente quem esta
+         mudança veio consertar. */
+      identidade: s.profissionalId ? `prof-${s.profissionalId}` : `conta-${s.userId}`,
       nome: s.nome,
       /* O cargo aparece ao lado do nome na lista do chat. É o que distingue
          "Maria da recepção" de "Maria psicóloga" quando as duas conversam. */
@@ -2338,9 +2357,26 @@ async function sincronizarElencoDoChat(motivo = "boot") {
        conversas antigas continuam íntegras, com autor). Quem volta, volta.
        ==================================================================== */
     const equipe = await Q.all(
-      `SELECT id, nome, email, perfil, foto FROM g_usuarios WHERE ativo = 1 ORDER BY nome`);
+      `SELECT id, nome, email, perfil, foto, profissional_id
+         FROM g_usuarios WHERE ativo = 1 ORDER BY nome`);
     const r = await chat.sincronizarElenco(equipe.map((u) => ({
       id: u.id,
+      /* ==================================================================
+         QUEM A PESSOA É, e não que conta ela está usando
+
+         O `id` acima é o da CONTA DE ACESSO, e conta é descartável: apagar o
+         usuário de um profissional e criar outro para a mesma pessoa produz
+         um id novo. Para o chat isso era gente nova — e o histórico aparecia
+         partido em DUAS conversas com o mesmo nome na barra lateral, uma com
+         as mensagens antigas e outra vazia. Aconteceu com o Dr. Luiz Augusto.
+
+         `profissional_id` sobrevive à troca de conta: é o cadastro da pessoa,
+         não o login dela. Quem não tem profissional vinculado (recepção,
+         administração) continua identificado pela própria conta, com o
+         prefixo para os dois espaços de nome não colidirem — sem ele, o
+         profissional 7 e o usuário 7 seriam a mesma pessoa no chat.
+         ================================================================== */
+      identidade: u.profissional_id ? `prof-${u.profissional_id}` : `conta-${u.id}`,
       nome: u.nome,
       /* O e-mail do login NÃO vai: nestes cadastros ele costuma ser um apelido
          ("admin", "qa_esc"), não um endereço — e no chat apareceria como
