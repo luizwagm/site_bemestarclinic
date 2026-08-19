@@ -6,6 +6,23 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.30.0 / restrito 1.37.0 — 2026-08-18 · o logotipo na página do paciente
+
+A página `/answer/<código>` abria com uma bolinha em degradê e o nome escrito
+em texto — um provisório que nunca tinha sido trocado. Agora ela abre com o
+**logotipo oficial do site**, o mesmo SVG do cabeçalho de todas as páginas.
+
+O detalhe que deu trabalho: o logotipo escreve "BemEstarClinic" com a fonte
+Questrial DENTRO do SVG, e a regra número um desta página é **nada de externo**
+— é um questionário de saúde, e buscar fonte no Google contaria a um terceiro
+que o paciente abriu o link. A fonte foi **embutida na própria página**
+(20,7 KB), e a CSP ganhou `font-src data:` — sem essa permissão o navegador
+recusava a fonte em silêncio e o nome saía descaracterizado.
+
+No mesmo pacote, do lado da gestão (1.37.0): o resultado do teste **perdeu o
+card de pontuação**, na tela e na impressão. A soma continua calculada pela
+API — a leitura dos rastreios é clínica, não numérica.
+
 ## 1.28.0 / restrito 1.34.0 — 2026-08-16 · o desafio é de um paciente só
 
 Correção de entendimento, e ela muda onde as coisas ficam.

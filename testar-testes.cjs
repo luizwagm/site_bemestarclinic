@@ -21,6 +21,7 @@
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
+const os = require("node:os");
 const { Q, carregarAmbiente } = require("./pg.js");
 const { cifrar } = require("./cripto.js");
 
@@ -83,8 +84,13 @@ async function subir() {
     throw new Error(`a porta ${PORTA} já está ocupada — feche o processo ou use PORTA_TESTE_RASTREIO=<outra>.`);
   } catch (e) { if (/já está ocupada/.test(e.message)) throw e; }
 
+/* LIMITES_ARQUIVO descartável: sem ele o servidor de teste compartilha o
+     balde de força bruta com o de desenvolvimento, e rodadas seguidas da
+     suíte acumulam falhas no 127.0.0.1 até a porta do /answer devolver 429 —
+     a suíte quebra sozinha, sem mudança nenhuma de código. */
   servidor = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: Object.assign({}, process.env, { PORT: String(PORTA), HOST: "127.0.0.1" }),
+    env: Object.assign({}, process.env, { PORT: String(PORTA), HOST: "127.0.0.1",
+      LIMITES_ARQUIVO: path.join(os.tmpdir(), "bem-limites-" + Date.now() + ".json") }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   servidor.stdout.on("data", (d) => { saida += d; });
@@ -139,7 +145,7 @@ const hojeMais = (dias) => {
        apontava para a suíte errada. */
     const portaCedo = PORTA + 100;
     const cedo = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-      env: Object.assign({}, process.env, { PORT: String(portaCedo), HOST: "127.0.0.1" }),
+      env: Object.assign({}, process.env, { PORT: String(portaCedo), HOST: "127.0.0.1" , LIMITES_ARQUIVO: path.join(os.tmpdir(), "bem-limites-cedo-" + Date.now() + ".json") }),
       stdio: ["ignore", "ignore", "ignore"],
     });
     const vistos = new Set();

@@ -5044,14 +5044,12 @@ async function verEnvio(id){
             i.valor!==null&&i.valor!==undefined?` <span class="env-v">(${i.valor})</span>`:""}</p>
         </div>`;
     }).join("");
-    corpo=`<div class="env-soma">
-        <div><span>Respondidas</span><b>${e.respondidas} de ${e.total_perguntas}</b></div>
-        ${e.soma_maxima?`<div><span>Soma bruta</span><b>${e.soma_bruta} de ${e.soma_maxima}</b></div>`:""}
-      </div>
-      <p class="hint" style="color:var(--dim);margin:.1rem 0 .9rem">
-        A soma é apenas aritmética, para comparar o mesmo teste ao longo do tratamento.
-        Nenhum destes questionários traz faixa de gravidade — a leitura é clínica.</p>
-      ${linhas}
+    /* SEM o card de pontuação, a pedido da clínica (18/08/2026). A soma
+       continua sendo CALCULADA e entregue pela API — só não é mostrada: um
+       número no topo do resultado convida a ler o teste como nota de prova,
+       e nenhum destes questionários tem faixa de gravidade. A leitura é
+       clínica. Se um dia voltar, é aqui que ele morava. */
+    corpo=`${linhas}
       ${e.blocos_terapeuta&&e.blocos_terapeuta.length?blocosDoTerapeuta(e):""}`;
   }
 
@@ -5280,8 +5278,6 @@ async function imprimirEnvio(id){
     <table class="d">
       <tr><th>Respondido em</th><td>${escA(dataHoraBR(e.concluido_em)||"—")}</td></tr>
       <tr><th>Respondidas</th><td>${e.respondidas} de ${e.total_perguntas}</td></tr>
-      ${e.soma_maxima?`<tr><th>Soma bruta</th><td>${e.soma_bruta} de ${e.soma_maxima}
-        <span style="color:#5a6172">— apenas aritmética; a leitura é clínica</span></td></tr>`:""}
     </table>
     <table class="qa">${linhas}${
       blocos?`<tr><td colspan="2" class="sec">Avaliação do terapeuta</td></tr>${blocos}`:""}</table>`;

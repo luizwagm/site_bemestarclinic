@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.29.0";
+const APP_VERSION = "1.30.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -2227,7 +2227,11 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
            que faz a política ser útil em vez de decorativa. */
         "Content-Security-Policy":
           "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; " +
-          "style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'",
+          /* `font-src data:` porque a Questrial do logotipo vem EMBUTIDA na
+             página (a regra "nada de externo" continua de pé). Sem esta
+             fonte-permissão o navegador recusa o data: em silêncio e o nome
+             no logotipo sai numa fonte qualquer. */
+          "style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; font-src data:",
       });
       return res.end(fs.readFileSync(arq));
     }
