@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.37.0";
+const SISTEMA_VERSION = "1.38.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,12 @@ const SISTEMA_VERSION = "1.37.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.38.0", data: "2026-08-20", titulo: "Novo desafio já vem no modelo padrão da clínica", mudancas: [
+    "A caixa do novo desafio abre preenchida: título DESAFIO DA SEMANA, mensagem de boas-vindas oficial e as perguntas 1-, 2-, 3- para completar",
+    "Tudo pode ser alterado — e colar um desafio escrito do zero continua funcionando como antes",
+    "As linhas numeradas com traço sob o cabeçalho DESAFIO viram perguntas mesmo sem interrogação",
+    "O título e a mensagem de boas-vindas escritos no texto já chegam preenchidos na tela de conferência",
+  ] },
   { versao: "1.37.0", data: "2026-08-18", titulo: "Resultado do teste sem o card de pontuação", mudancas: [
     "O resultado do teste deixou de mostrar o card com a soma dos pontos",
     "A soma também saiu da impressão — a leitura dos testes é clínica, não numérica",

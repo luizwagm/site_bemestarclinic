@@ -109,8 +109,9 @@ function limpar(linha) {
 
 /* "1. O que eu tinha planejado fazer?" → "O que eu tinha planejado fazer?"
    O número serve para eu reconhecer a lista de perguntas; no rótulo ele só
-   competiria com a numeração que a própria tela do paciente já põe. */
-const semNumero = (t) => t.replace(/^\(?\d{1,2}[.)°º]?\s+/, "").trim();
+   competiria com a numeração que a própria tela do paciente já põe.
+   O traço entrou por causa do modelo padrão da clínica ("1- pergunta"). */
+const semNumero = (t) => t.replace(/^\(?\d{1,2}(?:[.)°º]|\s*[-–])?\s+/, "").trim();
 
 const ehPergunta = (t) => /\?\s*$/.test(t);
 const temLacuna = (t) => /_{2,}/.test(t);
@@ -158,7 +159,11 @@ function classificar(texto) {
     const item = /^[*+-]\s+(.*)$/.exec(crua);
     if (item) { saida.push({ tipo: "item", texto: limpar(item[1]) }); continue; }
 
-    const numerado = /^\(?(\d{1,2})[.)]\s+(.*)$/.exec(crua);
+    /* Três separadores: "1." e "1)" (de sempre) e "1-" (o modelo padrão da
+       clínica escreve as perguntas assim). O traço EXIGE espaço depois — ou
+       fim de linha, que é a pergunta ainda por escrever — senão "10-15
+       minutos" viraria a pergunta número 10. */
+    const numerado = /^\(?(\d{1,2})(?:[.)]\s+|\s*[-–](?:\s+|$))(.*)$/.exec(crua);
     if (numerado) {
       saida.push({ tipo: "numerado", numero: Number(numerado[1]), texto: limpar(numerado[2]) });
       continue;
@@ -168,9 +173,17 @@ function classificar(texto) {
     if (!t) continue;
     /* Um `*1. pergunta?*` vira, depois da limpeza, "1. pergunta?" — que é
        numerado. Reconhecer aqui evita perder a numeração por causa do itálico. */
-    const numDepois = /^\(?(\d{1,2})[.)]\s+(.*)$/.exec(t);
+    const numDepois = /^\(?(\d{1,2})(?:[.)]\s+|\s*[-–](?:\s+|$))(.*)$/.exec(t);
     if (numDepois) {
       saida.push({ tipo: "numerado", numero: Number(numDepois[1]), texto: limpar(numDepois[2]) });
+      continue;
+    }
+    /* "DESAFIO:" — cabeçalho com dois-pontos, como o modelo padrão escreve.
+       Sem esta linha o dois-pontos derrubava o pareceTituloSolto e o
+       cabeçalho virava parágrafo comum. */
+    const semDois = t.replace(/\s*:\s*$/, "");
+    if (t.endsWith(":") && pareceTituloSolto(semDois)) {
+      saida.push({ tipo: "titulo-solto", texto: semDois });
       continue;
     }
     saida.push({ tipo: pareceTituloSolto(t) ? "titulo-solto" : "paragrafo", texto: t });
@@ -192,32 +205,60 @@ function classificar(texto) {
      avisos      → o que eu percebi que pode estar errado
    ========================================================================== */
 function interpretarDesafio(texto) {
-  const linhas = classificar(texto);
+  let linhas = classificar(texto);
   const avisos = [];
 
   if (!linhas.some((l) => l.tipo !== "vazio")) {
     return { erro: "O texto do desafio está vazio." };
   }
 
+  /* ====================================================================
+     O MODELO PADRÃO DA CLÍNICA (2026-08): o texto pode trazer duas linhas
+     com rótulo explícito —
+
+         Título: DESAFIO DA SEMANA
+         Descrição / Mensagem de boas-vindas: Olá seja bem-vindo (a)…
+
+     Quando existem, elas MANDAM: o título vira o nome do desafio e a
+     descrição vira a mensagem de boas-vindas (a tela pré-preenche o campo
+     com ela). As duas saem do corpo — são metadados, não conteúdo que o
+     paciente deva ler duas vezes.
+     ==================================================================== */
+  let tituloExplicito = "", boasVindas = "";
+  linhas = linhas.filter((l) => {
+    if (l.tipo !== "paragrafo" && l.tipo !== "titulo-solto") return true;
+    const mTit = /^t[íi]tulo\s*:\s*(.+)$/i.exec(l.texto);
+    if (mTit) { tituloExplicito = mTit[1].trim(); return false; }
+    const mBv = /^(?:descri[çc][ãa]o|mensagem\s+de\s+boas[-\s]?vindas)(?:\s*\/\s*(?:descri[çc][ãa]o|mensagem\s+de\s+boas[-\s]?vindas))?\s*:\s*(.+)$/i.exec(l.texto);
+    if (mBv) { boasVindas = mBv[1].trim(); return false; }
+    return true;
+  });
+
   /* ---------------------------------------------------------------- título */
   let i = 0;
-  while (i < linhas.length && linhas[i].tipo === "vazio") i++;
-  const primeira = linhas[i];
   let titulo = "", subtitulo = "";
-  if (primeira && (primeira.tipo === "titulo" || primeira.tipo === "titulo-solto"
-    || primeira.tipo === "paragrafo")) {
-    titulo = primeira.texto; i++;
-  }
-  while (i < linhas.length && linhas[i].tipo === "vazio") i++;
-  /* Uma SEGUNDA linha de cabeçalho logo abaixo é o assunto do desafio
-     ("TDAH — observar o que acontece antes de deixar para depois"), e é ela
-     que identifica este desafio entre outros vinte com o mesmo cabeçalho
-     genérico "DESAFIO TERAPÊUTICO DA SEMANA". */
-  if (linhas[i] && (linhas[i].tipo === "titulo" || linhas[i].tipo === "titulo-solto")) {
-    subtitulo = linhas[i].texto; i++;
+  /* Com "Título:" explícito, NADA do corpo vira título do documento — senão o
+     cabeçalho "DESAFIO:" do modelo padrão era engolido como título e as
+     perguntas numeradas, sem seção, caíam na abertura como texto corrido. */
+  if (!tituloExplicito) {
+    while (i < linhas.length && linhas[i].tipo === "vazio") i++;
+    const primeira = linhas[i];
+    if (primeira && (primeira.tipo === "titulo" || primeira.tipo === "titulo-solto"
+      || primeira.tipo === "paragrafo")) {
+      titulo = primeira.texto; i++;
+    }
+    while (i < linhas.length && linhas[i].tipo === "vazio") i++;
+    /* Uma SEGUNDA linha de cabeçalho logo abaixo é o assunto do desafio
+       ("TDAH — observar o que acontece antes de deixar para depois"), e é ela
+       que identifica este desafio entre outros vinte com o mesmo cabeçalho
+       genérico "DESAFIO TERAPÊUTICO DA SEMANA". */
+    if (linhas[i] && (linhas[i].tipo === "titulo" || linhas[i].tipo === "titulo-solto")) {
+      subtitulo = linhas[i].texto; i++;
+    }
   }
 
-  const nome = subtitulo || titulo || "Desafio";
+  /* O "Título:" explícito vence tudo: quem o escreveu escolheu esse nome. */
+  const nome = tituloExplicito || subtitulo || titulo || "Desafio";
 
   /* ------------------------------------------------- abertura e as seções */
   const roteiro = [];
@@ -281,6 +322,10 @@ function interpretarDesafio(texto) {
         pedeRegistro: pedeRegistro(l.texto),
         tituloPede: pedeRegistro(l.texto),
         frasePedido: "",
+        /* Sob o cabeçalho "DESAFIO" (o modelo padrão), CADA linha numerada é
+           uma pergunta — mesmo sem "?" no fim: "1- Caminhar 20 minutos" é
+           tarefa para o paciente responder, não orientação. */
+        ehDesafio: /^desafios?$/i.test(l.texto.trim()),
       };
       roteiro.push({ tipo: "secao", titulo: l.texto });
       continue;
@@ -313,8 +358,15 @@ function interpretarDesafio(texto) {
       continue;
     }
     if (l.tipo === "numerado") {
-      /* Numerado que não é pergunta nem lacuna é enumeração de orientação —
-         "1. Escolha uma tarefa" já virou seção; aqui sobra o texto corrido. */
+      /* Na seção DESAFIO do modelo padrão, numerado É pergunta (com ou sem
+         "?"). Linha só com o número ("1-") é pergunta ainda por escrever —
+         não vira campo vazio, e o aviso de "nenhuma pergunta" orienta. */
+      if (secaoAberta && secaoAberta.ehDesafio) {
+        if (t) criarCampo(semNumero(t));
+        continue;
+      }
+      /* Fora dela, numerado que não é pergunta nem lacuna é enumeração de
+         orientação — "1. Escolha uma tarefa" já virou seção; sobra o texto. */
       roteiro.push({ tipo: "paragrafo", texto: l.numero + ". " + t });
       continue;
     }
@@ -339,7 +391,10 @@ function interpretarDesafio(texto) {
     avisos.push(`Interpretei ${abertas.length} campos — é muita coisa para responder de uma vez. ` +
       "Confira se algum exemplo virou pergunta por engano.");
   }
-  if (!subtitulo && titulo && /^desafio/i.test(titulo)) {
+  /* Com "Título:" explícito o aviso de nome genérico fica quieto: o padrão da
+     clínica É "DESAFIO DA SEMANA", de propósito — repetir o aviso a cada
+     desafio viraria ruído que ensina a ignorar avisos. */
+  if (!tituloExplicito && !subtitulo && titulo && /^desafio/i.test(titulo)) {
     avisos.push("O título é genérico. Vale dar um nome que diga do que é o desafio, " +
       "para você o encontrar na lista daqui a um mês.");
   }
@@ -353,6 +408,9 @@ function interpretarDesafio(texto) {
     nome: nome.slice(0, 120),
     titulo,
     subtitulo,
+    /* A mensagem da linha "Descrição / Mensagem de boas-vindas:" — a tela a
+       usa para pré-preencher o campo de boas-vindas do envio. */
+    boasVindas: boasVindas.slice(0, 2000),
     instrucoes: aberturaTextos.join("\n").slice(0, 4000),
     roteiro,
     abertas,

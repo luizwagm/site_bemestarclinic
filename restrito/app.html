@@ -3293,6 +3293,23 @@ const fecharLancamento=()=>{ const h=$("#modal-host2"); if(h) h.innerHTML=""; };
    ========================================================================== */
 let DESAFIO_TEXTO = "", DESAFIO_LIDO = null, DESAFIO_PAC = 0, DESAFIO_PASTA = 0;
 
+/* O MODELO PADRÃO da clínica: a caixa já abre com ele preenchido. Título e
+   boas-vindas são os oficiais (a pessoa altera se quiser); as perguntas são
+   as linhas "1-", "2-", "3-" — é só escrever na frente de cada traço, e dá
+   para acrescentar "4-", "5-"… à vontade. */
+const DESAFIO_TEXTO_PADRAO =
+`Título: DESAFIO DA SEMANA
+
+Descrição / Mensagem de boas-vindas: Olá seja bem-vindo (a) ao seu desafio da semana. Responda com calma e dentro do prazo estabelecido. Importante é que não deixe de responder.
+
+DESAFIO:
+
+1-
+
+2-
+
+3- `;
+
 function abrirNovoDesafio(pacId, prontId){
   DESAFIO_LIDO = null;
   /* Só reinicia o texto ao abrir para OUTRO paciente. Voltar da visualização
@@ -3302,17 +3319,20 @@ function abrirNovoDesafio(pacId, prontId){
     DESAFIO_PAC = Number(pacId) || 0;
     DESAFIO_PASTA = Number(prontId) || 0;
   }
+  if (!DESAFIO_TEXTO.trim()) DESAFIO_TEXTO = DESAFIO_TEXTO_PADRAO;
   if (!DESAFIO_PAC) return toast("Abra o prontuário do paciente para criar um desafio.", true);
   const host=$("#modal-host2")||(()=>{const d=document.createElement("div");d.id="modal-host2";document.body.appendChild(d);return d;})();
   host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(900px,96vw)">
     <h2>Novo desafio</h2>
     <div class="modal-corpo">
       <p class="hint" style="color:var(--dim);margin:0 0 .6rem">
-        Cole aqui o texto do desafio, do jeito que você escreveu. O sistema vai
-        ler e montar o formulário — e mostrar como ele ficou antes de criar.
+        O modelo padrão já vem preenchido: escreva as perguntas na frente de
+        <b>1-</b>, <b>2-</b>, <b>3-</b> (acrescente 4-, 5-… se precisar).
+        Título e mensagem de boas-vindas podem ser alterados. Também dá para
+        apagar tudo e colar um desafio escrito do seu jeito — o sistema lê e
+        mostra como ficou antes de criar.
       </p>
-      <textarea id="df-texto" rows="16" style="width:100%;font-family:inherit;line-height:1.5"
-        placeholder="DESAFIO TERAPÊUTICO DA SEMANA&#10;&#10;TDAH — observar o que acontece antes de deixar para depois&#10;&#10;### 1. Escolha uma tarefa por dia&#10;…">${escA(DESAFIO_TEXTO)}</textarea>
+      <textarea id="df-texto" rows="16" style="width:100%;font-family:inherit;line-height:1.5">${escA(DESAFIO_TEXTO)}</textarea>
       <div id="df-erro"></div>
     </div>
     <div class="acoes">
@@ -3381,7 +3401,9 @@ function mostrarVisualizacaoDoDesafio(){
         </div>
         <div style="grid-column:1/-1">
           <label>Mensagem de boas-vindas (o paciente lê antes de começar)</label>
-          <textarea id="df-bv" rows="2" placeholder="Combinamos este desafio na sessão. Faça no seu ritmo."></textarea>
+          <!-- Pré-preenchida com a linha "Descrição / Mensagem de boas-vindas"
+               do texto — o padrão da clínica já chega pronto, e editável. -->
+          <textarea id="df-bv" rows="2" placeholder="Combinamos este desafio na sessão. Faça no seu ritmo.">${escA(r.boasVindas||"")}</textarea>
         </div>
       </div>
       <p class="hint" style="color:var(--dim);margin:.4rem 0 .8rem">
