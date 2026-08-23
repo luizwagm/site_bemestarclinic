@@ -6,6 +6,26 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.31.0 / restrito 1.39.0 — 2026-08-23 · reunião por vídeo no chat da equipe
+
+O chat da equipe passa a ter **chamada de vídeo e reunião** — recurso do
+módulo LA-Chat (0.13.0), ligado por instância com `CHAT_VIDEO=1`. A interface
+chega pelo mesmo cliente que o `/restrito` já carrega; do lado do site, duas
+coisas mudaram:
+
+- **Permissions-Policy por caminho.** O site mandava `camera=(), microphone=()`
+  em TODA resposta — e é a política da PÁGINA que decide se `getUserMedia` e a
+  partilha de tela podem rodar. Agora o `/restrito` libera câmera, microfone e
+  captura de tela para a própria origem; o site público e o `/admin` continuam
+  fechados, onde não há razão para pedir câmera.
+- **Conector 1.5.** O link curto de reunião (`bemestarclinic.com/call/<código>`)
+  passa a ser atendido pelo conector e levado para dentro do prefixo do chat;
+  sem isso o convite caía no 404 do site.
+
+A mídia vai de navegador a navegador (malha WebRTC, ponta a ponta — o servidor
+só repassa sinal). Para a chamada fechar em rede de empresa e 4G o serviço do
+chat precisa do relay TURN (`criar-relay.sh` no servidor, uma vez por máquina).
+
 ## 1.30.0 / restrito 1.37.0 — 2026-08-18 · o logotipo na página do paciente
 
 A página `/answer/<código>` abria com uma bolinha em degradê e o nome escrito

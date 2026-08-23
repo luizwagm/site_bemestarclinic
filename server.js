@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.30.0";
+const APP_VERSION = "1.31.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -1743,7 +1743,14 @@ const servidor = http.createServer(async (req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");        // barra MIME sniffing
   res.setHeader("X-Frame-Options", "SAMEORIGIN");            // impede clickjacking no painel
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
+  /* CÂMERA E MICROFONE SÓ NO /restrito — é onde o chat da equipe vive e onde
+     a reunião por vídeo acontece (getUserMedia e a partilha de tela obedecem à
+     política da PÁGINA, e a gaveta do chat mora na página do /restrito). No
+     site público e no /admin continuam fechados: ali não há razão para pedir
+     câmera, e uma política fechada é a que não precisa de explicação. */
+  res.setHeader("Permissions-Policy", p.startsWith("/restrito")
+    ? "camera=(self), microphone=(self), display-capture=(self), geolocation=(), interest-cohort=()"
+    : "camera=(), microphone=(), geolocation=(), interest-cohort=()");
   /* HSTS — obriga o navegador a só voltar por HTTPS, fechando a janela de
      downgrade (o visitante que digita "bemestarclinic.com" e trafega o cookie
      de sessão em claro antes do redirect). Só sob HTTPS: emitir em HTTP puro
