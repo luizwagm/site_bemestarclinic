@@ -119,6 +119,29 @@ const conectorChat = require("./lachat");
 const CARGO_POR_PERFIL = {
   admin: "Administração", secretaria: "Recepção", profissional: "Profissional de saúde",
 };
+
+/* ==========================================================================
+   QUEM PODE CRIAR REUNIÃO POR LINK
+
+   O chat conhece dois papéis — `membro` e `admin` — e isso é deliberado lá:
+   um papel livre vindo daqui viraria escalonamento de privilégio no dia em que
+   este site tivesse um bug.
+
+   Só que os perfis desta clínica são três, e a decisão é nossa: administração e
+   profissional de saúde criam link de reunião; a recepção, não. Criar um link é
+   abrir uma porta que responde a quem não tem credencial nenhuma, com a banda e
+   o nome da clínica atrás dela.
+
+   Por isso o chat expõe uma CAPACIDADE, e não um papel: aqui se responde uma
+   pergunta de sim ou não, e o pior que um defeito nosso consegue é deixar
+   alguém criar um link.
+
+   UMA REGRA SÓ, com nome, usada no login E no elenco. Duplicada, as duas
+   divergiriam no dia em que um perfil novo aparecesse — e a divergência
+   apareceria como "às vezes o botão some", que é o pior tipo de defeito.
+   ========================================================================== */
+const PERFIS_COM_REUNIAO = new Set(["admin", "profissional"]);
+const podeCriarReuniao = (perfil) => PERFIS_COM_REUNIAO.has(String(perfil || ""));
 const chat = conectorChat({
   url: process.env.CHAT_URL || "http://127.0.0.1:5197",
   segredo: process.env.CHAT_SEGREDO_PASSE,
@@ -169,6 +192,7 @@ const chat = conectorChat({
          "Maria da recepção" de "Maria psicóloga" quando as duas conversam. */
       cargo: CARGO_POR_PERFIL[s.perfil] || "Equipe",
       papel: s.perfil === "admin" ? "admin" : "membro",
+      podeSala: podeCriarReuniao(s.perfil),
     };
   },
 });
@@ -2394,6 +2418,10 @@ async function sincronizarElencoDoChat(motivo = "boot") {
          contato falso. O que identifica a pessoa ali é nome e cargo. */
       cargo: CARGO_POR_PERFIL[u.perfil] || "Equipe",
       papel: u.perfil === "admin" ? "admin" : "membro",
+      /* A mesma regra do login. Vai no elenco também para que perder o perfil
+         de profissional tire o botão na próxima sincronização, sem depender de
+         a pessoa entrar de novo. */
+      podeSala: podeCriarReuniao(u.perfil),
       /* ================================================================
          A FOTO VAI COMO CAMINHO RELATIVO, e é isso que a faz funcionar.
 
