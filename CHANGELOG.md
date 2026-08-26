@@ -6,6 +6,30 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.32.0 — 2026-08-24 · o Feed aceita vídeo
+
+A matéria do Feed pode ter **foto ou vídeo** na capa. O painel ganhou o botão
+"Enviar vídeo" ao lado do "Enviar foto" (MP4/WEBM, até 120 MB, com barra de
+progresso), e o resto o publish resolve sozinho pela extensão do arquivo.
+
+- **Na lista do Feed**, matéria em vídeo mostra uma **capa genérica** —
+  `assets/img/capa-video.svg`, na identidade da clínica — com o selo "▶ vídeo".
+  Um `<video>` por card faria o navegador baixar metadados de todos ao mesmo
+  tempo; o card é só a porta de entrada.
+- **Dentro da matéria**, no lugar exato onde ficaria a foto, entra o player
+  com controles e `preload="metadata"`: baixa só o cabeçalho, para quem abriu
+  a matéria a fim de ler o texto não puxar o vídeo inteiro sem querer.
+- **O compartilhamento continua com imagem**: rede social nenhuma aceita `.mp4`
+  como `og:image`, então a capa genérica é o que sai no WhatsApp e no JSON-LD.
+- **O vídeo sobe em binário e é gravado em fluxo** (memória constante), em
+  pasta própria `assets/video/` — a rota de foto guarda o corpo inteiro na
+  memória, e um vídeo de 80 MB viraria ~107 MB de texto no processo. O teto é
+  conferido contando os bytes que chegam, não pelo `content-length`, que é
+  escrito por quem envia.
+- **`assets/video/` entrou no `.gitignore` e no cofre do `deploy.sh`**, como as
+  fotos: é conteúdo do cliente, não código — sem isso o primeiro deploy
+  apagaria os vídeos enviados pelo painel.
+
 ## 1.31.0 / restrito 1.39.0 — 2026-08-23 · reunião por vídeo no chat da equipe
 
 O chat da equipe passa a ter **chamada de vídeo e reunião** — recurso do

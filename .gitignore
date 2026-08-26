@@ -14,6 +14,9 @@
 
 # Imagens enviadas pelo painel em produção — pertencem ao servidor, não ao repo.
 assets/img/uploads/
+# Videos das materias do Feed: arquivos de dezenas de MB, enviados pelo
+# painel. Mesmo motivo das fotos - conteudo do cliente, nao codigo.
+assets/video/
 
 # Anexos de prontuário e documentos enviados no /restrito.
 # São dado pessoal SENSÍVEL de paciente (LGPD): não podem entrar no repositório

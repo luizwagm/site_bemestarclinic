@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.31.0";
+const APP_VERSION = "1.32.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -198,8 +198,26 @@ const chat = conectorChat({
 });
 
 const UPLOAD_DIR = path.join(ROOT, "assets", "img", "uploads");
+/* ==========================================================================
+   VÍDEO NO FEED (2026-08)
+
+   A matéria pode ter FOTO ou VÍDEO na capa. O vídeo vai para uma pasta
+   própria (`assets/video/`), e não para a de imagens: são arquivos de dezenas
+   de MB, e misturá-los com as fotos faria o backup e a limpeza tratarem coisas
+   de tamanho muito diferente do mesmo jeito.
+
+   Na LISTA do Feed a capa é uma imagem genérica dizendo que é vídeo — um
+   `<video>` por card faria o navegador abrir várias conexões e baixar
+   metadados de todos ao mesmo tempo, e o card virou só uma porta de entrada.
+   O vídeo em si toca DENTRO da matéria.
+   ========================================================================== */
+const VIDEO_DIR = path.join(ROOT, "assets", "video");
+const VIDEO_MAX = Number(process.env.VIDEO_MAX_MB || 120) * 1024 * 1024;
+const CAPA_VIDEO = "/assets/img/capa-video.svg";
+const ehVideo = (u) => /\.(mp4|webm|ogv)(\?|#|$)/i.test(String(u || ""));
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(VIDEO_DIR, { recursive: true });
 
 const db = abrirBanco(path.join(ROOT, "data", "site.db"));
 db.exec(`
@@ -1024,7 +1042,7 @@ function publish() {
   const nivelH = (n) => (n === 2 ? 2 : 3);
 
   const postCard = (p, nv) => `<article class="post-card" data-reveal>
-            <a class="post-card__media" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true"><img src="${esc(p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            <a class="post-card__media${ehVideo(p.image) ? " post-card__media--video" : ""}" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true"><img src="${esc(ehVideo(p.image) ? CAPA_VIDEO : p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
             <div class="post-card__body">
               <time class="post-card__date" datetime="${esc(p.date)}">${dateBR(p.date)}</time>
               <h${nivelH(nv)} class="post-card__title"><a href="/blog/${esc(p.slug)}/">${esc(p.title)}</a></h${nivelH(nv)}>
@@ -1406,7 +1424,11 @@ function publish() {
        "/assets/img/uploads/…", e URL relativa dentro do JSON-LD é inválida — o
        validador descarta o bloco inteiro e o post fica sem schema nenhum.
        Foto do Unsplash já vem com http e passa direto. */
-    const imgAbs = capaAbs(po.image);
+    /* O compartilhamento (og:image, JSON-LD) precisa de IMAGEM: rede social
+       nenhuma aceita um .mp4 no lugar da capa. Matéria em vídeo entrega a
+       capa genérica, que é o que aparece no card também. */
+    const capa = ehVideo(po.image) ? CAPA_VIDEO : po.image;
+    const imgAbs = capaAbs(capa);
     const pj = { "@context": "https://schema.org", "@type": "BlogPosting",
       headline: po.title, description: po.excerpt, image: imgAbs, datePublished: po.date, inLanguage: "pt-BR",
       author: { "@type": "Organization", name: "BemEstarClinic", url: `${SITE}/` },
@@ -1419,6 +1441,12 @@ function publish() {
         .replaceAll("{{SLUG}}", esc(po.slug)).replaceAll("{{IMAGE_ABS}}", esc(imgAbs)).replaceAll("{{IMAGE}}", esc(po.image))
         .replaceAll("{{IMAGE_DIMS}}", dimsPost)
         .replaceAll("{{COVER_CLASS}}", dimsPost ? "" : " post__cover--reserva")
+        /* `preload="metadata"`: baixa só o cabeçalho para saber a duração e a
+           proporção. Com "auto", abrir a matéria começaria a puxar o vídeo
+           inteiro de quem só queria ler o texto. */
+        .replaceAll("{{COVER}}", ehVideo(po.image)
+          ? `<figure class="post__cover post__cover--video"><video src="${esc(po.image)}" controls preload="metadata" playsinline poster="${esc(CAPA_VIDEO)}"></video></figure>`
+          : `<figure class="post__cover${dimsPost ? "" : " post__cover--reserva"}"><img src="${esc(po.image)}" alt="${esc(po.title)}"${dimsPost} fetchpriority="high" decoding="async"></figure>`)
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
         .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(pj, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
@@ -1505,7 +1533,8 @@ function publish() {
 /* ------------------------------ HTTP util --------------------------------- */
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".json": "application/json",
   ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
-  ".webmanifest": "application/manifest+json", ".xml": "application/xml", ".txt": "text/plain" };
+  ".webmanifest": "application/manifest+json", ".xml": "application/xml", ".txt": "text/plain",
+  ".mp4": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg" };
 const json = (res, code, obj) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" }); res.end(JSON.stringify(obj)); };
 const readBody = (req) => new Promise((ok, bad) => {
   let d = "", n = 0;
@@ -2177,6 +2206,59 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
           return json(res, 200, { ok: true });
         }
       }
+      /* ====================================================================
+         O VÍDEO SOBE EM BINÁRIO, não em base64 dentro de JSON.
+
+         A rota de foto recebe `dataUrl` e guarda o corpo inteiro na memória:
+         um vídeo de 80 MB viraria ~107 MB de texto no processo. Aqui o arquivo
+         chega cru e é gravado em FLUXO — memória constante, do primeiro ao
+         último byte.
+
+         O teto é conferido contando os bytes que CHEGAM, e não pelo
+         `content-length`: aquele cabeçalho é escrito por quem envia.
+         ==================================================================== */
+      if (p === "/api/upload-video" && req.method === "POST") {
+        const tipos = { "video/mp4": ".mp4", "video/webm": ".webm", "video/ogg": ".ogv", "video/quicktime": ".mp4" };
+        const ext = tipos[String(req.headers["content-type"] || "").split(";")[0].trim()];
+        if (!ext) return json(res, 400, { error: "Formato não aceito. Envie MP4 ou WEBM." });
+
+        const declarado = Number(req.headers["content-length"] || 0);
+        if (declarado > VIDEO_MAX)
+          return json(res, 413, { error: `O vídeo tem ${Math.round(declarado / 1048576)} MB. O limite é ${Math.round(VIDEO_MAX / 1048576)} MB — para vídeos maiores, suba no YouTube e cole o link.` });
+
+        const bruto = decodeURIComponent(String(req.headers["x-nome-arquivo"] || "video"));
+        const base = slug(path.parse(bruto).name).slice(0, 40) || "video";
+        const arquivo = `${Date.now().toString(36)}-${base}${ext}`;
+        const destino = path.join(VIDEO_DIR, arquivo);
+
+        try {
+          await new Promise((pronto, falhou) => {
+            const saida = fs.createWriteStream(destino);
+            let bytes = 0, abortou = false;
+            req.on("data", (c) => {
+              bytes += c.length;
+              if (bytes > VIDEO_MAX && !abortou) {
+                abortou = true;
+                saida.destroy(); req.destroy();
+                try { fs.unlinkSync(destino); } catch {}
+                falhou(new Error("vídeo acima do limite"));
+              }
+            });
+            req.on("error", falhou);
+            saida.on("error", falhou);
+            saida.on("finish", () => { if (!abortou) pronto(); });
+            req.pipe(saida);
+          });
+        } catch (e) {
+          if (!res.headersSent) return json(res, 413, { error: `Vídeo acima do limite de ${Math.round(VIDEO_MAX / 1048576)} MB.` });
+          return;
+        }
+
+        const kb = Math.round(fs.statSync(destino).size / 1024);
+        console.log(`  · vídeo recebido: ${arquivo} (${kb} KB)`);
+        return json(res, 200, { ok: true, path: `/assets/video/${arquivo}`, bytes: kb * 1024 });
+      }
+
       if (p === "/api/upload" && req.method === "POST") {
         const { name, dataUrl } = await readBody(req);
         /* SVG fica de fora: é XML, aceita <script> dentro e seria servido da

@@ -544,6 +544,17 @@ p { margin: 0 0 1rem; }
 .post-card__media { display: block; overflow: hidden; }
 .post-card__media img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; transition: transform .5s ease; }
 .post-card:hover .post-card__media img { transform: scale(1.05); }
+/* MATÉRIA EM VÍDEO — a capa da lista é a imagem genérica, e o selo de play
+   diz, antes do clique, que ali dentro tem vídeo. O selo é ::after do link
+   para não pedir marcação nova em cada card. */
+.post-card__media--video { position: relative; }
+.post-card__media--video::after {
+  content: "▶ vídeo";
+  position: absolute; left: .8rem; bottom: .8rem;
+  background: rgba(28, 22, 60, .82); color: #fff;
+  font-size: .74rem; font-weight: 600; letter-spacing: .04em;
+  padding: .22rem .6rem; border-radius: 999px; pointer-events: none;
+}
 .post-card__body { display: flex; flex-direction: column; flex: 1; padding: 1.2rem 1.3rem 1.4rem; }
 .post-card__date { font-size: .72rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); margin-bottom: .4rem; }
 .post-card__title { font-family: var(--font-display); font-weight: 600; font-size: 1.25rem; line-height: 1.25; margin-bottom: .5rem; }
@@ -582,6 +593,16 @@ p { margin: 0 0 1rem; }
   border-radius: var(--radius); box-shadow: var(--shadow-soft);
 }
 @media (max-width: 640px) { .post__cover img { max-height: 60vh; } }
+/* O vídeo da matéria ocupa a mesma caixa da foto de capa. `height:auto` e
+   NENHUM object-fit: o arquivo do cliente pode ser vertical (celular) ou
+   deitado, e cortar o vídeo para caber numa proporção fixa esconderia
+   justamente quem está falando. */
+.post__cover--video video {
+  width: 100%; height: auto; display: block;
+  border-radius: 18px; background: #1c163c;
+  aspect-ratio: auto 16 / 9;
+}
+@media (max-width: 640px) { .post__cover--video video { border-radius: 12px; } }
 /* Capa vinda de FORA (Unsplash): a publicação não consegue medir o arquivo, então
    não há width/height para o navegador reservar o espaço — e o texto salta quando
    a foto chega (CLS). Aqui a proporção é reservada pelo CSS. A capa NOSSA continua

@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.39.0";
+const SISTEMA_VERSION = "1.40.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,11 @@ const SISTEMA_VERSION = "1.39.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.40.0", data: "2026-08-24", titulo: "Arquivar saiu da tela (o recurso continua guardado)", mudancas: [
+    "Os botões de arquivar e restaurar saíram de pacientes, prontuários e lançamentos",
+    "O item Arquivados saiu do menu da conta",
+    "Nada foi removido do sistema — a clínica optou por não usar; religar é uma chave",
+  ] },
   { versao: "1.39.0", data: "2026-08-23", titulo: "Reunião por vídeo no chat da equipe", mudancas: [
     "O chat ganhou chamada de vídeo e reunião de equipe, de dentro da conversa",
     "O /restrito libera câmera, microfone e partilha de tela para o chat (o site público segue fechado)",

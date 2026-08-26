@@ -1387,6 +1387,16 @@ async function arquivarDaLista(tabela, id){
   if(await arquivarRegistro(tabela, id, false)) carregarLista();
 }
 
+/* ==========================================================================
+   ARQUIVAR FORA DA TELA — decisão do BemEstar (2026-08)
+
+   O motor continua inteiro: rotas, colunas, a tela de Arquivados e o filtro
+   `?arquivados=` seguem funcionando (e os outros projetos do parque usam).
+   O BemEstar optou por NÃO usar — então os botões, a caixa "mostrar
+   arquivados" e o item do menu somem atrás desta chave. Religar = true.
+   ========================================================================== */
+const ARQUIVO_NA_TELA = false;
+
 const PERM_CLIENTE = {
   admin: null,
   // recepção: cadastros, agenda e relatórios — sem prontuário nem anamnese
@@ -1825,6 +1835,9 @@ async function iniciarApp(me){
      aqui é conforto; quem barra de verdade é o /admin/entrar, que devolve 403
      para os outros perfis. O atalho do SITE continua visível para todos. */
   $("#ap-admin").hidden = !soAdmin;
+  /* Sem arquivar na tela, o menu Arquivados sai ANTES das permissões — o
+     esconde-seções conta os filhos visíveis e já se ajusta sozinho. */
+  if (!ARQUIVO_NA_TELA) document.querySelector('.navbtn[data-nav="arquivados"]')?.remove();
   aplicarPermissoes(me.perfil);
   await recarregarCache();
   ligarTempoReal();
@@ -2377,7 +2390,7 @@ function acoesDaLinha(m, row, anam){
      tela. Entre "Abrir" e "Inativar", quem só quer abrir a ficha acertaria
      nele com frequência — e teria de ir procurar de onde o paciente sumiu. É
      também por isso que ele pede confirmação. */
-  if(!anam && (MOD==="pacientes" || MOD==="prontuario")){
+  if(ARQUIVO_NA_TELA && !anam && (MOD==="pacientes" || MOD==="prontuario")){
     itens.push(["Arquivar", `arquivarDaLista('${MOD}',${row.id})`]);
   }
   /* No catálogo, ver as perguntas é a ação mais usada — é como se confere se
@@ -3128,8 +3141,8 @@ async function montarAreasProntuario(prontId){
     <div id="pasta-testes"></div>
     <div class="areas-cab">
       <h3>Lançamentos do prontuário</h3>
-      <label class="chk" style="font-size:.82rem"><input type="checkbox" ${MOSTRAR_ARQUIVADOS?"checked":""}
-        onchange="MOSTRAR_ARQUIVADOS=this.checked;montarAreasProntuario(${prontId})"> mostrar arquivados</label>
+      ${ARQUIVO_NA_TELA?`<label class="chk" style="font-size:.82rem"><input type="checkbox" ${MOSTRAR_ARQUIVADOS?"checked":""}
+        onchange="MOSTRAR_ARQUIVADOS=this.checked;montarAreasProntuario(${prontId})"> mostrar arquivados</label>`:""}
     </div>` +
     TIPOS_PRONT.map(([tipo,rot,titulo])=>`
       <div class="area" data-area="${tipo}">
@@ -3237,7 +3250,7 @@ function pintarArea(tipo, itens, prontId){
       <td>${escA(r.profissional||"—")}</td>
       <td style="text-align:right;white-space:nowrap">
         <button type="button" class="btn btn-ghost btn-sm" onclick="abrirLancamento(${r.id},${prontId})">Acessar</button>
-        <button type="button" class="btn btn-ghost btn-sm" onclick="arquivarLancamento(${r.id},${Number(r.arquivado)?0:1},${prontId})">${Number(r.arquivado)?"Restaurar":"Arquivar"}</button>
+        ${ARQUIVO_NA_TELA?`<button type="button" class="btn btn-ghost btn-sm" onclick="arquivarLancamento(${r.id},${Number(r.arquivado)?0:1},${prontId})">${Number(r.arquivado)?"Restaurar":"Arquivar"}</button>`:""}
       </td></tr>`).join("")+`</table>`;
 }
 
@@ -3267,8 +3280,8 @@ function editorLancamento({ id, tipo, prontId, reg }){
       <div id="lc-erro"></div>
     </div>
     <div class="acoes">
-      ${id&&!arquivado?`<button class="btn btn-ghost" onclick="arquivarLancamento(${id},1,${prontId},true)">Arquivar</button>`:""}
-      ${id&&arquivado?`<button class="btn btn-navy" onclick="arquivarLancamento(${id},0,${prontId},true)">Restaurar</button>`:""}
+      ${ARQUIVO_NA_TELA&&id&&!arquivado?`<button class="btn btn-ghost" onclick="arquivarLancamento(${id},1,${prontId},true)">Arquivar</button>`:""}
+      ${ARQUIVO_NA_TELA&&id&&arquivado?`<button class="btn btn-navy" onclick="arquivarLancamento(${id},0,${prontId},true)">Restaurar</button>`:""}
       <button class="btn btn-ghost" onclick="fecharLancamento()">Fechar</button>
       ${arquivado?"":`<button class="btn btn-navy" onclick="salvarLancamento(${id||0},'${tipo}',${prontId})">Salvar</button>`}
     </div></div></div>`;
