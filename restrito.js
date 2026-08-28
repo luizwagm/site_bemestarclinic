@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.40.0";
+const SISTEMA_VERSION = "1.41.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,11 @@ const SISTEMA_VERSION = "1.40.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.41.0", data: "2026-08-26", titulo: "Ver o teste ou desafio antes de o paciente responder", mudancas: [
+    "Visualizar agora mostra as perguntas, as orientações e o texto do desafio mesmo sem resposta",
+    "Antes só aparecia a frase \"ainda sem respostas\" — quem acabou de escrever um desafio não conseguia reler o que enviou",
+    "Com a resposta, tudo continua igual: o que muda é só a linha da resposta em cada pergunta",
+  ] },
   { versao: "1.40.0", data: "2026-08-24", titulo: "Arquivar saiu da tela (o recurso continua guardado)", mudancas: [
     "Os botões de arquivar e restaurar saíram de pacientes, prontuários e lançamentos",
     "O item Arquivados saiu do menu da conta",

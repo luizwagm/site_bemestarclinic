@@ -178,6 +178,17 @@
     .env-escala span{background:#f7f9fc;border:1px solid var(--line);border-radius:999px;
       padding:.2rem .65rem;font-size:.78rem;color:var(--muted)}
     .env-escala b{color:var(--tinta,#1e275f)}
+    /* ------ visualizar o envio ANTES de haver resposta ------
+       O documento existe desde que foi criado; a resposta é o que falta. */
+    .env-pendente{background:#fff8e6;border:1px solid #f0dfae;border-radius:10px;
+      padding:.5rem .7rem;margin:0 0 .8rem;color:#7a5b12}
+    .env-abertura{background:#f7f9fc;border-left:3px solid var(--line);
+      padding:.5rem .8rem;margin:.2rem 0 .8rem;color:var(--muted);line-height:1.55}
+    .env-roteiro{margin:.2rem 0 .6rem}
+    .env-txt{margin:.35rem 0;line-height:1.55}
+    .env-txt--campo{color:var(--muted);font-style:italic}
+    .env-cit{margin:.35rem 0 .35rem .6rem;padding-left:.7rem;
+      border-left:3px solid var(--line);color:var(--muted);font-style:italic}
     .env-ops{display:flex;flex-wrap:wrap;gap:.35rem .9rem;margin-bottom:.6rem}
     .env-lista{margin:.2rem 0 0 1.1rem;color:var(--muted);font-size:.88rem}
 
@@ -5057,13 +5068,47 @@ async function verEnvio(id){
     ${e.expira_em?`<div><span>Prazo</span><b>${escA(dataBR(e.expira_em))}</b></div>`:""}
   </div>`;
 
+  /* ======================================================================
+     O CONTEÚDO APARECE COM OU SEM RESPOSTA
+
+     Antes, um envio ainda não respondido mostrava só a frase "ainda sem
+     respostas" — e quem tinha acabado de escrever um desafio não conseguia
+     reler o que mandou. Justamente quem mais precisa: o desafio é escrito na
+     hora, para aquele paciente, e conferi-lo depois de enviado era
+     impossível sem esperar a pessoa responder.
+
+     Agora o que muda com a resposta é só a COLUNA DA RESPOSTA. As perguntas,
+     as instruções e o roteiro do desafio são o documento — existem desde que
+     ele foi criado.
+     ====================================================================== */
+  const semResposta = e.situacao !== "concluido" && !e.respondidas;
+  /* O texto de abertura: nos testes é a orientação do instrumento; nos
+     desafios é o que o terapeuta escreveu, e é o coração do documento. */
+  const abertura = [e.msg_boas_vindas, e.teste_instrucoes].filter(Boolean)
+    .map((t)=>`<p class="env-abertura">${escA(t).replace(/\n/g,"<br>")}</p>`).join("");
+  /* O ROTEIRO do desafio — seções, parágrafos, exemplos e listas. É o que o
+     paciente lê entre uma pergunta e outra, e sem ele a visualização vira uma
+     lista de perguntas soltas que não parece o desafio que foi escrito. */
+  const roteiro = (e.roteiro||[]).length
+    ? `<div class="env-roteiro">` + e.roteiro.map((b)=>{
+        if(b.tipo==="secao")     return `<h4 class="env-sec">${escA(b.titulo)}</h4>`;
+        if(b.tipo==="paragrafo") return `<p class="env-txt">${escA(b.texto)}</p>`;
+        if(b.tipo==="citacao")   return `<p class="env-cit">${escA(b.texto)}</p>`;
+        if(b.tipo==="lista")     return `<ul class="env-lista">${(b.itens||[]).map((i)=>`<li>${escA(i)}</li>`).join("")}</ul>`;
+        if(b.tipo==="campo")     return `<p class="env-txt env-txt--campo">✎ ${escA(b.rotulo)}</p>`;
+        return "";
+      }).join("") + `</div>`
+    : "";
+  /* A escala só faz sentido enquanto não há resposta: depois, cada item já
+     mostra o que a pessoa escolheu. */
+  const escala = (semResposta && (e.escala||[]).length)
+    ? `<div class="env-escala">${e.escala.map((x)=>`<span><b>${x.v}</b> ${escA(x.r)}</span>`).join("")}</div>` : "";
+
   let corpo;
   if(e.oculto){
     corpo=`<p class="aviso-hist">${escA(e.oculto)}</p>`;
   }else if(!e.itens || !e.itens.length){
-    corpo=`<p class="hint" style="color:var(--dim)">Este teste não tem perguntas no sistema.</p>`;
-  }else if(e.situacao!=="concluido" && !e.respondidas){
-    corpo=`<p class="hint" style="color:var(--dim)">Ainda sem respostas — o paciente não concluiu o questionário.</p>`;
+    corpo=`${abertura}${roteiro}<p class="hint" style="color:var(--dim)">Este teste não tem perguntas no sistema.</p>`;
   }else{
     /* FORA DE FORMULÁRIO, como pedido: pergunta e resposta em texto corrido,
        agrupadas por seção. Um formulário aqui convidaria a "corrigir" a
@@ -5084,7 +5129,11 @@ async function verEnvio(id){
        número no topo do resultado convida a ler o teste como nota de prova,
        e nenhum destes questionários tem faixa de gravidade. A leitura é
        clínica. Se um dia voltar, é aqui que ele morava. */
-    corpo=`${linhas}
+    corpo=`${semResposta
+        ? `<p class="hint env-pendente">Ainda sem respostas — o paciente não concluiu.
+             Abaixo, o que foi enviado a ele.</p>`
+        : ""}
+      ${abertura}${escala}${roteiro}${linhas}
       ${e.blocos_terapeuta&&e.blocos_terapeuta.length?blocosDoTerapeuta(e):""}`;
   }
 
