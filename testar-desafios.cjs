@@ -446,6 +446,53 @@ async function rodar() {
   eq(meio.dados.respondidas, 0,
     "e o rascunho NÃO aparece como resposta — o que está pela metade não vira material de sessão");
 
+  secao("7b. o prazo venceu com a semana escrita dentro");
+
+  /* ====================================================================
+     O CASO QUE MOTIVOU A PRORROGAÇÃO.
+
+     O desafio é preenchido ao longo da semana. O paciente escreveu na terça,
+     a vida aconteceu, e o prazo venceu na sexta com aquilo dentro. Até aqui a
+     clínica tinha um caminho só — RECRIAR —, que sorteia código novo e
+     descarta o rascunho: o terapeuta precisava jogar fora o que a pessoa
+     escreveu para conseguir devolver o acesso.
+
+     Prorrogar mexe só na data. É a diferença entre "continue" e "comece de
+     novo", e num desafio essa diferença é o trabalho de alguém.
+     ==================================================================== */
+  /* Data em ISO, N dias a partir de hoje. Local desta suite: a irma
+     `testar-testes.cjs` tem a dela, e importar uma da outra amarraria as duas. */
+  const emDias = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+
+  await Q.run("UPDATE teste_envios SET expira_em=? WHERE id=?", emDias(-1), envio.dados.id);
+
+  const fechou = await anon.vai("/api/answer/" + codigo);
+  eq(fechou.dados.estado, "vencido", "com a data no passado, o desafio fecha para o paciente");
+  const presa = await Q.get("SELECT rascunho FROM teste_envios WHERE id=?", envio.dados.id);
+  ok(presa.rascunho, "e o que ele escreveu fica preso lá dentro");
+
+  const vistaVencida = await adm.vai("/restrito/api/teste-envios/" + envio.dados.id);
+  eq(vistaVencida.dados.situacao, "vencido", "a clínica vê o desafio como vencido");
+  eq(vistaVencida.dados.pode_prazo, true, "e pode alterar o prazo dele");
+
+  const prorrogou = await adm.vai("/restrito/api/teste-envios/" + envio.dados.id + "/prazo",
+    "POST", { expira_em: emDias(7) });
+  eq(prorrogou.status, 200, "a clínica dá mais uma semana");
+
+  /* O MESMO link. Se mudasse, o paciente precisaria receber outro pelo
+     WhatsApp — e o combinado da sessão viraria suporte técnico. */
+  eq((await Q.get("SELECT codigo FROM teste_envios WHERE id=?", envio.dados.id)).codigo, codigo,
+    "sem trocar o link que já está no celular dele");
+
+  const reaberto = await anon.vai("/api/answer/" + codigo);
+  eq(reaberto.dados.estado, "ok", "o desafio volta a abrir");
+  eq(reaberto.dados.retomando, true, "como RETOMADA, não como começo");
+  eq(reaberto.dados.respondidas, 2, "com os dois campos da terça ainda contados");
+
+  const continua = await anon.vai("/api/answer/" + codigo + "/iniciar", "POST");
+  eq(continua.dados.rascunho.a0, terca.a0, "e o texto da terça continua no campo");
+  eq(continua.dados.rascunho.a1, terca.a1, "inteiro — prorrogar não é recomeçar");
+
   secao("8. responder e ler de volta");
 
   const RESP = {

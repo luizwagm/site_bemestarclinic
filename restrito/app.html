@@ -4696,7 +4696,8 @@ function linhaEnvio(e){
     <td>${escA(e.teste_nome)}${e.teste_sigla?`<br><span class="hint" style="color:var(--dim)">${escA(e.teste_sigla)}</span>`:""}
         ${e.pasta_numero?`<br><span class="chip-pront">${escA(e.pasta_numero)}</span>`:""}</td>
     <td>${escA(dataBR((e.criado||"").slice(0,10)))}</td>
-    <td>${e.expira_em?escA(dataBR(e.expira_em)):'<span style="color:var(--dim)">não expira</span>'}</td>
+    <td>${e.expira_em?escA(dataBR(e.expira_em)):'<span style="color:var(--dim)">não expira</span>'}${
+      e.prorrogado_em?'<br><span class="hint" style="color:var(--dim)">prazo alterado</span>':""}</td>
     <td>${etiquetaSit(e.situacao)}</td>
     <td class="col-acoes">${menuEnvio(e)}</td></tr>`;
 }
@@ -4707,6 +4708,13 @@ function linhaEnvio(e){
 function menuEnvio(e){
   const itens=[["Visualizar", `verEnvio(${e.id})`]];
   if(e.pode_enviar) itens.push(["Enviar", `modalEnviarLink(${e.id})`]);
+  /* ALTERAR PRAZO vem ANTES de Recriar de propósito.
+
+     As duas resolvem a mesma aflição — "o prazo passou e o paciente não
+     respondeu" —, mas uma é reversível e a outra não: recriar sorteia código
+     novo e descarta o que já foi escrito. Quem lê um menu de cima para baixo
+     e para na primeira opção que serve deve parar na que preserva. */
+  if(e.pode_prazo) itens.push([e.prazo_vencido?"Alterar prazo (vencido)":"Alterar prazo", `modalPrazo(${e.id})`]);
   itens.push(["Recriar", `recriarEnvio(${e.id})`]);
   if(e.pode_apagar) itens.push(["Remover", `removerEnvio(${e.id})`]);
   return `<div class="acao-menu">
@@ -4717,6 +4725,68 @@ function menuEnvio(e){
     <div class="acao-lista" role="menu">${
       itens.map(([r,fn])=>`<button type="button" role="menuitem" onclick="${escA(fn)}">${escA(r)}</button>`).join("")
     }</div></div>`;
+}
+
+/* ------------------------------------------------- alterar o prazo */
+/* PRORROGAR, e não recomeçar.
+
+   O link continua o mesmo — o que já foi para o WhatsApp do paciente segue
+   valendo — e nada do que ele escreveu é tocado. Num desafio, que é preenchido
+   ao longo da semana, é a diferença entre continuar e começar de novo.
+
+   A situação não precisa ser mexida aqui: ela é CALCULADA do prazo mais o
+   status guardado. Empurrando a data para frente, o envio volta sozinho a ser
+   o que era — criado, enviado ou aberto. */
+async function modalPrazo(id){
+  const e=ENVIOS.find((x)=>x.id===id) || await (async()=>{ try{ return await api("teste-envios/"+id); }catch{ return null; } })();
+  if(!e) return toast("Envio não encontrado.",true);
+  const ehDesafio = e.teste_tipo === "desafio";
+  const host=$("#modal-host");
+  host.innerHTML=`<div class="modal-bg"><div class="modal" style="width:min(560px,96vw)">
+    <h2>${e.prazo_vencido?"Prorrogar prazo":"Alterar prazo"}</h2>
+    <div class="modal-corpo">
+      <p class="hint">${escA(e.teste_nome)} — ${escA(e.paciente_nome)}</p>
+      <p class="hint" style="margin:.5rem 0 0">
+        Prazo atual: <b>${e.expira_em?escA(dataBR(e.expira_em)):"não expira"}</b>
+        ${e.prazo_vencido?' <span class="tag tag-env-vencido">Vencido</span>':""}</p>
+      <div class="formgrid" style="margin-top:.8rem">
+        <div><label>Novo prazo</label>
+          <input type="date" id="pz-data" min="${escA(hojeISO())}" value="${escA(maisDias(15))}"></div>
+        <div style="display:flex;align-items:flex-end">
+          <label class="chk" style="margin:0 0 .6rem"><input type="checkbox" id="pz-sem"
+            onchange="$('#pz-data').disabled=this.checked"> Não expira</label></div>
+      </div>
+      <p class="hint" style="margin:.7rem 0 0">
+        O <b>link continua o mesmo</b> e ${ehDesafio
+          ? "tudo o que o paciente já escreveu permanece — ele volta de onde parou."
+          : "as respostas já registradas permanecem."}
+        Para recomeçar do zero, com link novo, use <b>Recriar</b>.</p>
+      ${/* Pelo `aberto_em`, e NAO por `situacao==="aberto"`: a situacao de um
+             envio aberto que venceu e "vencido", nao "aberto". Testando a
+             situacao, o aviso sumia exatamente no caso em que ele importa —
+             o rastreio que o paciente abriu e deixou vencer. */
+        (!ehDesafio && e.aberto_em) ? `<p class="hint" style="margin:.5rem 0 0;color:var(--ambar,#b3792a)">
+        Este rastreio já foi <b>aberto</b> pelo paciente. Normalmente ele fecharia de vez;
+        alterar o prazo aqui <b>reabre</b> o acesso para que ele possa terminar.</p>` : ""}
+    </div>
+    <div class="acoes">
+      <button class="btn btn-ghost" onclick="fecharModal()">Cancelar</button>
+      <button class="btn btn-navy" onclick="salvarPrazo(${e.id},this)">Salvar prazo</button>
+    </div></div></div>`;
+}
+
+async function salvarPrazo(id, btn){
+  const sem=$("#pz-sem").checked;
+  const corpo = sem ? { nao_expira:true } : { expira_em: $("#pz-data").value };
+  if(!sem && !corpo.expira_em) return toast("Escolha a nova data.",true);
+  btn.disabled=true;
+  try{
+    await api("teste-envios/"+id+"/prazo","POST",corpo);
+    fecharModal();
+    toast(sem?"Prazo removido — o teste não expira mais.":"Prazo alterado.");
+    await carregarEnvios();
+  }catch(e){ toast(e.message,true); }
+  btn.disabled=false;
 }
 
 /* ------------------------------------------------------ novo teste */

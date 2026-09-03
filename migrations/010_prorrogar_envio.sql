@@ -1,0 +1,47 @@
+-- ==========================================================================
+--  010 — PRORROGAR o prazo de um envio, sem recomeçar
+--
+--  ==========================================================================
+--  O QUE FALTAVA
+--
+--  Até aqui, um envio vencido tinha um caminho só: RECRIAR. E recriar é
+--  destrutivo por desenho — sorteia um código novo (matando o link que já
+--  saiu por WhatsApp) e descarta `respostas`, `avaliacao` e `rascunho`.
+--
+--  Para um rastreio que ninguém abriu, tudo bem. Para um DESAFIO, é perda de
+--  trabalho alheio: o desafio é preenchido ao longo da semana, o paciente
+--  escreve um pouco a cada dia em `rascunho`, e o prazo vence com aquilo
+--  dentro. Recriar joga fora o que a pessoa escreveu — e é a única opção que
+--  a tela oferecia.
+--
+--  Prorrogar é o contrário: mexe SÓ na data. Como a situação é calculada
+--  (`situacaoDoEnvio` lê `status` + `expira_em`, ver a 005), empurrar
+--  `expira_em` para frente faz o envio voltar sozinho ao que ele era —
+--  criado, enviado ou aberto — com link, respostas e rascunho no lugar.
+--
+--  ==========================================================================
+--  POR QUE UMA COLUNA, SE O PRAZO JÁ É UMA COLUNA
+--
+--  `prorrogado_em` não guarda o prazo: guarda que ALGUÉM MEXEU no prazo, e
+--  quando. Isso resolve uma regra que sem ela ficaria impossível de escrever.
+--
+--  Um rastreio FECHA depois de aberto (regra do cliente, na 005): quem abriu
+--  já viu as perguntas, e reabrir seria deixar responder duas vezes. Mas a
+--  clínica pediu que prorrogar devolva o acesso também nesse caso — o
+--  paciente que abriu, se distraiu e perdeu o prazo precisa terminar.
+--
+--  As duas coisas convivem porque a exceção é DATADA: o rastreio aberto voltar
+--  a abrir só quando `prorrogado_em` for POSTERIOR a `aberto_em`. Ou seja,
+--  quando a clínica olhou aquele envio já aberto e decidiu reabrir. Sem a
+--  coluna, a alternativa seria afrouxar a regra para todo mundo, o tempo todo
+--  — que é o que ninguém pediu.
+--
+--  `prorrogado_por` é quem fez. A auditoria já registra o ato, mas ela é uma
+--  tabela à parte: tendo o autor aqui, a tela mostra "prorrogado por Fulano em
+--  12/03" sem precisar cruzar duas fontes para uma linha de lista.
+--
+--  Nulo nas linhas que já existem: nenhum envio antigo foi prorrogado, e nulo
+--  diz exatamente isso. Não há UPDATE de migração.
+-- ==========================================================================
+ALTER TABLE teste_envios ADD COLUMN IF NOT EXISTS prorrogado_em  TEXT;
+ALTER TABLE teste_envios ADD COLUMN IF NOT EXISTS prorrogado_por INTEGER;

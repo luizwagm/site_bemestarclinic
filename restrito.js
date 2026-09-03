@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.41.0";
+const SISTEMA_VERSION = "1.42.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,15 @@ const SISTEMA_VERSION = "1.41.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.42.0", data: "2026-09-02", titulo: "Alterar o prazo de um teste ou desafio vencido", mudancas: [
+    "Novo Alterar prazo no menu de cada teste e desafio ainda não respondido",
+    "Um vencido volta a valer só mudando a data — sem recomeçar e sem gerar link novo",
+    "O paciente continua com o MESMO link, e tudo o que ele já escreveu permanece",
+    "Antes só existia Recriar, que trocava o link e descartava o rascunho da semana",
+    "Rastreio que o paciente abriu e deixou vencer volta a abrir quando a clínica prorroga",
+    "Teste já respondido não tem prazo alterado — para pedir de novo, Recriar",
+    "A linha mostra prazo alterado, e o prontuário registra de qual data para qual",
+  ] },
   { versao: "1.41.0", data: "2026-08-26", titulo: "Ver o teste ou desafio antes de o paciente responder", mudancas: [
     "Visualizar agora mostra as perguntas, as orientações e o texto do desafio mesmo sem resposta",
     "Antes só aparecia a frase \"ainda sem respostas\" — quem acabou de escrever um desafio não conseguia reler o que enviou",
@@ -1239,9 +1248,24 @@ function situacaoDoEnvio(e) {
    Vencido fecha os dois: o prazo é o prazo. E concluído fecha os dois — o
    marco de "terminei" é o que a clínica lê como fim do exercício.
    ========================================================================== */
+/* Rastreio ABERTO que a clínica REABRIU de propósito.
+
+   A regra geral continua: rastreio fecha assim que o paciente abre — quem
+   abriu já viu as perguntas, e reabrir seria deixar responder duas vezes.
+
+   A exceção é DATADA, e é isso que a mantém estreita: só vale quando alguém
+   prorrogou o prazo DEPOIS da abertura, ou seja, quando a clínica olhou
+   aquele envio já aberto e decidiu que ele precisa terminar. Um envio
+   prorrogado antes de ser aberto não ganha nada com isto — e não deveria
+   mesmo, porque nesse caso a regra normal já o deixa abrir. */
+function reabertoDeProposito(e) {
+  return !!(e.prorrogado_em && e.aberto_em && e.prorrogado_em > e.aberto_em);
+}
+
 function envioAbrivel(e, ehDesafio) {
   const sit = situacaoDoEnvio(e);
   if (ehDesafio) return ["criado", "enviado", "aberto"].includes(sit);
+  if (sit === "aberto" && reabertoDeProposito(e)) return true;
   return ["criado", "enviado"].includes(sit);
 }
 
@@ -1316,6 +1340,15 @@ function resumoDoEnvio(l) {
     pode_enviar: !["concluido", "vencido"].includes(situacaoDoEnvio(l)),
     /* A tela precisa saber se o prazo já passou para pedir um novo ao recriar. */
     prazo_vencido: situacaoDoEnvio(l) === "vencido",
+    /* ALTERAR O PRAZO vale para tudo que ainda não foi respondido — vencido ou
+       não. O que fecha a porta é `concluido`: ali o paciente já respondeu, o
+       prazo cumpriu o que tinha para cumprir, e mexer nele só criaria uma data
+       que não combina com o `concluido_em` logo ao lado.
+
+       Repare que isto NÃO é `!prazo_vencido`: prorrogar existe justamente para
+       o vencido. É o oposto de `pode_enviar`, que o vencido não pode. */
+    pode_prazo: situacaoDoEnvio(l) !== "concluido",
+    prorrogado_em: l.prorrogado_em || null,
   };
 }
 
@@ -3065,6 +3098,63 @@ async function rotaApi(req, res, p) {
       detalhe: { codigo_antigo: e.codigo, codigo_novo: codigo, tinha_resposta: !!e.respostas } });
     avisar("testes");
     return json(res, 200, { ok: true, codigo });
+  }
+
+  /* ------------------------------------------------------------- prazo */
+  /* PRORROGAR: mexe só na data, e é isso que a separa de `recriar`.
+
+     Recriar sorteia código novo e descarta respostas, avaliação e rascunho —
+     é para quando se quer recomeçar. Prorrogar mantém tudo: o link que já saiu
+     por WhatsApp continua valendo e o paciente encontra o que já tinha escrito.
+     Num desafio preenchido ao longo da semana, a diferença entre as duas é o
+     trabalho da pessoa. */
+  const tpz = p.match(/^teste-envios\/(\d+)\/prazo$/);
+  if (tpz && req.method === "POST") {
+    if (!pode(s.perfil, "teste_envios")) return json(res, 403, { error: "Sem permissão." });
+    const e = await Q.get("SELECT * FROM teste_envios WHERE id=?", tpz[1]);
+    if (!e) return json(res, 404, { error: "Envio não encontrado." });
+
+    /* Respondido não se prorroga. O prazo já fez o que tinha para fazer, e uma
+       data nova ao lado de um `concluido_em` antigo só confundiria quem lê. */
+    if (situacaoDoEnvio(e) === "concluido") {
+      return json(res, 409, {
+        error: "Este teste já foi respondido — o prazo não se altera. Para pedir de novo, use Recriar." });
+    }
+
+    const corpo = (await readBody(req)) || {};
+    let expira = null;
+    if (!corpo.nao_expira) {
+      expira = String(corpo.expira_em || "").slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(expira)) {
+        return json(res, 400, { error: "Informe uma data de expiração válida (ou marque que não expira)." });
+      }
+      /* Uma data no passado deixaria o envio vencido no instante seguinte ao
+         clique — o botão funcionaria, a etiqueta não mudaria e ninguém
+         entenderia por quê. O mesmo cuidado do envio comum e do recriar. */
+      if (expira < hojeISO()) {
+        return json(res, 400, { error: "A data de expiração já passou. Escolha uma data de hoje em diante." });
+      }
+    }
+
+    const antes = e.expira_em;
+    await Q.run("UPDATE teste_envios SET expira_em=?, prorrogado_em=?, prorrogado_por=? WHERE id=?",
+      expira, agora(), s.userId, e.id);
+
+    /* A linha do tempo do paciente registra a mudança de prazo com o de-para:
+       "estava para 10/03, agora vai até 24/03" é o que responde, meses depois,
+       por que aquele desafio foi respondido fora da semana combinada. */
+    /* Data em português na anotação: ela é lida por gente, no prontuário.
+       Formatada aqui e não com um `dataBR` importado da tela, porque a tela é
+       outro programa — o servidor não empresta função dela. */
+    const txt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "sem prazo");
+    await anotar("paciente", e.paciente_id, "Prazo alterado",
+      `${e.teste_chave} — de ${txt(antes)} para ${txt(expira)}`, s);
+    auditar({ req, sessao: s, acao: "prazo", modulo: "teste_envios", entidadeId: Number(e.id),
+      resumo: `Alterou o prazo do teste ${e.teste_chave}`,
+      detalhe: { de: antes || "sem prazo", para: expira || "sem prazo",
+                 situacao_antes: situacaoDoEnvio(e) } });
+    avisar("testes");
+    return json(res, 200, { ok: true, expira_em: expira });
   }
 
   /* ------------------------------------------------------------- apagar */

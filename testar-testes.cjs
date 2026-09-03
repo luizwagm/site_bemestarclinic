@@ -427,6 +427,123 @@ const hojeMais = (dias) => {
     "mas quem já tinha aberto CONCLUI mesmo depois de a data passar");
 
   /* ------------------------------------------------------------------ */
+  secao("8b. prorrogar: mexer no prazo sem recomeçar");
+
+  /* A diferença entre PRORROGAR e RECRIAR é o que sobra depois. Recriar
+     sorteia código novo e descarta o que existia; prorrogar mexe só na data.
+     Num desafio preenchido ao longo da semana, essa diferença é o trabalho da
+     pessoa — e era a única opção que a tela oferecia. */
+  let rp = await app("/restrito/api/teste-envios", "POST",
+    { paciente_id: pac, teste_chave: "ansiedade", expira_em: hojeMais(5) });
+  const pz = rp.dados.id, pzCodigo = rp.dados.codigo;
+  CRIADO.teste_envios.push(pz);
+  await Q.run("UPDATE teste_envios SET status='enviado', expira_em=? WHERE id=?", hojeMais(-2), pz);
+
+  let ln = (await app("/restrito/api/teste-envios")).dados.itens.find((x) => x.id === pz);
+  eq(ln.situacao, "vencido", "o envio está vencido");
+  eq(ln.pode_prazo, true, "e vencido OFERECE alterar o prazo");
+  eq(ln.pode_enviar, false, "sem passar a oferecer enviar (o link ainda não abre)");
+
+  eq((await app("/restrito/api/teste-envios/" + pz + "/prazo", "POST", {})).status, 400,
+    "sem data e sem \"não expira\" é recusado");
+  eq((await app("/restrito/api/teste-envios/" + pz + "/prazo", "POST", { expira_em: hojeMais(-1) })).status, 400,
+    "data no passado é recusada — o envio venceria no instante seguinte");
+  eq((await app("/restrito/api/teste-envios/" + pz + "/prazo", "POST", { expira_em: "31/12/2030" })).status, 400,
+    "data em formato de gente também é recusada");
+
+  eq((await app("/restrito/api/teste-envios/" + pz + "/prazo", "POST", { expira_em: hojeMais(10) })).status, 200,
+    "com data futura, prorroga");
+  ln = (await app("/restrito/api/teste-envios")).dados.itens.find((x) => x.id === pz);
+  eq(ln.situacao, "enviado", "e a situação volta sozinha ao que ERA — nada foi gravado à mão");
+  eq(ln.pode_enviar, true, "voltando a poder ser enviado");
+
+  /* O PONTO da funcionalidade: o link que já saiu por WhatsApp continua
+     valendo. Se o código mudasse, o paciente precisaria receber outro — que é
+     exatamente o que Recriar faz, e o que prorrogar existe para evitar. */
+  eq((await Q.get("SELECT codigo FROM teste_envios WHERE id=?", pz)).codigo, pzCodigo,
+    "e o LINK É O MESMO: nada de reenviar nada ao paciente");
+  ok((await Q.get("SELECT prorrogado_em FROM teste_envios WHERE id=?", pz)).prorrogado_em,
+    "a alteração fica registrada na linha");
+  ok((await app("/restrito/api/teste-envios")).dados.itens.find((x) => x.id === pz).prorrogado_em,
+    "e a tela recebe isso para mostrar \"prazo alterado\"");
+
+  /* O link do paciente volta a abrir de verdade — não basta a etiqueta mudar. */
+  await pub("/api/answer/" + pzCodigo + "/entrar", "POST", { nascimento: "05/03/1990" });
+  eq((await pub("/api/answer/" + pzCodigo)).dados.estado, "ok",
+    "e o link do PACIENTE volta a abrir");
+
+  eq((await app("/restrito/api/teste-envios/" + pz + "/prazo", "POST", { nao_expira: true })).status, 200,
+    "\"não expira\" também é uma resposta válida");
+  eq((await Q.get("SELECT expira_em FROM teste_envios WHERE id=?", pz)).expira_em, null,
+    "e aí a data sai da linha");
+
+  /* ---- rastreio ABERTO: a exceção datada ---- */
+  /* Rastreio fecha assim que o paciente abre — quem abriu já viu as perguntas.
+     A clínica pediu que prorrogar devolva o acesso também nesse caso. A regra
+     geral fica de pé porque a exceção é DATADA: vale só quando a prorrogação
+     vem DEPOIS da abertura, ou seja, quando alguém olhou aquele envio já
+     aberto e decidiu reabrir. */
+  rp = await app("/restrito/api/teste-envios", "POST",
+    { paciente_id: pac, teste_chave: "estresse", expira_em: hojeMais(5) });
+  const ab = rp.dados.id, abCodigo = rp.dados.codigo;
+  CRIADO.teste_envios.push(ab);
+  await Q.run("UPDATE teste_envios SET status='aberto', aberto_em=?, expira_em=? WHERE id=?",
+    "2020-01-01T00:00:00.000Z", hojeMais(-2), ab);
+
+  await pub("/api/answer/" + abCodigo + "/entrar", "POST", { nascimento: "05/03/1990" });
+  eq((await pub("/api/answer/" + abCodigo)).dados.estado, "vencido",
+    "rastreio aberto e vencido: o paciente não entra");
+  eq((await app("/restrito/api/teste-envios/" + ab + "/prazo", "POST", { expira_em: hojeMais(10) })).status, 200,
+    "a clínica prorroga");
+  eq((await pub("/api/answer/" + abCodigo)).dados.estado, "ok",
+    "e o rastreio ABERTO reabre — porque a prorrogação veio depois da abertura");
+
+  /* A regra geral continua valendo para quem NÃO foi prorrogado. Sem esta
+     prova, afrouxar a regra para todo mundo passaria despercebido. */
+  rp = await app("/restrito/api/teste-envios", "POST",
+    { paciente_id: pac, teste_chave: "estresse", expira_em: hojeMais(9) });
+  const ab2 = rp.dados.id, ab2Codigo = rp.dados.codigo;
+  CRIADO.teste_envios.push(ab2);
+  await Q.run("UPDATE teste_envios SET status='aberto', aberto_em=? WHERE id=?", new Date().toISOString(), ab2);
+  await pub("/api/answer/" + ab2Codigo + "/entrar", "POST", { nascimento: "05/03/1990" });
+  eq((await pub("/api/answer/" + ab2Codigo)).dados.estado, "aberto",
+    "rastreio aberto SEM prorrogação continua fechado — a regra do cliente está de pé");
+
+  /* ---- concluído não se prorroga ---- */
+  /* Respondido AQUI, e não reaproveitando um envio que outra seção respondeu:
+     depender do índice de um array compartilhado faz a prova falar de um
+     registro diferente no dia em que alguém acrescentar um caso acima. */
+  rp = await app("/restrito/api/teste-envios", "POST",
+    { paciente_id: pac, teste_chave: "ansiedade", expira_em: hojeMais(5) });
+  const concl = rp.dados.id, cCod = rp.dados.codigo;
+  CRIADO.teste_envios.push(concl);
+  await pub("/api/answer/" + cCod + "/entrar", "POST", { nascimento: "05/03/1990" });
+  const itC = await pub("/api/answer/" + cCod + "/iniciar", "POST", {});
+  const respC = {};
+  itC.dados.itens.forEach((i, n) => { respC[i.chave] = i.aberta ? "ZZ QA resposta" : n % 5; });
+  await pub("/api/answer/" + cCod + "/concluir", "POST", { respostas: respC });
+  eq((await Q.get("SELECT status FROM teste_envios WHERE id=?", concl)).status, "concluido",
+    "o envio foi respondido");
+  eq((await app("/restrito/api/teste-envios/" + concl + "/prazo", "POST", { expira_em: hojeMais(10) })).status, 409,
+    "e respondido NÃO se prorroga: o prazo já cumpriu o que tinha para cumprir");
+  eq((await app("/restrito/api/teste-envios")).dados.itens.find((x) => x.id === concl).pode_prazo, false,
+    "a tela também não oferece");
+
+  /* ---- os vencidos continuam à vista ---- */
+  /* Pedido explícito do cliente, e o tipo de coisa que uma "melhoria" futura
+     na lista quebra sem ninguém perceber: basta alguém filtrar o que "já
+     passou" para os vencidos sumirem da tela de quem precisa agir sobre eles. */
+  const outroVenc = CRIADO.teste_envios[4];
+  await Q.run("UPDATE teste_envios SET status='enviado', expira_em=? WHERE id=?", hojeMais(-3), outroVenc);
+  const todos = (await app("/restrito/api/teste-envios")).dados.itens;
+  ok(todos.some((x) => x.id === outroVenc && x.situacao === "vencido"),
+    "vencido aparece na lista geral, sem filtro");
+  ok((await app("/restrito/api/teste-envios?paciente_id=" + pac)).dados.itens
+    .some((x) => x.id === outroVenc), "e na lista do paciente");
+  ok((await app("/restrito/api/teste-envios?situacao=vencido")).dados.itens
+    .some((x) => x.id === outroVenc), "e o filtro por situação encontra os vencidos");
+
+  /* ------------------------------------------------------------------ */
   secao("9. o vínculo com o prontuário");
   r = await app("/restrito/api/prontuario", "POST",
     { paciente_id: pac, especialidade: "Psicanálise Individual", profissional: "ZZ QA Dr" });
