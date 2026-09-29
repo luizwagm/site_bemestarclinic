@@ -272,6 +272,54 @@ async function rodar() {
   ok(semPergunta.avisos.some((a) => /sem ter onde responder/.test(a)),
     "e AVISA, em vez de deixar criar um desafio mudo");
 
+  /* ----------------------------------------------------------------------
+     PERGUNTAS LOGO DEPOIS DO TÍTULO (29/09/2026)
+
+     Um desafio de verdade não criava: "DESAFIO: Evolução do Relacionamento"
+     e, logo abaixo, seis perguntas numeradas — sem subtítulo no meio. Tudo o
+     que vinha antes da primeira seção era tratado como abertura (texto para
+     ler), as seis perguntas sumiam ali, e a criação dizia "não encontrei
+     nenhuma pergunta". O texto abaixo é o do cliente, sem tirar nem pôr.
+     ---------------------------------------------------------------------- */
+  const REAL = "DESAFIO: Evolução do Relacionamento\n\n" +
+    "1. Olhando para o início deste processo, o que você percebe que mudou em você dentro do relacionamento?\n\n" +
+    "2. O que você percebe que mudou na sua companheira e na forma como ela se relaciona com você?\n\n" +
+    "3. Em quais aspectos você acredita que o relacionamento de vocês evoluiu?\n\n" +
+    "4. Quando surgem situações de conflito, desentendimento ou frustração, como você tem reagido atualmente?\n\n" +
+    "5. Se você pudesse escolher apenas três atitudes para praticar daqui para frente, quais seriam as que mais contribuiriam para melhorar a relação?\n\n" +
+    "6. Qual é a principal promessa que você faz a si mesmo para a próxima etapa deste relacionamento?\n";
+  const real = interpretarDesafio(REAL);
+  eq(real.abertas.length, 6, "título seguido DIRETO de perguntas: as seis viram campo");
+  eq(real.abertas[0], "Olhando para o início deste processo, o que você percebe que mudou em você dentro do relacionamento?",
+    "…com o texto inteiro, sem o número na frente");
+  eq(real.nome, "Evolução do Relacionamento", "\"DESAFIO: assunto\" numa linha só: o assunto é o nome");
+  ok(!real.avisos.some((a) => /genérico/.test(a)), "…e não acusa título genérico (o assunto veio junto)");
+
+  /* Sob título de desafio, numerado é pergunta mesmo sem "?" — como a seção
+     DESAFIO do modelo padrão sempre fez. */
+  const tarefas = interpretarDesafio("DESAFIO: Movimento\n\n1- Caminhar 20 minutos\n2- Beber dois litros de água");
+  eq(tarefas.abertas.length, 2, "sob \"DESAFIO:\", linha numerada sem \"?\" também é tarefa a responder");
+
+  /* O mesmo defeito, na forma mais comum do modelo: "DESAFIO:" sozinho na
+     primeira linha, sem a linha "Título:". Antes, só funcionava com ela. */
+  const semTitulo = interpretarDesafio("DESAFIO:\n\n1- O que você fez esta semana?\n2- O que ficou para depois?");
+  eq(semTitulo.abertas.length, 2, "\"DESAFIO:\" sozinho no alto, sem \"Título:\" — as perguntas viram campo");
+
+  /* Título comum e perguntas SEM número, sem seção nenhuma: também são campos. */
+  const soltas = interpretarDesafio("Reflexão da semana\n\nO que te deixou orgulhoso?\nO que você faria diferente?");
+  eq(soltas.abertas.length, 2, "título comum + perguntas sem número e sem seção: viram campo");
+
+  /* A GUARDA: pergunta RETÓRICA de abertura, num texto com seções, continua
+     sendo abertura. Sem esta prova, o conserto acima transformaria o "Como
+     foi sua semana?" de cumprimento numa pergunta obrigatória ao paciente. */
+  /* O título vem ANTES: a primeira versão desta prova abria com a pergunta,
+     que virava o título do documento e nunca passava pela regra guardada —
+     a sabotagem mostrou que ela passaria mesmo sem a guarda. */
+  const retorica = interpretarDesafio("Gratidão no dia a dia\n\nOlá! Como foi sua semana?\n\nEste é o desafio de hoje.\n\n" +
+    "### Para pensar\n\nO que te deixou orgulhoso?");
+  eq(JSON.stringify(retorica.abertas), JSON.stringify(["O que te deixou orgulhoso?"]),
+    "pergunta de cumprimento no alto de um texto com seções NÃO vira campo");
+
   /* O roteiro é a exibição: sem ele o paciente receberia sete perguntas
      soltas, sem a orientação que dá sentido a elas. */
   const secoes = r.roteiro.filter((b) => b.tipo === "secao").length;
@@ -356,6 +404,20 @@ async function rodar() {
   eq(criado.dados.campos, 7, "com a contagem certa de campos");
   ok(!!criado.dados.codigo, "e já sai com o link do paciente");
   CRIADO.teste_envios.push(criado.dados.envio_id);
+
+  /* O DESAFIO DO CLIENTE, PELA ROTA (29/09/2026). É exatamente a ação que
+     falhava na tela: colar o texto e criar — sem digitar nome, deixando o
+     sistema tirar do texto. Antes: 400 "não encontrei nenhuma pergunta". */
+  const doCliente = await adm.vai("/restrito/api/desafios", "POST",
+    { texto: REAL, paciente_id: pacId, nao_expira: true });
+  if (doCliente.dados && doCliente.dados.envio_id) CRIADO.teste_envios.push(doCliente.dados.envio_id);
+  const linhaCliente = doCliente.dados && doCliente.dados.chave
+    ? await Q.get("SELECT * FROM testes WHERE chave=?", doCliente.dados.chave) : null;
+  if (linhaCliente) CRIADO.testes.push(linhaCliente.id);
+  eq(doCliente.status, 200, "o desafio \"Evolução do Relacionamento\" é CRIADO pela rota (antes: recusado)");
+  eq(doCliente.dados && doCliente.dados.campos, 6, "…com os seis campos");
+  eq(linhaCliente && linhaCliente.nome, "Evolução do Relacionamento", "…e com o assunto como nome, sem digitar");
+
   const codigo = criado.dados.codigo;
   const envio = { dados: { id: criado.dados.envio_id, codigo } };
 

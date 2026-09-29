@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.42.0";
+const SISTEMA_VERSION = "1.42.1";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,13 @@ const SISTEMA_VERSION = "1.42.0";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.42.1", data: "2026-09-29", titulo: "Desafio com as perguntas logo abaixo do título", mudancas: [
+    "Um desafio que vai do título DIRETO às perguntas numeradas não criava: dizia que não havia pergunta",
+    "As perguntas eram lidas como texto de abertura — agora uma pergunta numerada vira campo onde estiver",
+    "\"DESAFIO: assunto\" numa linha só: o assunto passa a ser o nome do desafio na lista",
+    "Sob um título de desafio, linha numerada é tarefa a responder, com ou sem ponto de interrogação",
+    "Uma pergunta de cumprimento no alto (\"Como foi sua semana?\") continua sendo só abertura",
+  ] },
   { versao: "1.42.0", data: "2026-09-02", titulo: "Alterar o prazo de um teste ou desafio vencido", mudancas: [
     "Novo Alterar prazo no menu de cada teste e desafio ainda não respondido",
     "Um vencido volta a valer só mudando a data — sem recomeçar e sem gerar link novo",

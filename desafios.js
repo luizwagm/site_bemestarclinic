@@ -257,8 +257,17 @@ function interpretarDesafio(texto) {
     }
   }
 
+  /* "DESAFIO: Evolução do Relacionamento" — cabeçalho e assunto NA MESMA
+     LINHA (29/09/2026: um desafio de verdade, escrito assim, não criava).
+     O assunto é o nome: é ele que distingue este desafio dos outros vinte
+     "DESAFIO" na lista. E um título de desafio — com ou sem assunto — faz das
+     linhas numeradas logo abaixo PERGUNTAS, como a seção "DESAFIO" do modelo
+     padrão já fazia. */
+  const mDesafio = /^desafios?(?:\s+da\s+semana)?\s*[:–—-]\s*(.+)$/i.exec(titulo);
+  const tituloEhDesafio = !!mDesafio || /^desafios?(?:\s+da\s+semana)?$/i.test(titulo.trim());
+
   /* O "Título:" explícito vence tudo: quem o escreveu escolheu esse nome. */
-  const nome = tituloExplicito || subtitulo || titulo || "Desafio";
+  const nome = tituloExplicito || subtitulo || (mDesafio ? mDesafio[1].trim() : titulo) || "Desafio";
 
   /* ------------------------------------------------- abertura e as seções */
   const roteiro = [];
@@ -332,12 +341,44 @@ function interpretarDesafio(texto) {
     }
 
     if (emAbertura) {
-      /* Antes da primeira seção é a apresentação do desafio. Vai para
-         `instrucoes`, que é onde o resto do sistema já procura o texto de
-         abertura de um teste — inclusive a página do paciente. */
-      const t = l.tipo === "item" ? "• " + l.texto : l.texto;
-      aberturaTextos.push(t);
-      continue;
+      /* UMA PERGUNTA É PERGUNTA ONDE ESTIVER (29/09/2026).
+
+         Antes, tudo o que vinha antes da primeira seção era "abertura" — texto
+         corrido para ler, sem campo nenhum. Um desafio que vai do título
+         DIRETO às perguntas (sem um subtítulo no meio) tinha as seis perguntas
+         engolidas ali, e a criação recusava com "não encontrei nenhuma
+         pergunta" — com seis perguntas na tela. O remendo antigo cobria só o
+         caso em que o texto trazia uma linha "Título:".
+
+         Agora a primeira linha que PEDE resposta encerra a abertura e vira
+         campo. O que conta como pedido aqui é o INEQUÍVOCO:
+           · pergunta NUMERADA ("1. O que mudou em você?") — pergunta retórica
+             de abertura não vem numerada;
+           · LACUNA ("Hoje eu senti ____");
+           · linha numerada sob um título de DESAFIO, com ou sem "?";
+           · pergunta SEM número, mas só quando o texto não tem seção nenhuma
+             depois — havendo seções, um "Como foi sua semana?" solto no alto é
+             cumprimento, e continua na abertura como sempre esteve.
+         Item de lista não conta: numa lista, "?" costuma ser exemplo. */
+      const semSecaoDepois = !linhas.some((x, k) => k > i && (x.tipo === "titulo" || x.tipo === "titulo-solto"));
+      const pede = l.tipo !== "item" && l.tipo !== "citacao" && (
+        (l.tipo === "numerado" && (ehPergunta(l.texto) || tituloEhDesafio))
+        || temLacuna(l.texto)
+        || (ehPergunta(l.texto) && semSecaoDepois));
+      if (!pede) {
+        /* Antes da primeira seção é a apresentação do desafio. Vai para
+           `instrucoes`, que é onde o resto do sistema já procura o texto de
+           abertura de um teste — inclusive a página do paciente. */
+        const t = l.tipo === "item" ? "• " + l.texto : l.texto;
+        aberturaTextos.push(t);
+        continue;
+      }
+      /* Seção implícita, SEM cabeçalho no roteiro: o paciente vê as perguntas
+         logo depois da abertura, como o terapeuta escreveu. */
+      emAbertura = false;
+      secaoAberta = { titulo: "", camposAntes: abertas.length, pedeRegistro: false,
+        tituloPede: false, frasePedido: "", ehDesafio: tituloEhDesafio };
+      /* e segue abaixo, tratada como linha de dentro de uma seção */
     }
 
     /* --------------------------------------------- dentro de uma seção */
@@ -394,7 +435,7 @@ function interpretarDesafio(texto) {
   /* Com "Título:" explícito o aviso de nome genérico fica quieto: o padrão da
      clínica É "DESAFIO DA SEMANA", de propósito — repetir o aviso a cada
      desafio viraria ruído que ensina a ignorar avisos. */
-  if (!tituloExplicito && !subtitulo && titulo && /^desafio/i.test(titulo)) {
+  if (!tituloExplicito && !subtitulo && !mDesafio && titulo && /^desafio/i.test(titulo)) {
     avisos.push("O título é genérico. Vale dar um nome que diga do que é o desafio, " +
       "para você o encontrar na lista daqui a um mês.");
   }
