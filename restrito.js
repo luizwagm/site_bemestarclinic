@@ -38,7 +38,7 @@ const APP_DIR = path.join(ROOT, "restrito");
    correção de bug sobe a 3ª (1.14.1, 1.14.2…). A primeira casa NÃO muda —
    houve um deslize em que subi para 2.x e o cliente corrigiu; a numeração
    voltou para a série 1.x, que é a que ele acompanha. */
-const SISTEMA_VERSION = "1.42.1";
+const SISTEMA_VERSION = "1.43.0";
 
 /* ==========================================================================
    HISTÓRICO DE VERSÕES — o que alimenta a tela "Sobre o sistema"
@@ -56,6 +56,13 @@ const SISTEMA_VERSION = "1.42.1";
    que as entregou.
    ========================================================================== */
 const HISTORICO_VERSOES = [
+  { versao: "1.43.0", data: "2026-09-29", titulo: "Tabelas do prontuário paginadas e ações no menu ⋮", mudancas: [
+    "As tabelas dos cards do prontuário (anamneses, agendamentos, testes e lançamentos) agora são paginadas, de 10 em 10",
+    "Cada card pagina sozinho: virar a página dos testes não mexe nos agendamentos",
+    "Acessar, Desvincular, Arquivar e Trazer para esta pasta foram para o menu de três pontinhos de cada linha",
+    "Teste solto do paciente mostra \"fora de pasta\" e é trazido pelo menu, logo abaixo de Visualizar",
+    "Abrir outro prontuário recomeça todos os cards da primeira página",
+  ] },
   { versao: "1.42.1", data: "2026-09-29", titulo: "Desafio com as perguntas logo abaixo do título", mudancas: [
     "Um desafio que vai do título DIRETO às perguntas numeradas não criava: dizia que não havia pergunta",
     "As perguntas eram lidas como texto de abertura — agora uma pergunta numerada vira campo onde estiver",

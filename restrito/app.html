@@ -568,6 +568,8 @@
     .pgbtn:disabled{opacity:.4;cursor:default}
     .pgsep{color:var(--dim);padding:0 .1rem}
     @media print{.paginacao{display:none}}
+    .paginacao-card{margin:.45rem 0 0;font-size:.82rem}
+    .paginacao-card:empty{display:none}
     /* filtro de período: dois campos de data lado a lado */
     .filtro-data{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
     .filtro-data label{margin:0;font-size:.82rem;font-weight:600;color:var(--muted)}
@@ -2045,7 +2047,51 @@ function barraPaginacao(alvo, chave, info){
       ${bt(info.pagina+1, "›", false, info.pagina>=info.paginas)}
     </span>` : ""}`;
 }
+/* TABELAS DOS CARDS DO PRONTUÁRIO (29/09/2026)
+   Cada card (anamneses, agendamentos, testes, cada tipo de lançamento) pagina
+   sozinho, com chave própria "pc-…" — virar a página dos testes não mexe nos
+   agendamentos. Começa de 10 em 10: o card divide a tela com outros cinco, e
+   15 linhas já empurram o resto para fora da vista.
+   A lista fica guardada no fecho de `pintar`, então trocar de página não vai
+   ao servidor. A barra só aparece quando há mais que a menor página: com 4
+   linhas, "Mostrar 10 · 1–4 de 4" é ruído. */
+const REPINTA_CARD = {};
+function cardPaginado(alvo, chave, lista, montar){
+  PAG[chave] = PAG[chave] || { tam: TAMANHOS_PAGINA[0], pag: 1 };
+  const pintar = () => {
+    const el = $("#" + alvo); if(!el) return;
+    const f = fatiar(chave, lista);
+    el.innerHTML = montar(f.itens) + `<div class="paginacao paginacao-card" id="pg-${chave}"></div>`;
+    if(lista.length > TAMANHOS_PAGINA[0]) barraPaginacao("pg-" + chave, chave, f);
+  };
+  REPINTA_CARD[chave] = pintar;
+  pintar();
+}
+/* Outro prontuário começa da página 1 em todos os cards (o tamanho escolhido
+   fica — é gosto de quem usa, não do paciente). */
+let PAG_CARD_PRONT = 0;
+function zerarPaginasDosCards(prontId){
+  if(PAG_CARD_PRONT === prontId) return;
+  PAG_CARD_PRONT = prontId;
+  for(const k of Object.keys(PAG)) if(k.startsWith("pc-")) PAG[k].pag = 1;
+}
+
+/* O MESMO menu de três pontinhos da lista, para qualquer tabela. Cada item é
+   [rótulo, código do onclick]. */
+function menuDaLinha(itens, rotulo){
+  if(!itens.length) return "";
+  return `<div class="acao-menu">
+    <button type="button" class="acao-trigger" aria-haspopup="true" aria-expanded="false"
+            title="Ações" aria-label="${escA(rotulo || "Ações desta linha")}" onclick="abrirMenuLinha(this,event)">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
+    </button>
+    <div class="acao-lista" role="menu">${
+      itens.map(([r,fn])=>`<button type="button" role="menuitem" onclick="${escA(fn)}">${escA(r)}</button>`).join("")
+    }</div></div>`;
+}
+
 function repintarPagina(chave){
+  if(REPINTA_CARD[chave]) return REPINTA_CARD[chave]();
   if(chave === "relpac") return pintarRelpacTabela();
   return MOD === "atendimentos" ? pintarAtendimentos() : renderTabela();
 }
@@ -2059,6 +2105,13 @@ function irParaPagina(chave, n){
   const p = pagDe(chave);
   p.pag = Math.max(1, Number(n) || 1);
   repintarPagina(chave);
+  /* Num card do prontuário, só o CARD volta à vista — subir até o topo do
+     módulo jogaria quem está no quarto card de volta ao cabeçalho da pasta. */
+  if(REPINTA_CARD[chave]){
+    const card = $("#pg-" + chave)?.closest(".area");
+    if(card) card.scrollIntoView({ block: "nearest" });
+    return;
+  }
   // volta ao topo da lista: mudar de página e continuar no rodapé desorienta
   const cx = $("#pane-mod.on") || $("#pane-relpac.on");
   if(cx) cx.scrollIntoView({ block: "start" });
@@ -3148,6 +3201,7 @@ function pintarTopoPasta(){
 /* Monta as quatro áreas e carrega os lançamentos. */
 async function montarAreasProntuario(prontId){
   const box=$("#pasta-areas"); if(!box) return;
+  zerarPaginasDosCards(prontId);
   box.innerHTML=`<div id="pasta-vinculos"></div>
     <div id="pasta-testes"></div>
     <div class="areas-cab">
@@ -3183,35 +3237,35 @@ async function pintarVinculosPasta(prontId){
   let v; try{ v=await api(`prontuario/${prontId}/vinculos`); }catch(e){ box.innerHTML=""; return; }
   const anam=v.anamneses||[], atend=v.atendimentos||[];
 
-  const linhasAnam = anam.length
-    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th>Modelo</th><th style="width:130px">Situação</th><th style="width:150px">Profissional</th><th style="width:120px"></th></tr>`+
-      anam.map((a)=>`<tr>
+  box.innerHTML=`<div class="areas-cab"><h3>Vínculos deste prontuário</h3></div>
+    <div class="area"><div class="area-cab"><b>Anamneses (${anam.length})</b></div><div id="pv-anam"></div></div>
+    <div class="area">
+      <div class="area-cab"><b>Agendamentos (${atend.length})</b>
+        <button type="button" class="btn btn-navy btn-sm" onclick="escolherAtendimentoParaVincular(${prontId})">+ Vincular agendamento</button>
+      </div><div id="pv-atend"></div></div>`;
+
+  cardPaginado("pv-anam", "pc-anam", anam, (fatia)=> anam.length
+    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th>Modelo</th><th style="width:130px">Situação</th><th style="width:150px">Profissional</th><th style="width:48px"></th></tr>`+
+      fatia.map((a)=>`<tr>
         <td>${escA(dataBR(a.data))}</td>
         <td>${escA(rotuloAnam(a.tipo))}</td>
         <td>${String(a.status)==="Finalizada"?'<span class="tag tag-Ativo">Finalizada</span>':'<span class="tag tag-Agendado">Rascunho</span>'}</td>
         <td>${escA(a.profissional||"—")}</td>
-        <td style="text-align:right"><button type="button" class="btn btn-ghost btn-sm" onclick="abrirAnamneseDaPasta(${a.id})">Acessar</button></td>
+        <td class="col-acoes">${menuDaLinha([["Acessar", `abrirAnamneseDaPasta(${a.id})`]], "Ações desta anamnese")}</td>
       </tr>`).join("")+`</table>`
-    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhuma anamnese vinculada.</p>`;
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhuma anamnese vinculada.</p>`);
 
-  const linhasAtend = atend.length
-    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th style="width:110px">Horário</th><th>Procedimento</th><th style="width:150px">Profissional</th><th style="width:110px">Situação</th><th style="width:120px"></th></tr>`+
-      atend.map((a)=>`<tr>
+  cardPaginado("pv-atend", "pc-atend", atend, (fatia)=> atend.length
+    ? `<table class="anam-m"><tr><th style="width:104px">Data</th><th style="width:110px">Horário</th><th>Procedimento</th><th style="width:150px">Profissional</th><th style="width:110px">Situação</th><th style="width:48px"></th></tr>`+
+      fatia.map((a)=>`<tr>
         <td>${escA(dataBR(a.data))}</td>
         <td>${escA(a.hora||"")}${a.hora_fim?" – "+escA(a.hora_fim):""}</td>
         <td>${escA(a.procedimento_nome||"—")}</td>
         <td>${escA(a.profissional_nome||"—")}</td>
         <td>${a.status?`<span class="tag tag-${escA(a.status)}">${escA(a.status)}</span>`:"—"}</td>
-        <td style="text-align:right"><button type="button" class="btn btn-ghost btn-sm" onclick="desvincularAtendimento(${prontId},${a.id})">Desvincular</button></td>
+        <td class="col-acoes">${menuDaLinha([["Desvincular", `desvincularAtendimento(${prontId},${a.id})`]], "Ações deste agendamento")}</td>
       </tr>`).join("")+`</table>`
-    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum agendamento vinculado ainda.</p>`;
-
-  box.innerHTML=`<div class="areas-cab"><h3>Vínculos deste prontuário</h3></div>
-    <div class="area"><div class="area-cab"><b>Anamneses (${anam.length})</b></div>${linhasAnam}</div>
-    <div class="area">
-      <div class="area-cab"><b>Agendamentos (${atend.length})</b>
-        <button type="button" class="btn btn-navy btn-sm" onclick="escolherAtendimentoParaVincular(${prontId})">+ Vincular agendamento</button>
-      </div>${linhasAtend}</div>`;
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum agendamento vinculado ainda.</p>`);
 }
 /* Abre a anamnese SEM sair da tela do prontuário: é uma janela por cima, e
    fechar devolve a pasta como estava. */
@@ -3253,16 +3307,19 @@ async function vincularAtendimento(prontId, atendId){
 function pintarArea(tipo, itens, prontId){
   const el=$("#area-"+tipo); if(!el) return;
   if(!itens.length){ el.innerHTML=`<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum lançamento ainda.</p>`; return; }
-  el.innerHTML=`<table class="anam-m"><tr><th style="width:104px">Data</th><th>Registro</th><th style="width:150px">Profissional</th><th style="width:190px"></th></tr>`+
-    itens.map((r)=>`<tr${Number(r.arquivado)?' class="arquivado"':""}>
+  cardPaginado("area-"+tipo, "pc-lanc-"+tipo, itens, (fatia)=>
+    `<table class="anam-m"><tr><th style="width:104px">Data</th><th>Registro</th><th style="width:150px">Profissional</th><th style="width:48px"></th></tr>`+
+    fatia.map((r)=>{
+      const acoes=[["Acessar", `abrirLancamento(${r.id},${prontId})`]];
+      if(ARQUIVO_NA_TELA) acoes.push([Number(r.arquivado)?"Restaurar":"Arquivar",
+        `arquivarLancamento(${r.id},${Number(r.arquivado)?0:1},${prontId})`]);
+      return `<tr${Number(r.arquivado)?' class="arquivado"':""}>
       <td>${escA(dataBR(r.data))}${Number(r.arquivado)?'<br><span class="tag tag-nao" style="font-size:.66rem">arquivado</span>':""}</td>
       <td>${escA(semHtml(r.texto).slice(0,110))}${semHtml(r.texto).length>110?"…":""}
         ${r.atualizado?`<br><span class="marca-edicao" title="O que mudou fica no Histórico da pasta">editado em ${escA(dataHoraBR(r.atualizado))}</span>`:""}</td>
       <td>${escA(r.profissional||"—")}</td>
-      <td style="text-align:right;white-space:nowrap">
-        <button type="button" class="btn btn-ghost btn-sm" onclick="abrirLancamento(${r.id},${prontId})">Acessar</button>
-        ${ARQUIVO_NA_TELA?`<button type="button" class="btn btn-ghost btn-sm" onclick="arquivarLancamento(${r.id},${Number(r.arquivado)?0:1},${prontId})">${Number(r.arquivado)?"Restaurar":"Arquivar"}</button>`:""}
-      </td></tr>`).join("")+`</table>`;
+      <td class="col-acoes">${menuDaLinha(acoes, "Ações deste lançamento")}</td></tr>`;
+    }).join("")+`</table>`);
 }
 
 /* Editor de um lançamento (novo ou existente), em modal por cima. */
@@ -4705,8 +4762,10 @@ function linhaEnvio(e){
 /* Todas as ações num menu de três pontinhos, com texto e sem ícone.
    Reusa o `.acao-menu` que a lista de pacientes já usa — mesma posição, mesmo
    comportamento de fechar ao rolar, mesma navegação por teclado. */
-function menuEnvio(e){
-  const itens=[["Visualizar", `verEnvio(${e.id})`]];
+function menuEnvio(e, extras=[]){
+  /* `extras` entra logo depois de Visualizar: dentro da pasta, é o "Trazer
+     para esta pasta" de um teste solto — a ação que aquela linha pede. */
+  const itens=[["Visualizar", `verEnvio(${e.id})`], ...extras];
   if(e.pode_enviar) itens.push(["Enviar", `modalEnviarLink(${e.id})`]);
   /* ALTERAR PRAZO vem ANTES de Recriar de propósito.
 
@@ -4717,14 +4776,7 @@ function menuEnvio(e){
   if(e.pode_prazo) itens.push([e.prazo_vencido?"Alterar prazo (vencido)":"Alterar prazo", `modalPrazo(${e.id})`]);
   itens.push(["Recriar", `recriarEnvio(${e.id})`]);
   if(e.pode_apagar) itens.push(["Remover", `removerEnvio(${e.id})`]);
-  return `<div class="acao-menu">
-    <button type="button" class="acao-trigger" aria-haspopup="true" aria-expanded="false"
-            title="Ações" aria-label="Ações deste teste" onclick="abrirMenuLinha(this,event)">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="5" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="12" cy="19" r="1.9"/></svg>
-    </button>
-    <div class="acao-lista" role="menu">${
-      itens.map(([r,fn])=>`<button type="button" role="menuitem" onclick="${escA(fn)}">${escA(r)}</button>`).join("")
-    }</div></div>`;
+  return menuDaLinha(itens, "Ações deste teste");
 }
 
 /* ------------------------------------------------- alterar o prazo */
@@ -5369,22 +5421,14 @@ async function pintarTestesPasta(prontId){
     <td>${e.teste_tipo === "desafio"
         ? '<span class="tag tag-Ativo" style="font-size:.66rem">Desafio</span> ' : ""
       }${escA(e.teste_nome)}${e.teste_sigla?`<br><span class="hint" style="color:var(--dim)">${escA(e.teste_sigla)}</span>`:""}
-      ${solto?`<br><button type="button" class="btn btn-ghost btn-sm" style="margin-top:.2rem"
-         onclick="vincularTesteAPasta(${e.id},${Number(prontId)})">Trazer para esta pasta</button>`:""}</td>
+      ${solto?`<br><span class="hint" style="color:#8a6d1a">fora de pasta — traga pelo menu ⋮</span>`:""}</td>
     <td>${e.expira_em?escA(dataBR(e.expira_em)):'<span style="color:var(--dim)">sem prazo</span>'}</td>
     <td>${etiquetaSit(e.situacao)}</td>
-    <td style="text-align:right">${menuEnvio(e)}</td></tr>`;
+    <td class="col-acoes">${menuEnvio(e, solto ? [["Trazer para esta pasta", `vincularTesteAPasta(${e.id},${Number(prontId)})`]] : [])}</td></tr>`;
 
-  const total=daPasta.length+doPaciente.length;
-  const lista = total
-    ? `<table class="anam-m"><tr>
-        <th style="width:104px">Criado</th><th>Teste/desafio</th>
-        <th style="width:110px">Prazo</th><th style="width:120px">Situação</th><th style="width:60px"></th></tr>`+
-      daPasta.map((e)=>linha(e,false)).join("")+
-      doPaciente.map((e)=>linha(e,true)).join("")+`</table>`+
-      (doPaciente.length?`<p class="hint" style="color:var(--dim);margin:.4rem 0 0">
-        As linhas em destaque são testes deste paciente que ainda não estão em nenhuma pasta.</p>`:"")
-    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum teste enviado nesta pasta.</p>`;
+  /* Os da pasta primeiro, os soltos depois — e a paginação corta a lista
+     JUNTA, então os soltos aparecem na última página, onde sempre estiveram. */
+  const todos=daPasta.map((e)=>[e,false]).concat(doPaciente.map((e)=>[e,true]));
 
   box.innerHTML=`<div class="area">
     <div class="area-cab">
@@ -5400,7 +5444,16 @@ async function pintarTestesPasta(prontId){
                 onclick="modalNovoEnvio(${Number(pacId)||0},${Number(prontId)})">+ Enviar teste</button>
       </span>
     </div>
-    ${lista}</div>`;
+    <div id="pt-lista"></div></div>`;
+
+  cardPaginado("pt-lista", "pc-testes", todos, (fatia)=> todos.length
+    ? `<table class="anam-m"><tr>
+        <th style="width:104px">Criado</th><th>Teste/desafio</th>
+        <th style="width:110px">Prazo</th><th style="width:120px">Situação</th><th style="width:48px"></th></tr>`+
+      fatia.map(([e,solto])=>linha(e,solto)).join("")+`</table>`+
+      (doPaciente.length?`<p class="hint" style="color:var(--dim);margin:.4rem 0 0">
+        As linhas em destaque são testes deste paciente que ainda não estão em nenhuma pasta.</p>`:"")
+    : `<p class="hint" style="color:var(--dim);margin:.2rem 0 .4rem">Nenhum teste enviado nesta pasta.</p>`);
 }
 
 async function vincularTesteAPasta(id, prontId){
