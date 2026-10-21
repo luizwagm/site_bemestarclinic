@@ -6,6 +6,27 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.33.0 — 2026-10-15 · várias fotos e vídeos por matéria do Feed (carrossel)
+
+- Cada matéria do Feed aceita **quantas fotos e vídeos quiser**: a capa continua
+  sendo a primeira, e o painel ganhou **"Mais fotos e vídeos (carrossel)"**, com
+  envio de várias de uma vez, setas para mudar a ordem e × para tirar. Enviar,
+  mover e tirar **salvam na hora**; depois é só **Publicar**.
+- Com mais de uma mídia, a **página da matéria abre com um carrossel**: setas,
+  pontos, contador "2 / 5", setas do teclado e o dedo no celular. Cada mídia
+  aparece **inteira**, na proporção dela (foto em pé não é cortada); trocar de
+  slide **pausa o vídeo** que estava tocando. Sem script, a faixa ainda rola e
+  para em cada mídia.
+- Na lista do Feed, o cartão mostra a capa com um **selo** com a quantidade de
+  mídias. Matéria de uma mídia só continua exatamente como antes.
+- Só entram mídias enviadas pelo painel; endereço de fora ou `javascript:` é
+  recusado pelo servidor (coluna JSON `posts.midias`).
+- **O vídeo passa a sair por faixa (HTTP Range → 206)** — a pendência antiga.
+  Antes o servidor devolvia o arquivo inteiro, da memória, a cada pedido: o
+  player não deixava avançar e o iPhone, que pede `bytes=0-1` antes de tudo,
+  podia nem tocar. Agora sai em fluxo do disco, com Content-Length.
+- Prova: `node testar-carrossel.cjs` (numa cópia do projeto, porque publica).
+
 ## 1.32.0 — 2026-08-24 · o Feed aceita vídeo
 
 A matéria do Feed pode ter **foto ou vídeo** na capa. O painel ganhou o botão

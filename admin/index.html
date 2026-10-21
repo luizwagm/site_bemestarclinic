@@ -77,6 +77,16 @@
     #login{position:fixed;inset:0;background:var(--violet);display:grid;place-items:center;z-index:50}
     #login .card{width:min(360px,90vw);text-align:center;padding:2rem}
     .imgrow{display:flex;gap:.6rem;align-items:center}
+    /* Feed (1.33.0): as mídias do carrossel, em miniaturas na ordem em que vão ao ar */
+    .midias{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.6rem}
+    .midia{position:relative;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#faf9fe}
+    .midia>img,.midia>.midia__mini{display:grid;place-items:center;width:100%;aspect-ratio:4/3;object-fit:cover}
+    .anexo__mini--txt{background:#ecebfb;color:#3d33a8;font-weight:700;font-size:1.3rem}
+    .midia__num{position:absolute;top:.35rem;left:.35rem;background:rgba(61,51,168,.88);color:#fff;font-size:.72rem;font-weight:700;padding:.05rem .45rem;border-radius:999px}
+    .midia__acoes{display:flex;justify-content:center;gap:.25rem;padding:.35rem}
+    .midia__acoes .btn{padding:.2rem .5rem}
+    .midia__acoes .btn[disabled]{opacity:.35;cursor:default}
+    .anexos__botoes{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.7rem}
     .cep-row{display:flex;gap:.6rem;align-items:center;margin-bottom:.4rem}
     .cep-row .cep-busca{max-width:160px}
     .cep-aviso{white-space:nowrap}
@@ -304,9 +314,9 @@ async function api(url, method = "GET", body) {
   return j;
 }
 let toastT;
-function toast(msg, err = false) {
+function toast(msg, err = false, ms = 3000) {
   const t = $("#toast"); t.textContent = msg; t.classList.toggle("err", err); t.classList.add("on");
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3000);
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), ms);
 }
 const escA = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
@@ -735,7 +745,8 @@ function renderTable(t) {
             ${ehVideo(r[f]) ? `<span class="thumb thumb--video" title="Matéria em vídeo">▶</span>`
               : r[f] ? `<img class="thumb" src="${escA(r[f])}" alt="">` : ""}
           </div>
-          ${t === "posts" ? `<p class="hint">Foto <b>ou</b> vídeo (MP4/WEBM). Com vídeo, a lista do Feed mostra uma capa dizendo que é vídeo, e o vídeo toca dentro da matéria.</p>` : ""}`;
+          ${t === "posts" ? `<p class="hint">Foto <b>ou</b> vídeo (MP4/WEBM). Com vídeo, a lista do Feed mostra uma capa dizendo que é vídeo, e o vídeo toca dentro da matéria.</p>` : ""}
+          ${t === "posts" ? blocoMidias(r) : ""}`;   // (1.33.0) carrossel
         if (kind === "home") return `<label>${lab}</label>
           <select data-t="${t}" data-id="${r.id}" data-f="${f}">
             <option value="0"${Number(r[f]) ? "" : " selected"}>Não — só no guia de profissionais</option>
@@ -877,6 +888,151 @@ async function delRow(t, id) {
   toast("Excluído. Lembre de publicar!");
 }
 
+/* ==========================================================================
+   VÁRIAS MÍDIAS NO FEED (1.33.0)
+
+   A capa continua no campo de sempre e é a PRIMEIRA mídia. Aqui entram as
+   outras fotos e vídeos, sem limite; com pelo menos uma, a matéria abre com
+   um carrossel no site. A ordem aqui é a ordem do carrossel (← →).
+
+   Como na Transparência, enviar, tirar e mover salvam na hora — arquivo
+   enviado e não salvo é arquivo perdido no servidor.
+   ========================================================================== */
+const MIDIAS = {};   // id da matéria do Feed → lista de mídias além da capa
+function midiasDaMateria(r) {
+  try { const l = JSON.parse(r.midias || "[]"); return Array.isArray(l) ? l : []; } catch { return []; }
+}
+function blocoMidias(r) {
+  MIDIAS[r.id] = midiasDaMateria(r);
+  return `<label>Mais fotos e vídeos (carrossel)</label>
+    <input type="hidden" data-t="posts" data-id="${r.id}" data-f="midias" value="${escA(JSON.stringify(MIDIAS[r.id]))}">
+    <div class="midias" id="midias-${r.id}">${linhasMidias(r.id)}</div>
+    <div class="anexos__botoes">
+      <button class="btn btn-ghost btn-sm" onclick="maisMidias(${r.id}, this, 'foto')">+ Fotos</button>
+      <button class="btn btn-ghost btn-sm" onclick="maisMidias(${r.id}, this, 'video')">+ Vídeos</button>
+    </div>
+    <p class="hint">A capa (acima) é a primeira. Com mais fotos ou vídeos aqui, a matéria abre com um <b>carrossel</b> no site. Pode enviar várias de uma vez; as setas mudam a ordem.</p>`;
+}
+function linhasMidias(id) {
+  const lista = MIDIAS[id] || [];
+  if (!lista.length) return '<p class="hint anexos__vazio">Só a capa, por enquanto.</p>';
+  return lista.map((m, i) => `<div class="midia">
+      ${m.tipo === "video"
+        ? `<span class="midia__mini anexo__mini--txt" title="Vídeo">▶</span>`
+        : `<img src="${escA(m.url)}" alt="">`}
+      <span class="midia__num">${i + 2}</span>
+      <div class="midia__acoes">
+        <button class="btn btn-ghost btn-sm" aria-label="Mover para a esquerda" onclick="moverMidia(${id},${i},-1)"${i === 0 ? " disabled" : ""}>←</button>
+        <button class="btn btn-ghost btn-sm" aria-label="Mover para a direita" onclick="moverMidia(${id},${i},1)"${i === lista.length - 1 ? " disabled" : ""}>→</button>
+        <button class="btn btn-danger btn-sm" aria-label="Tirar" onclick="tirarMidia(${id},${i})">×</button>
+      </div>
+    </div>`).join("");
+}
+async function salvarMidias(id) {
+  const midias = JSON.stringify(MIDIAS[id] || []);
+  const campo = document.querySelector(`[data-t="posts"][data-id="${id}"][data-f="midias"]`);
+  if (campo) campo.value = midias;
+  const c = document.getElementById("midias-" + id);
+  if (c) c.innerHTML = linhasMidias(id);
+  await api(`/api/posts/${id}`, "PUT", { midias });
+  const r = (DATA.posts || []).find((x) => x.id === id);
+  if (r) r.midias = midias;
+}
+async function moverMidia(id, i, passo) {
+  const l = MIDIAS[id], j = i + passo;
+  if (!l || j < 0 || j >= l.length) return;
+  [l[i], l[j]] = [l[j], l[i]];
+  try { await salvarMidias(id); } catch (e) { toast(e.message, true); }
+}
+async function tirarMidia(id, i) {
+  if (!confirm("Tirar esta mídia da matéria?")) return;
+  MIDIAS[id].splice(i, 1);
+  try { await salvarMidias(id); toast("Mídia tirada. Lembre de publicar."); } catch (e) { toast(e.message, true); }
+}
+async function maisMidias(id, btn, tipo) {
+  const arquivos = await escolherArquivos(tipo === "foto" ? "image/jpeg,image/png,image/webp,image/gif"
+    : "video/mp4,video/webm,video/ogg,video/quicktime", true);
+  if (!arquivos.length) return;
+  const rotulo = btn.textContent;
+  btn.disabled = true;
+  let feitos = 0; const erros = [];
+  for (const [n, f] of arquivos.entries()) {
+    const marca = arquivos.length > 1 ? ` ${n + 1}/${arquivos.length}` : "";
+    btn.textContent = "Enviando" + marca + "…";
+    try {
+      if (tipo === "foto") {
+        const r = await api("/api/upload", "POST", { name: f.name, dataUrl: await reduzirFoto(f) });
+        MIDIAS[id].push({ tipo: "foto", url: r.path });
+      } else {
+        if (f.size > 120 * 1024 * 1024) throw new Error(`tem ${Math.round(f.size / 1048576)} MB; o limite é 120 MB`);
+        const url = await enviarBinario("/api/upload-video", f, f.type || "video/mp4", (pct) => { btn.textContent = `Enviando${marca} ${pct}%`; });
+        MIDIAS[id].push({ tipo: "video", url });
+      }
+      feitos++;
+      const c = document.getElementById("midias-" + id);
+      if (c) c.innerHTML = linhasMidias(id);
+    } catch (e) { erros.push(`${f.name}: ${e.message}`); }
+  }
+  btn.disabled = false; btn.textContent = rotulo;
+  if (feitos) {
+    try { await salvarMidias(id); toast(`${feitos} mídia(s) enviada(s) e salva(s). Lembre de publicar.`); }
+    catch (e) { toast(e.message, true); }
+  }
+  if (erros.length) toast(erros.join(" · "), true, 7000);
+}
+
+/* Escolhe arquivos e devolve a lista (vazia se a pessoa desistir). */
+function escolherArquivos(aceita, varios) {
+  return new Promise((ok) => {
+    const fi = document.createElement("input");
+    fi.type = "file"; fi.accept = aceita; fi.multiple = !!varios;
+    fi.onchange = () => ok([...fi.files]);
+    fi.click();
+  });
+}
+/* Envio em binário com progresso — o mesmo contrato do /api/upload-video. */
+function enviarBinario(rota, file, tipo, aoAndar) {
+  return new Promise((ok, falha) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", rota);
+    xhr.setRequestHeader("Content-Type", tipo);
+    xhr.setRequestHeader("X-Nome-Arquivo", encodeURIComponent(file.name));
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable && aoAndar) aoAndar(Math.round((e.loaded / e.total) * 100)); };
+    xhr.onload = () => {
+      let r = {}; try { r = JSON.parse(xhr.responseText); } catch {}
+      if (xhr.status === 200 && r.path) ok(r.path); else falha(new Error(r.error || "Não consegui enviar o arquivo."));
+    };
+    xhr.onerror = () => falha(new Error("A conexão caiu durante o envio."));
+    xhr.send(file);
+  });
+}
+/* Foto de celular chega com 4–8 MB e 4000 px. No site ela aparece numa
+   miniatura e, ampliada, numa tela: 1920 px bastam e o arquivo cai para algo
+   perto de 500 KB — quem abre a Transparência no 4G agradece. GIF fica como
+   está (pode ser animado). */
+function reduzirFoto(file) {
+  return new Promise((ok, falha) => {
+    const fr = new FileReader();
+    fr.onerror = () => falha(new Error("Não consegui ler a foto."));
+    fr.onload = () => {
+      if (/gif$/i.test(file.type)) return ok(fr.result);
+      const img = new Image();
+      img.onerror = () => falha(new Error(`"${file.name}" não é uma foto que o navegador consiga abrir.`));
+      img.onload = () => {
+        const k = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));
+        if (k === 1 && file.size < 1.5 * 1024 * 1024 && /jpe?g$/i.test(file.type)) return ok(fr.result);
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        const g = c.getContext("2d");
+        g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);   // PNG transparente não vira preto
+        g.drawImage(img, 0, 0, c.width, c.height);
+        ok(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
 const ehVideo = (u) => /\.(mp4|webm|ogv)(\?|#|$)/i.test(String(u || ""));
 
 /* ==========================================================================

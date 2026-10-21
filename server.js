@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.32.0";
+const APP_VERSION = "1.33.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -247,6 +247,8 @@ for (const col of ["slug TEXT DEFAULT ''", "content TEXT DEFAULT ''"]) {
 for (const col of ["whatsapp TEXT DEFAULT ''", "especialidades TEXT DEFAULT ''", "na_home INTEGER DEFAULT 0"]) {
   try { db.exec(`ALTER TABLE team ADD COLUMN ${col}`); } catch {}
 }
+// (1.33.0) as fotos e vídeos além da capa, para o carrossel do Feed (JSON)
+try { db.exec("ALTER TABLE posts ADD COLUMN midias TEXT"); } catch {}
 
 const sha = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 
@@ -787,6 +789,57 @@ setInterval(() => {
 
 /* ------------------------------ Publicar --------------------------------- */
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+/* ==========================================================================
+   VÁRIAS MÍDIAS NUMA MATÉRIA DO FEED (1.33.0)
+
+   A capa (`image`) continua sendo a PRIMEIRA mídia — é ela que vai no cartão
+   da lista, no og:image e no Google. As demais fotos e vídeos ficam em
+   `midias` (JSON), sem limite de quantidade. Com mais de uma, a página da
+   matéria abre com um carrossel; com uma só, fica exatamente como antes.
+
+   Só vale mídia NOSSA: foto enviada pelo painel (pasta de uploads) ou vídeo
+   da pasta de vídeos, nome sem barra. Endereço de fora ou `javascript:` num
+   src seria porta aberta para quem tiver a senha do painel — ou a roubar.
+   ========================================================================== */
+const MIDIA_URL = {
+  foto: /^\/assets\/img\/uploads\/[A-Za-z0-9._-]+\.(jpe?g|png|webp|gif)$/i,
+  video: /^\/assets\/video\/[A-Za-z0-9._-]+\.(mp4|webm|ogv)$/i,
+};
+const midiaValida = (m) => !!(m && MIDIA_URL[m.tipo] && MIDIA_URL[m.tipo].test(String(m.url || "")));
+function midiasDe(p) {
+  try {
+    const lista = JSON.parse(p.midias || "[]");
+    return Array.isArray(lista) ? lista.filter(midiaValida).map((m) => ({ tipo: m.tipo, url: m.url })) : [];
+  } catch { return []; }
+}
+/* Todas as mídias da matéria, a capa primeiro. */
+const todasAsMidias = (p) => [...(p.image ? [{ tipo: ehVideo(p.image) ? "video" : "foto", url: p.image }] : []), ...midiasDe(p)];
+/* Confere o que o painel mandou em `midias`. Devolve a mensagem de erro, ou null. */
+function prepararMidias(b) {
+  if (!("midias" in b)) return null;
+  let lista = b.midias;
+  if (typeof lista === "string") { try { lista = lista.trim() ? JSON.parse(lista) : []; } catch { return "Mídias em formato inválido."; } }
+  if (!Array.isArray(lista)) return "Mídias em formato inválido.";
+  if (lista.length > 500) return "São no máximo 500 mídias por matéria.";
+  if (!lista.every(midiaValida)) return "Uma das mídias não é válida. Envie o arquivo de novo.";
+  b.midias = JSON.stringify(lista.map((m) => ({ tipo: m.tipo, url: m.url })));
+  return null;
+}
+/* O CARROSSEL. Sem script ele já funciona: é uma faixa que rola para o lado e
+   para em cada mídia (scroll-snap). O script só acrescenta setas, pontos,
+   contador e teclado (assets/js/main.js, initCarrossel). Cada mídia aparece
+   INTEIRA, na proporção dela, sobre fundo escuro — foto de celular em pé não
+   perde cabeça nem pé para caber numa moldura deitada. Só a primeira foto
+   carrega de cara; vídeo não baixa nada antes do play. */
+const carrossel = (midias, titulo) => `<figure class="post__cover carrossel" data-carrossel aria-roledescription="carrossel" aria-label="${esc(`Fotos e vídeos: ${titulo}`)}">
+          <div class="carrossel__trilho" tabindex="0">
+            ${midias.map((m, i) => `<div class="carrossel__item" role="group" aria-roledescription="slide" aria-label="${i + 1} de ${midias.length}">
+              ${m.tipo === "video"
+                ? `<video src="${esc(m.url)}" controls preload="none" playsinline poster="${esc(CAPA_VIDEO)}"></video>`
+                : `<img src="${esc(m.url)}" alt="${esc(`${titulo} — foto ${i + 1} de ${midias.length}`)}"${i === 0 ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async"${medidasDoImg(m.url)}>`}
+            </div>`).join("\n            ")}
+          </div>
+        </figure>`;
 
 /* ==========================================================================
    TEXTO FORMATADO DO PAINEL
@@ -1041,8 +1094,12 @@ function publish() {
      normalização, o 3º post da lista viraria h2 sozinho. */
   const nivelH = (n) => (n === 2 ? 2 : 3);
 
+  /* (1.33.0) matéria com várias mídias ganha um selo com a contagem: o
+     carrossel fica na página da matéria, e o selo avisa antes do clique. */
+  const seloMidias = (p) => { const n = todasAsMidias(p).length;
+    return n > 1 ? `<span class="post-card__qtd" aria-label="${n} fotos e vídeos">${n}</span>` : ""; };
   const postCard = (p, nv) => `<article class="post-card" data-reveal>
-            <a class="post-card__media${ehVideo(p.image) ? " post-card__media--video" : ""}" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true"><img src="${esc(ehVideo(p.image) ? CAPA_VIDEO : p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            <a class="post-card__media${ehVideo(p.image) ? " post-card__media--video" : ""}" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true">${seloMidias(p)}<img src="${esc(ehVideo(p.image) ? CAPA_VIDEO : p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
             <div class="post-card__body">
               <time class="post-card__date" datetime="${esc(p.date)}">${dateBR(p.date)}</time>
               <h${nivelH(nv)} class="post-card__title"><a href="/blog/${esc(p.slug)}/">${esc(p.title)}</a></h${nivelH(nv)}>
@@ -1444,7 +1501,8 @@ function publish() {
         /* `preload="metadata"`: baixa só o cabeçalho para saber a duração e a
            proporção. Com "auto", abrir a matéria começaria a puxar o vídeo
            inteiro de quem só queria ler o texto. */
-        .replaceAll("{{COVER}}", ehVideo(po.image)
+        .replaceAll("{{COVER}}", todasAsMidias(po).length > 1 ? carrossel(todasAsMidias(po), po.title)
+          : ehVideo(po.image)
           ? `<figure class="post__cover post__cover--video"><video src="${esc(po.image)}" controls preload="metadata" playsinline poster="${esc(CAPA_VIDEO)}"></video></figure>`
           : `<figure class="post__cover${dimsPost ? "" : " post__cover--reserva"}"><img src="${esc(po.image)}" alt="${esc(po.title)}"${dimsPost} fetchpriority="high" decoding="async"></figure>`)
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
@@ -1541,7 +1599,7 @@ const readBody = (req) => new Promise((ok, bad) => {
   req.on("data", (c) => { n += c.length; if (n > 25e6) { bad(new Error("payload muito grande")); req.destroy(); } d += c; });
   req.on("end", () => { try { ok(d ? JSON.parse(d) : {}); } catch { bad(new Error("JSON inválido")); } });
 });
-const TABLES = { services: ["title", "slug", "text", "content", "sort"], portfolio: ["title", "subtitle", "image", "sort"], testimonials: ["text", "name", "role", "initials", "sort"], team: ["name", "role", "bio", "photo", "whatsapp", "especialidades", "na_home", "sort"], posts: ["title", "slug", "excerpt", "content", "image", "date", "sort"] };
+const TABLES = { services: ["title", "slug", "text", "content", "sort"], portfolio: ["title", "subtitle", "image", "sort"], testimonials: ["text", "name", "role", "initials", "sort"], team: ["name", "role", "bio", "photo", "whatsapp", "especialidades", "na_home", "sort"], posts: ["title", "slug", "excerpt", "content", "image", "midias", "date", "sort"] };
 /* ==========================================================================
    CAMPOS — declaração única de tudo que é editável em "Textos do site".
    O painel monta a tela a partir daqui, então incluir um campo novo é acrescentar
@@ -2179,6 +2237,7 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
         const table = tm[1], id = tm[2], cols = TABLES[table];
         if (req.method === "POST" && !id) {
           const b = await readBody(req);
+          if (table === "posts") { const erro = prepararMidias(b); if (erro) return json(res, 400, { error: erro }); }   // (1.33.0)
           if ((table === "services" || table === "posts") && (b.slug || b.title)) {
             b.slug = slug(b.slug || b.title || table) || table;
             const clash = db.prepare(`SELECT id FROM ${table} WHERE slug=?`).get(b.slug);
@@ -2191,6 +2250,7 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
         }
         if (req.method === "PUT" && id) {
           const b = await readBody(req);
+          if (table === "posts") { const erro = prepararMidias(b); if (erro) return json(res, 400, { error: erro }); }   // (1.33.0)
           if ((table === "services" || table === "posts") && ("slug" in b || "title" in b)) {
             b.slug = slug(b.slug || b.title || table) || table;
             const clash = db.prepare(`SELECT id FROM ${table} WHERE slug=?`).get(b.slug);
@@ -2362,8 +2422,51 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
     // é isso que faz 1 visita valer 1, e não 15 por causa dos assets da página.
     if (path.extname(file) === ".html") trackVisit(req, p);
 
-    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
-    res.end(fs.readFileSync(file));
+    /* ENTREGA EM FLUXO, E POR FAIXA (1.33.0, a pendência do vídeo por Range).
+
+       Até aqui era readFileSync + res.end: o arquivo INTEIRO na memória a cada
+       pedido, e o cabeçalho Range ignorado. Para vídeo isso quebrava três
+       coisas ao mesmo tempo (o mesmo defeito medido no Kenósis e no Forms):
+
+       · o vídeo não deixava AVANÇAR — sem resposta por faixa, o navegador
+         marca a mídia como não-pulável e a barra volta para o 0;
+       · no iPhone ele provavelmente nem TOCAVA — o Safari pede bytes=0-1
+         antes de tudo e recusa vídeo de quem responde 200 com o arquivo
+         inteiro;
+       · e, com o carrossel do Feed, cada vídeo dele herdaria os dois defeitos.
+
+       Sem contar a memória: um vídeo de 120 MB com dez pessoas assistindo
+       eram 1,2 GB carregados de uma vez. Agora o arquivo sai em fluxo, do
+       disco para a rede, com Content-Length; e "bytes=ini-fim" recebe 206
+       com o pedaço pedido. Pedido de várias faixas numa vez (raro) recebe o
+       arquivo inteiro com 200, o que a norma permite. */
+    const tipo = MIME[path.extname(file)] || "application/octet-stream";
+    const tam = fs.statSync(file).size;
+    const faixa = /^bytes=([0-9]*)-([0-9]*)$/.exec(String(req.headers.range || ""));
+    const envia = (ini, fim) => {
+      const fluxo = fs.createReadStream(file, { start: ini, end: fim });
+      /* erro no meio do caminho (arquivo trocado durante a entrega): fecha
+         a resposta em vez de deixar a conexão pendurada */
+      fluxo.on("error", () => { if (!res.headersSent) res.writeHead(500); res.end(); });
+      fluxo.pipe(res);
+    };
+    if (faixa && (faixa[1] !== "" || faixa[2] !== "")) {
+      let ini, fim;
+      if (faixa[1] === "") { ini = Math.max(0, tam - Number(faixa[2])); fim = tam - 1; }   // "bytes=-500": os últimos 500
+      else { ini = Number(faixa[1]); fim = faixa[2] === "" ? tam - 1 : Math.min(Number(faixa[2]), tam - 1); }
+      if (!(ini <= fim) || ini >= tam) {
+        res.writeHead(416, { "Content-Range": `bytes */${tam}`, "Accept-Ranges": "bytes" });
+        return res.end();
+      }
+      res.writeHead(206, { "Content-Type": tipo, "Content-Length": fim - ini + 1,
+        "Content-Range": `bytes ${ini}-${fim}/${tam}`, "Accept-Ranges": "bytes" });
+      if (req.method === "HEAD") return res.end();
+      return envia(ini, fim);
+    }
+    res.writeHead(200, { "Content-Type": tipo, "Content-Length": tam, "Accept-Ranges": "bytes" });
+    if (req.method === "HEAD") return res.end();
+    if (tam === 0) return res.end();
+    envia(0, tam - 1);
   } catch (e) {
     // detalhe do erro vai só para o log do servidor: mensagem de exceção
     // costuma revelar caminho de arquivo e estrutura interna

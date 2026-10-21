@@ -143,6 +143,7 @@ sudo ./deploy.sh        # backup → para → protege bancos → pull → npm ci
 ```bash
 node testar-limitador.js       # freio de tentativas de senha
 node testar-campo-vazio.cjs    # sobe o servidor e testa por HTTP (exige PostgreSQL)
+node testar-carrossel.cjs      # Feed com várias mídias + vídeo por faixa; numa CÓPIA do projeto (publica), porta 5341
 ```
 
 Os dois rodam no pipeline antes de qualquer entrega — suíte vermelha não vira
