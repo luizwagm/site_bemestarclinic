@@ -121,6 +121,29 @@ const PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfF
       midias: JSON.stringify([{ tipo: "video", url: "/assets/video/zz-qa-feed.mp4" }, { tipo: "foto", url: f2 }]) });
     await api("/api/posts", "POST", { title: "Zz Qa Uma Foto Só", excerpt: "Só a capa.", content: "<p>Texto.</p>", image: await foto("unica.png"), date: hoje });
     const idVarias = (await posts()).find((p) => p.title === "Zz Qa Semana do Bem-Estar").id;
+    /* (correção de 26/10/2026) publicações SEM foto de capa: só vídeos, ou uma
+       foto só, no carrossel — o caso que foi ao ar sem miniatura */
+    fs.writeFileSync(path.join(VIDEOS, "zz-qa-so-video.mp4"), Buffer.alloc(3000, 2));
+    fs.writeFileSync(path.join(VIDEOS, "zz-qa-so-video-2.mp4"), Buffer.alloc(3000, 3));
+    await api("/api/posts", "POST", { title: "Zz Qa So Videos", excerpt: "Dois vídeos no carrossel.", content: "<p>Texto.</p>", image: "", date: hoje,
+      midias: JSON.stringify([{ tipo: "video", url: "/assets/video/zz-qa-so-video.mp4" }, { tipo: "video", url: "/assets/video/zz-qa-so-video-2.mp4" }]) });
+    const fSo = await foto("so-uma.png");
+    await api("/api/posts", "POST", { title: "Zz Qa Uma No Carrossel", excerpt: "Uma foto.", content: "<p>Texto.</p>", image: "", date: hoje,
+      midias: JSON.stringify([{ tipo: "foto", url: fSo }]) });
+    /* (1.34.0) a capa tirada do vídeo: o painel manda o quadro em JPEG; o
+       servidor confere o vídeo e os bytes e grava ao lado (abc.mp4 → abc.jpg) */
+    const JPG = (n = 64) => "data:image/jpeg;base64," + Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(n, 9)]).toString("base64");
+    const semCapaAntes = (await api("/api/videos-sem-capa")).j.videos || [];
+    certo("o painel acha os vídeos ainda sem capa (capa E carrossel)", semCapaAntes.some((v) => v.video === "/assets/video/zz-qa-so-video.mp4")
+      && semCapaAntes.some((v) => v.video === "/assets/video/zz-qa-feed.mp4"), JSON.stringify(semCapaAntes.map((v) => v.video)));
+    certo("capa de vídeo que não existe → 400", (await api("/api/capa-video", "POST", { video: "/assets/video/zz-qa-nao-existe.mp4", dataUrl: JPG() })).status === 400);
+    certo("capa com caminho torto (../) → 400", (await api("/api/capa-video", "POST", { video: "/assets/video/../../server.mp4", dataUrl: JPG() })).status === 400);
+    certo("capa que não é JPEG pelos bytes → 400", (await api("/api/capa-video", "POST", { video: "/assets/video/zz-qa-so-video.mp4",
+      dataUrl: "data:image/jpeg;base64," + Buffer.from("<script>").toString("base64") })).status === 400);
+    certo("capa sem sessão → 401", (await api("/api/capa-video", "POST", { video: "/assets/video/zz-qa-so-video.mp4", dataUrl: JPG() }, "sid=nada")).status === 401);
+    const capaOk = await api("/api/capa-video", "POST", { video: "/assets/video/zz-qa-so-video.mp4", dataUrl: JPG() });
+    certo("capa válida → gravada AO LADO do vídeo, com o mesmo nome", capaOk.status === 200 && capaOk.j.capa === "/assets/video/zz-qa-so-video.jpg"
+      && fs.existsSync(path.join(VIDEOS, "zz-qa-so-video.jpg")), JSON.stringify(capaOk.j));
     const pub = await api("/api/publish", "POST");
     certo("publicado", pub.status === 200, JSON.stringify(pub.j).slice(0, 200));
     const ler = (rel) => fs.readFileSync(path.join(COPIA, rel), "utf8");
@@ -136,6 +159,14 @@ const PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfF
     const cartao = (slug) => (new RegExp(`href="/blog/${slug}/" tabindex="-1" aria-hidden="true">(.*?)<img`, "s").exec(lista) || [])[1] ?? "(não achei)";
     certo("na lista, o cartão da matéria com 3 mídias leva o selo \"3\"", /<span class="post-card__qtd" aria-label="3 fotos e vídeos">3<\/span>/.test(cartao("zz-qa-semana-do-bem-estar")), cartao("zz-qa-semana-do-bem-estar"));
     certo("…e o de uma foto só, não", cartao("zz-qa-uma-foto-so") === "", cartao("zz-qa-uma-foto-so"));
+    const cartaoSoVideo = (new RegExp(`<a class="post-card__media([^"]*)" href="/blog/zz-qa-so-videos/"[^>]*>(.*?)<img src="([^"]*)"`, "s").exec(lista) || []);
+    certo("publicação SÓ COM VÍDEOS no carrossel (sem capa): o cartão ganha miniatura de vídeo, com o selo",
+      cartaoSoVideo.length && / post-card__media--video/.test(cartaoSoVideo[1]) && /^\/assets\/(video\/.+\.jpg|img\/capa-video\.svg)$/.test(cartaoSoVideo[3])
+      && /post-card__qtd/.test(cartaoSoVideo[2]), (cartaoSoVideo[0] || "cartão não achado").slice(0, 220));
+    certo("…e nenhum cartão sai com imagem quebrada (src vazio)", !/<img src=""/.test(lista));
+    certo("…e o cartão usa o QUADRO TIRADO DO VÍDEO (não a capa genérica)", cartaoSoVideo[3] === "/assets/video/zz-qa-so-video.jpg", cartaoSoVideo[3]);
+    const pagUma = ler("blog/zz-qa-uma-no-carrossel/index.html");
+    certo("matéria com UMA foto só no carrossel (sem capa): a página mostra a foto", pagUma.includes(`<img src="${fSo}"`), pagUma.match(/<figure[^>]*>[\s\S]{0,160}/) ? pagUma.match(/<figure[^>]*>[\s\S]{0,160}/)[0] : "sem figura");
 
     /* ------------------------------------------------------------ 3. navegador */
     const CHROME = [process.env.CHROME,
@@ -224,6 +255,13 @@ const PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfF
     /* ---------------------------------------------------------------- painel */
     await cdp("Page.navigate", { url: BASE + "/admin/" });
     await ate(`!!document.getElementById("midias-${idVarias}")`);
+    /* (1.34.0) abrir o painel basta: o vídeo de verdade da prova (gravado no
+       navegador, começando colorido) ganha a capa tirada dele */
+    let capaReal = false;
+    for (let t = 0; t < 40000 && !capaReal; t += 500) { capaReal = fs.existsSync(path.join(VIDEOS, "zz-qa-feed.jpg")); if (!capaReal) await espera(500); }
+    const bytesCapa = capaReal ? fs.readFileSync(path.join(VIDEOS, "zz-qa-feed.jpg")) : Buffer.alloc(0);
+    certo("ao abrir o painel, o vídeo sem capa ganha a capa TIRADA DELE (JPEG de verdade)", capaReal && bytesCapa[0] === 0xff && bytesCapa[1] === 0xd8 && bytesCapa.length > 1000,
+      `${capaReal} ${bytesCapa.length} bytes`);
     await na(`window.confirm = () => true`);
     const minis = () => na(`[...document.querySelectorAll("#midias-${idVarias} .midia")].map((m) => m.querySelector(".midia__num").textContent)`);
     certo("no painel, a matéria mostra as 2 mídias além da capa, numeradas 2 e 3", JSON.stringify(await minis()) === JSON.stringify(["2", "3"]), JSON.stringify(await minis()));
@@ -259,6 +297,14 @@ const PNG_1X1 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfF
     await na(`[...document.querySelectorAll("button")].find((b) => b.getAttribute("onclick") === "saveRow('posts',${idVarias})").click()`, true);
     await espera(1200);
     const salvo = (await posts()).find((p) => p.id === idVarias);
+    /* (correção de 26/10/2026) o que está DIGITADO e ainda não salvo numa
+       matéria sobrevive a criar outra e a salvar outra */
+    await na(`(() => { const i = document.querySelector('[data-t="posts"][data-id="${idVarias}"][data-f="title"]'); i.value = "Zz Qa Titulo Digitado"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+    await na(`[...document.querySelectorAll("button")].find((b) => b.getAttribute("onclick") === "addRow('posts')").click()`, true);
+    await espera(1500);
+    certo("criar outra matéria NÃO apaga da tela o que estava digitado (e não salvo)",
+      (await na(`document.querySelector('[data-t="posts"][data-id="${idVarias}"][data-f="title"]').value`)) === "Zz Qa Titulo Digitado");
+    await na(`(() => { const i = document.querySelector('[data-t="posts"][data-id="${idVarias}"][data-f="title"]'); i.value = "Zz Qa Semana do Bem-Estar"; i.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
     certo("Salvar a matéria guarda o texto e mantém as mídias", salvo.excerpt === "Resumo novo." && JSON.parse(salvo.midias || "[]").length === 3, JSON.stringify({ excerpt: salvo.excerpt, midias: salvo.midias }));
 
     ws.close();

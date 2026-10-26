@@ -6,6 +6,21 @@ A primeira casa não muda. O `/restrito` tem série própria.
 
 ---
 
+## 1.34.0 — 2026-10-26 · Capa tirada do próprio vídeo; miniatura sem foto de capa
+
+- **Vídeo agora tem capa de verdade:** ao enviar um vídeo (na capa ou em "Mais fotos e
+  vídeos"), o painel tira uma foto do próprio vídeo e ela vira a miniatura no Feed e o poster
+  do player. Antes todo vídeo aparecia com a mesma capa genérica. Os vídeos que já estavam no
+  ar ganham capa sozinhos na primeira vez que o painel é aberto — depois é só **Publicar**.
+  (A mesma solução do Forms e do Instituto: `/api/capa-video`, `/api/videos-sem-capa`,
+  arquivo `abc.jpg` ao lado de `abc.mp4`.)
+- **Publicação sem foto de capa** (só vídeos ou só fotos no carrossel) ia ao Feed com a
+  miniatura quebrada. Agora a capa é a 1ª mídia do carrossel; com uma mídia só, ela aparece
+  na página da matéria.
+- No painel, **criar outra matéria** apagava da tela o que estava digitado e ainda não salvo
+  nas outras. Agora a tela é lida antes e reposta depois.
+- Prova: `testar-carrossel.cjs` (46), que falha com o código anterior.
+
 ## 1.33.0 — 2026-10-15 · várias fotos e vídeos por matéria do Feed (carrossel)
 
 - Cada matéria do Feed aceita **quantas fotos e vídeos quiser**: a capa continua

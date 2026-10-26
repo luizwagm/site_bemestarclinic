@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT) || 5185;   // PORT por env permite subir u
    não do HTML: assim, mesmo com o navegador servindo o admin do cache, o número
    exibido é sempre o da versão que está REALMENTE rodando no servidor.
    Subir ao publicar alterações no painel ou no server.js. */
-const APP_VERSION = "1.33.0";
+const APP_VERSION = "1.34.0";
 
 /* ==========================================================================
    CONSULTA DE CEP
@@ -215,6 +215,19 @@ const VIDEO_DIR = path.join(ROOT, "assets", "video");
 const VIDEO_MAX = Number(process.env.VIDEO_MAX_MB || 120) * 1024 * 1024;
 const CAPA_VIDEO = "/assets/img/capa-video.svg";
 const ehVideo = (u) => /\.(mp4|webm|ogv)(\?|#|$)/i.test(String(u || ""));
+/* ==========================================================================
+   A CAPA TIRADA DO PRÓPRIO VÍDEO (1.34.0) — a mesma do Forms (1.33.0) e do
+   Instituto (2.14.0). Até aqui todo vídeo do Feed aparecia com a MESMA capa
+   genérica: dez vídeos eram dez cartões iguais. Agora o painel tira um quadro
+   do vídeo no navegador (o servidor não tem ffmpeg) e o grava AO LADO dele:
+   abc.mp4 → abc.jpg. Sem o quadro ainda, vale a genérica — nada quebra.
+   ========================================================================== */
+function capaDoVideo(url) {
+  const m = /^\/assets\/video\/([A-Za-z0-9._-]+)\.(mp4|webm|ogv)$/i.exec(String(url || ""));
+  if (!m) return null;
+  const jpg = m[1] + ".jpg";
+  return fs.existsSync(path.join(VIDEO_DIR, jpg)) ? "/assets/video/" + jpg : null;
+}
 fs.mkdirSync(path.join(ROOT, "data"), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 fs.mkdirSync(VIDEO_DIR, { recursive: true });
@@ -814,6 +827,12 @@ function midiasDe(p) {
 }
 /* Todas as mídias da matéria, a capa primeiro. */
 const todasAsMidias = (p) => [...(p.image ? [{ tipo: ehVideo(p.image) ? "video" : "foto", url: p.image }] : []), ...midiasDe(p)];
+/* (1.34.0) A IMAGEM DO CARTÃO: a capa; sem capa, a 1ª mídia do carrossel — e,
+   se for vídeo, o quadro tirado dele. Publicação feita só com vídeos ou fotos
+   no carrossel ia ao Feed com a miniatura quebrada. */
+const primeiraMidia = (p) => todasAsMidias(p)[0] || null;
+const capaDoCartao = (p) => { const m = primeiraMidia(p); if (!m) return "";
+  return m.tipo === "video" ? (capaDoVideo(m.url) || CAPA_VIDEO) : m.url; };
 /* Confere o que o painel mandou em `midias`. Devolve a mensagem de erro, ou null. */
 function prepararMidias(b) {
   if (!("midias" in b)) return null;
@@ -835,7 +854,7 @@ const carrossel = (midias, titulo) => `<figure class="post__cover carrossel" dat
           <div class="carrossel__trilho" tabindex="0">
             ${midias.map((m, i) => `<div class="carrossel__item" role="group" aria-roledescription="slide" aria-label="${i + 1} de ${midias.length}">
               ${m.tipo === "video"
-                ? `<video src="${esc(m.url)}" controls preload="none" playsinline poster="${esc(CAPA_VIDEO)}"></video>`
+                ? `<video src="${esc(m.url)}" controls preload="none" playsinline poster="${esc(capaDoVideo(m.url) || CAPA_VIDEO)}"></video>`
                 : `<img src="${esc(m.url)}" alt="${esc(`${titulo} — foto ${i + 1} de ${midias.length}`)}"${i === 0 ? ' fetchpriority="high"' : ' loading="lazy"'} decoding="async"${medidasDoImg(m.url)}>`}
             </div>`).join("\n            ")}
           </div>
@@ -1099,7 +1118,7 @@ function publish() {
   const seloMidias = (p) => { const n = todasAsMidias(p).length;
     return n > 1 ? `<span class="post-card__qtd" aria-label="${n} fotos e vídeos">${n}</span>` : ""; };
   const postCard = (p, nv) => `<article class="post-card" data-reveal>
-            <a class="post-card__media${ehVideo(p.image) ? " post-card__media--video" : ""}" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true">${seloMidias(p)}<img src="${esc(ehVideo(p.image) ? CAPA_VIDEO : p.image)}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>
+            ${capaDoCartao(p) ? `<a class="post-card__media${(primeiraMidia(p) || {}).tipo === "video" ? " post-card__media--video" : ""}" href="/blog/${esc(p.slug)}/" tabindex="-1" aria-hidden="true">${seloMidias(p)}<img src="${esc(capaDoCartao(p))}" alt="${esc(p.title)} — BemEstarClinic, Caruaru-PE" loading="lazy" decoding="async" width="900" height="500"></a>` : ""}
             <div class="post-card__body">
               <time class="post-card__date" datetime="${esc(p.date)}">${dateBR(p.date)}</time>
               <h${nivelH(nv)} class="post-card__title"><a href="/blog/${esc(p.slug)}/">${esc(p.title)}</a></h${nivelH(nv)}>
@@ -1484,7 +1503,7 @@ function publish() {
     /* O compartilhamento (og:image, JSON-LD) precisa de IMAGEM: rede social
        nenhuma aceita um .mp4 no lugar da capa. Matéria em vídeo entrega a
        capa genérica, que é o que aparece no card também. */
-    const capa = ehVideo(po.image) ? CAPA_VIDEO : po.image;
+    const capa = capaDoCartao(po);   // (1.34.0) o quadro do vídeo, ou a 1ª mídia do carrossel
     const imgAbs = capaAbs(capa);
     const pj = { "@context": "https://schema.org", "@type": "BlogPosting",
       headline: po.title, description: po.excerpt, image: imgAbs, datePublished: po.date, inLanguage: "pt-BR",
@@ -1501,10 +1520,12 @@ function publish() {
         /* `preload="metadata"`: baixa só o cabeçalho para saber a duração e a
            proporção. Com "auto", abrir a matéria começaria a puxar o vídeo
            inteiro de quem só queria ler o texto. */
+        /* (1.34.0) a mídia única pode estar no carrossel, e não na capa */
         .replaceAll("{{COVER}}", todasAsMidias(po).length > 1 ? carrossel(todasAsMidias(po), po.title)
-          : ehVideo(po.image)
-          ? `<figure class="post__cover post__cover--video"><video src="${esc(po.image)}" controls preload="metadata" playsinline poster="${esc(CAPA_VIDEO)}"></video></figure>`
-          : `<figure class="post__cover${dimsPost ? "" : " post__cover--reserva"}"><img src="${esc(po.image)}" alt="${esc(po.title)}"${dimsPost} fetchpriority="high" decoding="async"></figure>`)
+          : ((m) => !m ? ""
+          : m.tipo === "video"
+          ? `<figure class="post__cover post__cover--video"><video src="${esc(m.url)}" controls preload="metadata" playsinline poster="${esc(capaDoVideo(m.url) || CAPA_VIDEO)}"></video></figure>`
+          : `<figure class="post__cover${dimsPost ? "" : " post__cover--reserva"}"><img src="${esc(m.url)}" alt="${esc(po.title)}"${dimsPost} fetchpriority="high" decoding="async"></figure>`)(primeiraMidia(po)))
         .replaceAll("{{DATE_ISO}}", esc(po.date)).replaceAll("{{DATE_BR}}", dateBR(po.date))
         .replaceAll("{{CONTENT_HTML}}", paragraphs)
         .replaceAll("{{JSONLD}}", `<script type="application/ld+json">\n  ${JSON.stringify(pj, null, 2).replace(/\n/g, "\n  ")}\n  </script>`)
@@ -2317,6 +2338,45 @@ Consulte <code>journalctl -u bemestar -n 40</code>.</small></p></div>`);
         const kb = Math.round(fs.statSync(destino).size / 1024);
         console.log(`  · vídeo recebido: ${arquivo} (${kb} KB)`);
         return json(res, 200, { ok: true, path: `/assets/video/${arquivo}`, bytes: kb * 1024 });
+      }
+
+      /* ------------------------------------------ capa do vídeo (1.34.0)
+         O painel tira a foto do vídeo no navegador e manda para cá. O NOME
+         do arquivo não vem do navegador: sai do vídeo, que tem de existir na
+         pasta dos vídeos — ninguém escreve fora dela. E o conteúdo é
+         conferido pelos BYTES: um JPEG começa com FF D8 FF. */
+      if (p === "/api/capa-video" && req.method === "POST") {
+        const { video, dataUrl } = await readBody(req);
+        const mv = /^\/assets\/video\/([A-Za-z0-9._-]+)\.(mp4|webm|ogv)$/i.exec(String(video || ""));
+        if (!mv || !fs.existsSync(path.join(VIDEO_DIR, mv[1] + "." + mv[2])))
+          return json(res, 400, { error: "Vídeo não encontrado." });
+        const md = /^data:image\/jpeg;base64,([A-Za-z0-9+\/=]+)$/.exec(String(dataUrl || ""));
+        if (!md) return json(res, 400, { error: "A capa precisa ser uma imagem JPEG." });
+        const bytes = Buffer.from(md[1], "base64");
+        if (bytes.length > 3 * 1024 * 1024) return json(res, 413, { error: "Capa grande demais (máx. 3 MB)." });
+        if (!(bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff))
+          return json(res, 400, { error: "O arquivo não é um JPEG." });
+        /* temporário e RENOMEIA: quem abrir a página no meio vê a capa antiga
+           ou a nova, nunca meia imagem */
+        const destino = path.join(VIDEO_DIR, mv[1] + ".jpg");
+        const temp = destino + ".tmp-" + process.pid;
+        fs.writeFileSync(temp, bytes);
+        fs.renameSync(temp, destino);
+        return json(res, 200, { ok: true, capa: "/assets/video/" + mv[1] + ".jpg" });
+      }
+      /* Os vídeos (capa e carrossel das matérias) ainda sem capa: o painel
+         tira a foto deles sozinho ao abrir — os que já estavam no ar antes
+         desta versão também ganham a sua. */
+      if (p === "/api/videos-sem-capa" && req.method === "GET") {
+        const semCapa = (u) => ehVideo(u) && /^\/assets\/video\/[A-Za-z0-9._-]+$/.test(u)
+          && fs.existsSync(path.join(VIDEO_DIR, path.basename(u))) && !capaDoVideo(u);
+        const faltam = [];
+        for (const r of db.prepare("SELECT * FROM posts").all())
+          for (const m of todasAsMidias(r))
+            if (m.tipo === "video" && semCapa(m.url) && !faltam.some((x) => x.video === m.url))
+              faltam.push({ tabela: "posts", id: r.id, titulo: r.title, video: m.url });
+        res.setHeader("Cache-Control", "no-store");
+        return json(res, 200, { videos: faltam });
       }
 
       if (p === "/api/upload" && req.method === "POST") {
